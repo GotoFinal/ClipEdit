@@ -10,6 +10,8 @@ public interface IPreviewEngine : IAsyncDisposable
 
     Task SeekAsync(MediaTime position, CancellationToken cancellationToken);
 
+    Task<MediaTime?> GetPositionAsync(CancellationToken cancellationToken);
+
     Task SetPausedAsync(bool isPaused, CancellationToken cancellationToken);
 
     Task SetVolumeAsync(double volume, CancellationToken cancellationToken);

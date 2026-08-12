@@ -9,6 +9,8 @@ internal sealed class MpvClient : IDisposable
 {
     private const int FileLoadedEvent = 8;
     private const int EndFileEvent = 7;
+    private const int PropertyUnavailableError = -10;
+    private const int DoubleFormat = 5;
     private readonly MpvNativeLibrary _native;
     private nint _handle;
 
@@ -65,6 +67,39 @@ internal sealed class MpvClient : IDisposable
             "seek",
             position.TotalSeconds.ToString("R", CultureInfo.InvariantCulture),
             "absolute+exact");
+    }
+
+    public MediaTime? GetPosition()
+    {
+        using var nativeName = new Utf8String("time-pos");
+        var valuePointer = Marshal.AllocCoTaskMem(sizeof(double));
+        try
+        {
+            var result = _native.GetProperty(_handle, nativeName.Pointer, DoubleFormat, valuePointer);
+            if (result == PropertyUnavailableError)
+            {
+                return null;
+            }
+
+            Check(result, "read preview position");
+            var seconds = BitConverter.Int64BitsToDouble(Marshal.ReadInt64(valuePointer));
+            if (!double.IsFinite(seconds) || seconds < 0)
+            {
+                return null;
+            }
+
+            var microseconds = Math.Round(seconds * 1_000_000, MidpointRounding.AwayFromZero);
+            if (microseconds > long.MaxValue)
+            {
+                return null;
+            }
+
+            return new MediaTime((long)microseconds, 1_000_000);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(valuePointer);
+        }
     }
 
     public void SetPaused(bool isPaused) => SetProperty("pause", isPaused ? "yes" : "no");

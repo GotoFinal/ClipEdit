@@ -24,8 +24,12 @@ public sealed class MpvPreviewEngineLocalTests
         await engine.SeekAsync(new MediaTime(1, 2), CancellationToken.None);
         await engine.SetVolumeAsync(0.25, CancellationToken.None);
         await engine.SetPausedAsync(false, CancellationToken.None);
+        await Task.Delay(TimeSpan.FromMilliseconds(75));
 
         Assert.Equal(PreviewState.Playing, engine.State);
+        var position = await engine.GetPositionAsync(CancellationToken.None);
+        Assert.NotNull(position);
+        Assert.True(position >= MediaTime.Zero);
 
         await engine.SetPausedAsync(true, CancellationToken.None);
         Assert.Equal(PreviewState.Paused, engine.State);

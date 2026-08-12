@@ -39,6 +39,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             view => view.PlayButtonText);
 
     private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private readonly DispatcherTimer _positionTimer;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _seekCancellation;
     private Task<MpvPreviewEngine>? _engineTask;
@@ -49,6 +50,8 @@ public sealed class MpvVideoView : OpenGlControlBase
     private string _playButtonText = "▶";
     private bool _mediaLoaded;
     private bool _shutdownStarted;
+    private bool _positionPollInProgress;
+    private bool _updatingPositionFromPlayback;
 
     static MpvVideoView()
     {
@@ -60,6 +63,15 @@ public sealed class MpvVideoView : OpenGlControlBase
             static (view, _) => view.StartPauseChange());
         VolumeProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartVolumeChange());
+    }
+
+    public MpvVideoView()
+    {
+        _positionTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(100),
+        };
+        _positionTimer.Tick += OnPositionTimerTick;
     }
 
     public string? SourcePath
@@ -124,6 +136,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
 
         _shutdownStarted = true;
+        _positionTimer.Stop();
         _lifetimeCancellation.Cancel();
         _loadCancellation?.Cancel();
         _seekCancellation?.Cancel();
@@ -266,7 +279,7 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     private void StartSeek()
     {
-        if (!_mediaLoaded || _engine is null || _shutdownStarted)
+        if (_updatingPositionFromPlayback || !_mediaLoaded || _engine is null || _shutdownStarted)
         {
             return;
         }
@@ -297,6 +310,15 @@ public sealed class MpvVideoView : OpenGlControlBase
     private void StartPauseChange()
     {
         PlayButtonText = IsPaused ? "▶" : "Ⅱ";
+        if (IsPaused)
+        {
+            _positionTimer.Stop();
+        }
+        else if (_mediaLoaded)
+        {
+            _positionTimer.Start();
+        }
+
         if (_mediaLoaded && _engine is not null && !_shutdownStarted)
         {
             _ = ApplyPauseAsync();
@@ -346,6 +368,47 @@ public sealed class MpvVideoView : OpenGlControlBase
     private void RequestRenderFromNativeCallback()
     {
         Dispatcher.UIThread.Post(RequestNextFrameRendering, DispatcherPriority.Render);
+    }
+
+    private async void OnPositionTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (_positionPollInProgress || IsPaused || !_mediaLoaded || _engine is null)
+        {
+            return;
+        }
+
+        _positionPollInProgress = true;
+        try
+        {
+            var position = await _engine.GetPositionAsync(_lifetimeCancellation.Token);
+            if (position is not null)
+            {
+                _updatingPositionFromPlayback = true;
+                try
+                {
+                    SetCurrentValue(PositionProperty, position.Value);
+                }
+                finally
+                {
+                    _updatingPositionFromPlayback = false;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+            _positionTimer.Stop();
+        }
+        catch (Exception exception)
+        {
+            _positionTimer.Stop();
+            SetFailure($"Live preview position update failed: {exception.Message}");
+        }
+        finally
+        {
+            _positionPollInProgress = false;
+        }
     }
 
     private void SetFailure(string message)

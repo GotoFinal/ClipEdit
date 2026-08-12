@@ -252,7 +252,7 @@
                       x:Name="LivePreview"
                       Margin="8"
                       IsPaused="True"
-                      Position="{Binding SelectedMedia.Playhead}"
+                      Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
                       SourcePath="{Binding SelectedMedia.SourcePath}" />
 
                   <controls:CropCanvas

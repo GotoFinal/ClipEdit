@@ -70,6 +70,13 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     public Task SeekAsync(MediaTime position, CancellationToken cancellationToken) =>
         InvokeAsync(client => client.Seek(position), cancellationToken);
 
+    public async Task<MediaTime?> GetPositionAsync(CancellationToken cancellationToken)
+    {
+        MediaTime? position = null;
+        await InvokeAsync(client => position = client.GetPosition(), cancellationToken).ConfigureAwait(false);
+        return position;
+    }
+
     public Task SetPausedAsync(bool isPaused, CancellationToken cancellationToken) =>
         InvokeAsync(
             client =>
