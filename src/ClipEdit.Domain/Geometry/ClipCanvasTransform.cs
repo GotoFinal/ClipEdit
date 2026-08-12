@@ -1,9 +1,10 @@
 namespace ClipEdit.Domain.Geometry;
 
 /// <summary>
-/// Places one source raster on a project canvas. Scale is canvas pixels per
-/// rotation-corrected source pixel; offsets move the transformed source center
-/// relative to the canvas center.
+/// Places one source raster on a project canvas. The source rotates first;
+/// horizontal and vertical scales then act in canvas axes, matching the live
+/// preview controls. Offsets move the transformed source center relative to
+/// the canvas center.
 /// </summary>
 public readonly record struct ClipCanvasTransform
 {

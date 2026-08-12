@@ -188,9 +188,9 @@ public sealed class FfmpegExportArgumentsTests
             "setpts=PTS-STARTPTS,split=2[vseg0basein][vseg0contentin]",
             graph);
         Assert.Contains(
-            "scale=round(iw*1.25):round(ih*0.75):flags=lanczos," +
             "format=rgba,rotate=15*PI/180:" +
-            "ow=rotw(15*PI/180):oh=roth(15*PI/180):c=black@0",
+            "ow=rotw(15*PI/180):oh=roth(15*PI/180):c=black@0," +
+            "scale=round(iw*1.25):round(ih*0.75):flags=lanczos",
             graph);
         Assert.DoesNotContain("rotw(iw)", graph);
         Assert.DoesNotContain("roth(ih)", graph);

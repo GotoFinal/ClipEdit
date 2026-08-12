@@ -96,8 +96,8 @@ internal static class FfmpegExportArguments
                 var rotationRadians = $"{transform.RotationDegrees}*PI/180";
                 var rotation = transform.RotationDegrees == 0
                     ? string.Empty
-                    : $",format=rgba,rotate={rotationRadians}:" +
-                      $"ow=rotw({rotationRadians}):oh=roth({rotationRadians}):c=black@0";
+                    : $"format=rgba,rotate={rotationRadians}:" +
+                      $"ow=rotw({rotationRadians}):oh=roth({rotationRadians}):c=black@0,";
                 filters.Add(
                     $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
                     $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
@@ -108,9 +108,9 @@ internal static class FfmpegExportArguments
                     $"drawbox=c=black:t=fill[vseg{segmentIndex}base]");
                 filters.Add(
                     $"[vseg{segmentIndex}contentin]" +
+                    rotation +
                     $"scale=round(iw*{FormatScalar(transform.ScaleX)}):" +
-                    $"round(ih*{FormatScalar(transform.ScaleY)}):flags=lanczos" +
-                    $"{rotation}[vseg{segmentIndex}content]");
+                    $"round(ih*{FormatScalar(transform.ScaleY)}):flags=lanczos[vseg{segmentIndex}content]");
                 filters.Add(
                     $"[vseg{segmentIndex}base][vseg{segmentIndex}content]" +
                     $"overlay=x=(W-w)/2{FormatSignedScalar(transform.OffsetX)}:" +

@@ -92,4 +92,30 @@ public sealed class MpvVideoViewTests
         Assert.Equal(0, transform.PanY);
     }
 
+    [Fact]
+    public void Rotated_non_uniform_scale_normalizes_pan_against_preview_order()
+    {
+        var sourceSize = new DomainPixelSize(1_920, 1_080);
+        var canvasTransform = new ClipCanvasTransform(
+            -266.49350649350606,
+            -0.5844155844155807,
+            0.44034090909090934,
+            0.9090909090909091,
+            17);
+
+        var transform = MpvVideoView.CalculatePreviewVideoTransform(
+            sourceSize,
+            sourceSize,
+            canvasTransform,
+            new Size(960, 540));
+        var radians = 17 * Math.PI / 180;
+        var rotatedWidth = (sourceSize.Width * Math.Abs(Math.Cos(radians))) +
+                           (sourceSize.Height * Math.Abs(Math.Sin(radians)));
+        var rotatedHeight = (sourceSize.Width * Math.Abs(Math.Sin(radians))) +
+                            (sourceSize.Height * Math.Abs(Math.Cos(radians)));
+
+        Assert.Equal(canvasTransform.OffsetX / (rotatedWidth * canvasTransform.ScaleX), transform.PanX, 6);
+        Assert.Equal(canvasTransform.OffsetY / (rotatedHeight * canvasTransform.ScaleY), transform.PanY, 6);
+    }
+
 }

@@ -180,7 +180,7 @@ public sealed class FfmpegExportRendererLocalTests
                     new MediaRange(new MediaTime(3, 1), new MediaTime(4, 1)),
                     canvasSize,
                     sharedCrop,
-                    new ClipCanvasTransform(160, 0, 1.1, 15),
+                    new ClipCanvasTransform(160, 0, 0.5, 1.1, 15),
                     audioPlans),
             ],
             new PixelSize(320, 180),

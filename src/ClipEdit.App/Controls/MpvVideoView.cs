@@ -639,14 +639,12 @@ public sealed class MpvVideoView : OpenGlControlBase
         var uniformScale = Math.Sqrt(canvasTransform.ScaleX * canvasTransform.ScaleY);
         var desiredPixelScale = uniformScale * canvasDisplayScale;
         var zoomFactor = Math.Clamp(desiredPixelScale / baseFitScale, 0.01, 100);
-        var scaledSourceWidth = sourceSize.Width * canvasTransform.ScaleX;
-        var scaledSourceHeight = sourceSize.Height * canvasTransform.ScaleY;
         var displayedWidth = Math.Max(
             1,
-            ((scaledSourceWidth * cosine) + (scaledSourceHeight * sine)) * canvasDisplayScale);
+            rotatedWidth * canvasTransform.ScaleX * canvasDisplayScale);
         var displayedHeight = Math.Max(
             1,
-            ((scaledSourceWidth * sine) + (scaledSourceHeight * cosine)) * canvasDisplayScale);
+            rotatedHeight * canvasTransform.ScaleY * canvasDisplayScale);
         return new PreviewVideoTransform(
             zoomFactor,
             canvasTransform.OffsetX * canvasDisplayScale / displayedWidth,

@@ -75,6 +75,44 @@ public sealed class ClipTransformCanvasTests
     }
 
     [Fact]
+    public void Rotated_non_uniform_outline_uses_preview_transform_order()
+    {
+        var sourceSize = new DomainPixelSize(1_920, 1_080);
+        var canvasSize = sourceSize;
+        var transform = new ClipCanvasTransform(0, 0, 0.5, 1, 90);
+
+        var corners = ClipTransformCanvas.GetTransformedCorners(sourceSize, canvasSize, transform);
+
+        Assert.Equal(new Point(1_230, -420), corners[0]);
+        Assert.Equal(new Point(1_230, 1_500), corners[1]);
+        Assert.Equal(new Point(690, 1_500), corners[2]);
+        Assert.Equal(new Point(690, -420), corners[3]);
+    }
+
+    [Fact]
+    public void Rotated_resize_keeps_opposite_handle_fixed_in_preview_geometry()
+    {
+        var sourceSize = new DomainPixelSize(1_920, 1_080);
+        var canvasSize = sourceSize;
+        var start = new ClipCanvasTransform(0, 0, 0.5, 1, 17);
+        var before = ClipTransformCanvas.GetTransformedCorners(sourceSize, canvasSize, start);
+        var oppositeBefore = Midpoint(before[3], before[0]);
+
+        var result = ClipTransformCanvas.ApplyResize(
+            start,
+            sourceSize,
+            ClipTransformDragMode.Right,
+            80,
+            30,
+            preserveAspectRatio: false);
+        var after = ClipTransformCanvas.GetTransformedCorners(sourceSize, canvasSize, result);
+        var oppositeAfter = Midpoint(after[3], after[0]);
+
+        Assert.Equal(oppositeBefore.X, oppositeAfter.X, 6);
+        Assert.Equal(oppositeBefore.Y, oppositeAfter.Y, 6);
+    }
+
+    [Fact]
     public void Rotation_handle_applies_clockwise_angle_around_clip_center()
     {
         var result = ClipTransformCanvas.ApplyRotation(
@@ -118,4 +156,7 @@ public sealed class ClipTransformCanvasTests
         Assert.Equal(-1, ClipTransformCanvas.CalculateWheelRotationDelta(-1, 1));
         Assert.Equal(5, ClipTransformCanvas.CalculateWheelRotationDelta(1, 5));
     }
+
+    private static Point Midpoint(Point left, Point right) =>
+        new((left.X + right.X) / 2, (left.Y + right.Y) / 2);
 }

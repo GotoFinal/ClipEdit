@@ -351,8 +351,8 @@ public sealed class ClipTransformCanvas : Control
         var sine = Math.Sin(radians);
         var centerX = (canvasSize.Width / 2d) + transform.OffsetX;
         var centerY = (canvasSize.Height / 2d) + transform.OffsetY;
-        var halfWidth = sourceSize.Width * transform.ScaleX / 2;
-        var halfHeight = sourceSize.Height * transform.ScaleY / 2;
+        var halfWidth = sourceSize.Width / 2d;
+        var halfHeight = sourceSize.Height / 2d;
         return new[]
         {
             TransformPoint(-halfWidth, -halfHeight),
@@ -361,10 +361,14 @@ public sealed class ClipTransformCanvas : Control
             TransformPoint(-halfWidth, halfHeight),
         };
 
-        Point TransformPoint(double x, double y) =>
-            new(
-                centerX + (x * cosine) - (y * sine),
-                centerY + (x * sine) + (y * cosine));
+        Point TransformPoint(double x, double y)
+        {
+            var rotatedX = (x * cosine) - (y * sine);
+            var rotatedY = (x * sine) + (y * cosine);
+            return new Point(
+                centerX + (rotatedX * transform.ScaleX),
+                centerY + (rotatedY * transform.ScaleY));
+        }
     }
 
     internal static ClipCanvasTransform ApplyResize(
@@ -378,29 +382,26 @@ public sealed class ClipTransformCanvas : Control
         var radians = start.RotationDegrees * Math.PI / 180;
         var cosine = Math.Cos(radians);
         var sine = Math.Sin(radians);
-        var localDeltaX = (deltaX * cosine) + (deltaY * sine);
-        var localDeltaY = (-deltaX * sine) + (deltaY * cosine);
         var horizontalSign = mode.HasFlag(ClipTransformDragMode.Left) ? -1 : mode.HasFlag(ClipTransformDragMode.Right) ? 1 : 0;
         var verticalSign = mode.HasFlag(ClipTransformDragMode.Top) ? -1 : mode.HasFlag(ClipTransformDragMode.Bottom) ? 1 : 0;
-        var requestedScaleX = horizontalSign == 0
-            ? start.ScaleX
-            : start.ScaleX + (horizontalSign * localDeltaX / sourceSize.Width);
-        var requestedScaleY = verticalSign == 0
-            ? start.ScaleY
-            : start.ScaleY + (verticalSign * localDeltaY / sourceSize.Height);
+        var localX = horizontalSign * sourceSize.Width / 2d;
+        var localY = verticalSign * sourceSize.Height / 2d;
+        var rotatedX = (localX * cosine) - (localY * sine);
+        var rotatedY = (localX * sine) + (localY * cosine);
+        var startHalfVectorX = rotatedX * start.ScaleX;
+        var startHalfVectorY = rotatedY * start.ScaleY;
         double scaleX;
         double scaleY;
         if (preserveAspectRatio)
         {
-            var horizontalFactor = requestedScaleX / start.ScaleX;
-            var verticalFactor = requestedScaleY / start.ScaleY;
-            var factor = horizontalSign != 0 && verticalSign != 0
-                ? Math.Abs(horizontalFactor - 1) >= Math.Abs(verticalFactor - 1)
-                    ? horizontalFactor
-                    : verticalFactor
-                : horizontalSign != 0
-                    ? horizontalFactor
-                    : verticalFactor;
+            var vectorLengthSquared =
+                (startHalfVectorX * startHalfVectorX) +
+                (startHalfVectorY * startHalfVectorY);
+            var factor = vectorLengthSquared <= 0.000_001
+                ? 1
+                : ((startHalfVectorX * (startHalfVectorX + (deltaX / 2))) +
+                   (startHalfVectorY * (startHalfVectorY + (deltaY / 2)))) /
+                  vectorLengthSquared;
             factor = Math.Clamp(
                 factor,
                 Math.Max(0.01 / start.ScaleX, 0.01 / start.ScaleY),
@@ -410,15 +411,25 @@ public sealed class ClipTransformCanvas : Control
         }
         else
         {
-            scaleX = Math.Clamp(requestedScaleX, 0.01, 100);
-            scaleY = Math.Clamp(requestedScaleY, 0.01, 100);
+            scaleX = Math.Abs(rotatedX) <= 0.000_001
+                ? start.ScaleX
+                : Math.Clamp(
+                    (startHalfVectorX + (deltaX / 2)) / rotatedX,
+                    0.01,
+                    100);
+            scaleY = Math.Abs(rotatedY) <= 0.000_001
+                ? start.ScaleY
+                : Math.Clamp(
+                    (startHalfVectorY + (deltaY / 2)) / rotatedY,
+                    0.01,
+                    100);
         }
 
-        var localCenterShiftX = horizontalSign * sourceSize.Width * (scaleX - start.ScaleX) / 2;
-        var localCenterShiftY = verticalSign * sourceSize.Height * (scaleY - start.ScaleY) / 2;
+        var centerShiftX = (rotatedX * scaleX) - startHalfVectorX;
+        var centerShiftY = (rotatedY * scaleY) - startHalfVectorY;
         return new ClipCanvasTransform(
-            start.OffsetX + (localCenterShiftX * cosine) - (localCenterShiftY * sine),
-            start.OffsetY + (localCenterShiftX * sine) + (localCenterShiftY * cosine),
+            start.OffsetX + centerShiftX,
+            start.OffsetY + centerShiftY,
             scaleX,
             scaleY,
             start.RotationDegrees);
