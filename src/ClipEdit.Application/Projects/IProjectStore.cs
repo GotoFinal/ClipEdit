@@ -10,6 +10,10 @@ public interface IProjectStore
         string projectPath,
         ProjectDocument document,
         CancellationToken cancellationToken = default);
+
+    Task DeleteIfExistsAsync(
+        string projectPath,
+        CancellationToken cancellationToken = default);
 }
 
 public enum ProjectStoreFailure

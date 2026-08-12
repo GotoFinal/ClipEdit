@@ -155,6 +155,27 @@ public sealed class JsonProjectStore : IProjectStore
         }
     }
 
+    public Task DeleteIfExistsAsync(
+        string projectPath,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var fullPath = NormalizePath(projectPath);
+        try
+        {
+            File.Delete(fullPath);
+            return Task.CompletedTask;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw new ProjectStoreException(ProjectStoreFailure.AccessDenied, "The recovery file cannot be removed.", exception);
+        }
+        catch (IOException exception)
+        {
+            throw new ProjectStoreException(ProjectStoreFailure.IoFailure, "The recovery file cannot be removed.", exception);
+        }
+    }
+
     private static ProjectDocument Validate(ProjectDocument? document)
     {
         if (document is null)

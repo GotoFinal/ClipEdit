@@ -67,6 +67,16 @@
                 Foreground="#B7A9FF"
                 Text="{Binding EditingModeText}" />
           </Border>
+          <Button
+              Classes="secondary"
+              Click="OpenProject_Click"
+              Content="Open project"
+              IsEnabled="{Binding CanOpenProject}" />
+          <Button
+              Classes="secondary"
+              Click="SaveProject_Click"
+              Content="Save"
+              IsEnabled="{Binding CanSaveProject}" />
         </StackPanel>
 
         <TextBlock

@@ -3,7 +3,10 @@ using System.ComponentModel;
 using Avalonia.Media.Imaging;
 using ClipEdit.Application.Export;
 using ClipEdit.Application.Media;
+using ClipEdit.Application.Projects;
+using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Geometry;
+using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Export;
 using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
@@ -21,6 +24,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly IFrameDecoder? _frameDecoder;
     private readonly IExportRenderer? _exportRenderer;
     private readonly SingleSourceExportPlanner _exportPlanner = new();
+    private readonly IProjectStore? _projectStore;
+    private readonly string? _recoveryDirectory;
+    private readonly TimeSpan _autosaveDelay;
+    private readonly List<ProjectMediaDocument> _unavailableProjectMedia = [];
     private MediaItemViewModel? _selectedMedia;
     private bool _isBusy;
     private bool _isPreviewLoading;
@@ -28,19 +35,34 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private string? _previewErrorText;
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _exportCancellation;
+    private CancellationTokenSource? _autosaveCancellation;
     private ExportPreset _selectedExportPreset = BuiltInExportPresets.Mp4Compatible;
     private bool _isExporting;
     private double _exportProgress;
     private string _exportPhaseText = string.Empty;
     private string _statusText = "Ready";
+    private Guid _projectId = Guid.NewGuid();
+    private string? _projectPath;
+    private bool _isProjectDirty;
+    private bool _isLoadingProject;
 
     public MainWindowViewModel(
         IMediaProbe? mediaProbe,
         IFrameDecoder? frameDecoder = null,
-        IExportRenderer? exportRenderer = null)
+        IExportRenderer? exportRenderer = null,
+        IProjectStore? projectStore = null,
+        string? recoveryDirectory = null,
+        TimeSpan? autosaveDelay = null)
     {
         _frameDecoder = frameDecoder;
         _exportRenderer = exportRenderer;
+        _projectStore = projectStore;
+        _recoveryDirectory = recoveryDirectory;
+        _autosaveDelay = autosaveDelay ?? TimeSpan.FromSeconds(5);
+        if (_autosaveDelay <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(autosaveDelay));
+        }
         if (mediaProbe is not null)
         {
             _importMedia = new ImportMediaUseCase(mediaProbe);
@@ -53,7 +75,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public string ProductName => "ClipEdit";
 
-    public string WorkspaceTitle => ShowTimeline ? "Timeline edit" : "Create a short clip";
+    public string WorkspaceTitle =>
+        $"{(ShowTimeline ? "Timeline edit" : "Create a short clip")} · {ProjectDisplayName}" +
+        (IsProjectDirty ? " *" : string.Empty);
 
     public string EmptyStateTitle => "Drop a video to begin";
 
@@ -63,6 +87,45 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public string SupportedMediaHint => "Video and audio files supported by the local media engine";
 
     public ObservableCollection<MediaItemViewModel> MediaItems { get; } = [];
+
+    public bool IsProjectPersistenceAvailable => _projectStore is not null;
+
+    public string? ProjectPath
+    {
+        get => _projectPath;
+        private set
+        {
+            if (SetProperty(ref _projectPath, value))
+            {
+                OnPropertyChanged(nameof(ProjectDisplayName));
+                OnPropertyChanged(nameof(WorkspaceTitle));
+            }
+        }
+    }
+
+    public string ProjectDisplayName => ProjectPath is null
+        ? "Untitled project"
+        : Path.GetFileNameWithoutExtension(ProjectPath);
+
+    public bool IsProjectDirty
+    {
+        get => _isProjectDirty;
+        private set
+        {
+            if (SetProperty(ref _isProjectDirty, value))
+            {
+                OnPropertyChanged(nameof(WorkspaceTitle));
+                OnPropertyChanged(nameof(CanSaveProject));
+                OnPropertyChanged(nameof(CanOpenProject));
+            }
+        }
+    }
+
+    public bool CanSaveProject =>
+        IsProjectPersistenceAvailable && HasReadyMedia && !IsBusy && !IsExporting;
+
+    public bool CanOpenProject =>
+        IsProjectPersistenceAvailable && !IsBusy && !IsExporting && !IsProjectDirty;
 
     public IReadOnlyList<ExportPreset> ExportPresets => BuiltInExportPresets.All;
 
@@ -75,6 +138,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _selectedExportPreset, value))
             {
                 RaiseExportStateChanged();
+                MarkProjectDirty();
             }
         }
     }
@@ -160,6 +224,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(CanExport));
                 OnPropertyChanged(nameof(CanCancelExport));
                 OnPropertyChanged(nameof(ShowExportProgress));
+                OnPropertyChanged(nameof(CanSaveProject));
+                OnPropertyChanged(nameof(CanOpenProject));
             }
         }
     }
@@ -238,7 +304,14 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public bool IsBusy
     {
         get => _isBusy;
-        private set => SetProperty(ref _isBusy, value);
+        private set
+        {
+            if (SetProperty(ref _isBusy, value))
+            {
+                OnPropertyChanged(nameof(CanSaveProject));
+                OnPropertyChanged(nameof(CanOpenProject));
+            }
+        }
     }
 
     public string StatusText
@@ -363,6 +436,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         StatusText = readyCount == pendingItems.Count
             ? $"{readyCount} media file{(readyCount == 1 ? string.Empty : "s")} ready"
             : $"{readyCount} of {pendingItems.Count} media files ready";
+        if (readyCount > 0)
+        {
+            MarkProjectDirty();
+        }
+
         RaiseWorkspaceStateChanged();
     }
 
@@ -446,6 +524,172 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _exportCancellation?.Cancel();
     }
 
+    public async Task<bool> SaveProjectAsync(
+        string? projectPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_projectStore is null)
+        {
+            StatusText = "Project saving is unavailable.";
+            return false;
+        }
+
+        var destination = projectPath ?? ProjectPath;
+        if (string.IsNullOrWhiteSpace(destination))
+        {
+            StatusText = "Choose a project filename first.";
+            return false;
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(destination);
+            await _projectStore.SaveAsync(fullPath, CreateProjectDocument(), cancellationToken);
+            ProjectPath = fullPath;
+            IsProjectDirty = false;
+            StatusText = $"Saved {Path.GetFileName(fullPath)}";
+            await DeleteRecoveryAsync(cancellationToken);
+            return true;
+        }
+        catch (ProjectStoreException exception)
+        {
+            StatusText = exception.Message;
+            return false;
+        }
+    }
+
+    public async Task<bool> OpenProjectAsync(
+        string projectPath,
+        bool discardUnsavedChanges = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
+        if (_projectStore is null)
+        {
+            StatusText = "Project opening is unavailable.";
+            return false;
+        }
+
+        if (IsProjectDirty && !discardUnsavedChanges)
+        {
+            StatusText = "Save the current project before opening another one.";
+            return false;
+        }
+
+        ProjectDocument document;
+        try
+        {
+            document = await _projectStore.LoadAsync(projectPath, cancellationToken);
+        }
+        catch (ProjectStoreException exception)
+        {
+            StatusText = exception.Message;
+            return false;
+        }
+
+        _isLoadingProject = true;
+        _autosaveCancellation?.Cancel();
+        _autosaveCancellation?.Dispose();
+        _autosaveCancellation = null;
+        try
+        {
+            SelectedMedia = null;
+            MediaItems.Clear();
+            _knownPaths.Clear();
+            _unavailableProjectMedia.Clear();
+            _projectId = document.ProjectId;
+            SelectedExportPreset = ExportPresets.FirstOrDefault(
+                                       preset => preset.Id == document.ExportPresetId) ??
+                                   BuiltInExportPresets.Mp4Compatible;
+
+            await ImportFilesAsync(document.Media.Select(media => media.SourcePath), cancellationToken);
+            var warnings = new List<string>();
+            foreach (var savedMedia in document.Media)
+            {
+                var mediaItem = MediaItems.FirstOrDefault(item =>
+                    PathComparer.Equals(item.SourcePath, Path.GetFullPath(savedMedia.SourcePath)));
+                if (mediaItem is null || !mediaItem.IsReady)
+                {
+                    _unavailableProjectMedia.Add(savedMedia);
+                    warnings.Add($"{Path.GetFileName(savedMedia.SourcePath)} is unavailable");
+                    continue;
+                }
+
+                if (!TryRestoreMedia(mediaItem, savedMedia, out var warning))
+                {
+                    _unavailableProjectMedia.Add(savedMedia);
+                    warnings.Add(warning!);
+                }
+            }
+
+            ProjectPath = Path.GetFullPath(projectPath);
+            IsProjectDirty = false;
+            StatusText = warnings.Count == 0
+                ? $"Opened {Path.GetFileName(ProjectPath)}"
+                : $"Opened with {warnings.Count} warning{(warnings.Count == 1 ? string.Empty : "s")}: {warnings[0]}";
+            RaiseWorkspaceStateChanged();
+            return true;
+        }
+        finally
+        {
+            _isLoadingProject = false;
+        }
+    }
+
+    public async Task<bool> RecoverProjectAsync(
+        string recoveryPath,
+        CancellationToken cancellationToken = default)
+    {
+        var recovered = await OpenProjectAsync(
+            recoveryPath,
+            discardUnsavedChanges: true,
+            cancellationToken);
+        if (!recovered)
+        {
+            return false;
+        }
+
+        ProjectPath = null;
+        IsProjectDirty = true;
+        StatusText = "Recovered autosaved edits from the previous session; save the project to keep them";
+        ScheduleAutosave();
+        return true;
+    }
+
+    public ProjectDocument CreateProjectDocument()
+    {
+        var mediaDocuments = new List<ProjectMediaDocument>(MediaItems.Count);
+        foreach (var item in MediaItems)
+        {
+            var preserved = _unavailableProjectMedia.FirstOrDefault(saved =>
+                PathComparer.Equals(saved.SourcePath, item.SourcePath));
+            if (preserved is not null)
+            {
+                mediaDocuments.Add(preserved);
+                continue;
+            }
+
+            if (TryCreateMediaDocument(item, out var mediaDocument))
+            {
+                mediaDocuments.Add(mediaDocument!);
+            }
+        }
+
+        foreach (var preserved in _unavailableProjectMedia)
+        {
+            if (!mediaDocuments.Any(media => PathComparer.Equals(media.SourcePath, preserved.SourcePath)))
+            {
+                mediaDocuments.Add(preserved);
+            }
+        }
+
+        return new ProjectDocument(
+            ProjectDocument.CurrentSchemaVersion,
+            _projectId,
+            SelectedExportPreset.Id,
+            mediaDocuments);
+    }
+
     public void Dispose()
     {
         if (SelectedMedia is not null)
@@ -459,6 +703,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _exportCancellation?.Cancel();
         _exportCancellation?.Dispose();
         _exportCancellation = null;
+        _autosaveCancellation?.Cancel();
+        _autosaveCancellation?.Dispose();
+        _autosaveCancellation = null;
         PreviewImage = null;
     }
 
@@ -476,6 +723,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(WorkspaceTitle));
         OnPropertyChanged(nameof(CropSizeText));
         OnPropertyChanged(nameof(AudioSummaryText));
+        OnPropertyChanged(nameof(CanSaveProject));
+        OnPropertyChanged(nameof(CanOpenProject));
         RaiseExportStateChanged();
     }
 
@@ -497,6 +746,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         if (eventArgs.PropertyName is nameof(MediaItemViewModel.Crop) or nameof(MediaItemViewModel.Edit))
         {
             RaiseExportStateChanged();
+            MarkProjectDirty();
         }
     }
 
@@ -505,6 +755,177 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportAvailabilityText));
         OnPropertyChanged(nameof(ExportPlanSummary));
+    }
+
+    private static bool TryCreateMediaDocument(
+        MediaItemViewModel item,
+        out ProjectMediaDocument? document)
+    {
+        document = null;
+        if (item.Media is null)
+        {
+            return false;
+        }
+
+        var duration = item.Edit?.SourceDuration ?? item.Media.Probe.Duration;
+        if (duration is null || duration <= MediaTime.Zero)
+        {
+            return false;
+        }
+
+        var crop = item.HasVideo
+            ? item.Crop
+            : CropRegion.FullFrame(new PixelSize(1, 1));
+        var ranges = item.Edit?.KeptRanges ??
+                     [new MediaRange(MediaTime.Zero, duration.Value)];
+        document = new ProjectMediaDocument(
+            item.SourcePath,
+            item.Media.Probe.FileSizeBytes,
+            crop.SourceSize.Width,
+            crop.SourceSize.Height,
+            crop.X,
+            crop.Y,
+            crop.Width,
+            crop.Height,
+            duration.Value.Numerator,
+            duration.Value.Denominator,
+            ranges.Select(range => new ProjectRangeDocument(
+                    range.Start.Numerator,
+                    range.Start.Denominator,
+                    range.End.Numerator,
+                    range.End.Denominator))
+                .ToArray());
+        return true;
+    }
+
+    private static bool TryRestoreMedia(
+        MediaItemViewModel item,
+        ProjectMediaDocument document,
+        out string? warning)
+    {
+        warning = null;
+        if (!item.HasVideo)
+        {
+            return true;
+        }
+
+        var expectedSize = new PixelSize(document.SourceWidth, document.SourceHeight);
+        if (expectedSize != item.VideoSize ||
+            (document.ExpectedFileSizeBytes is { } expectedBytes &&
+             item.Media?.Probe.FileSizeBytes is { } actualBytes &&
+             expectedBytes != actualBytes))
+        {
+            warning = $"{item.DisplayName} changed since the project was saved; its edits were preserved but not applied";
+            return false;
+        }
+
+        try
+        {
+            var duration = new MediaTime(
+                document.SourceDurationNumerator,
+                document.SourceDurationDenominator);
+            var edit = SourceEdit.FromKeptRanges(
+                duration,
+                document.KeptRanges.Select(range => new MediaRange(
+                    new MediaTime(range.StartNumerator, range.StartDenominator),
+                    new MediaTime(range.EndNumerator, range.EndDenominator))));
+            var crop = new CropRegion(
+                expectedSize,
+                document.CropX,
+                document.CropY,
+                document.CropWidth,
+                document.CropHeight);
+            item.RestoreEditing(crop, edit);
+            return true;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            warning = $"{item.DisplayName} could not restore its saved edits: {exception.Message}";
+            return false;
+        }
+    }
+
+    private void MarkProjectDirty()
+    {
+        if (_isLoadingProject)
+        {
+            return;
+        }
+
+        IsProjectDirty = true;
+        ScheduleAutosave();
+    }
+
+    private void ScheduleAutosave()
+    {
+        if (_projectStore is null || string.IsNullOrWhiteSpace(_recoveryDirectory))
+        {
+            return;
+        }
+
+        _autosaveCancellation?.Cancel();
+        _autosaveCancellation?.Dispose();
+        var request = new CancellationTokenSource();
+        _autosaveCancellation = request;
+        _ = AutosaveAfterDelayAsync(request);
+    }
+
+    private async Task AutosaveAfterDelayAsync(CancellationTokenSource request)
+    {
+        try
+        {
+            await Task.Delay(_autosaveDelay, request.Token);
+            if (_projectStore is null || !IsProjectDirty)
+            {
+                return;
+            }
+
+            await _projectStore.SaveAsync(
+                GetRecoveryPath(),
+                CreateProjectDocument(),
+                request.Token);
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested)
+        {
+            // A newer edit superseded this autosave request.
+        }
+        catch (ProjectStoreException exception)
+        {
+            StatusText = $"Autosave warning: {exception.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(_autosaveCancellation, request))
+            {
+                request.Dispose();
+                _autosaveCancellation = null;
+            }
+        }
+    }
+
+    private async Task DeleteRecoveryAsync(CancellationToken cancellationToken)
+    {
+        if (_projectStore is null || string.IsNullOrWhiteSpace(_recoveryDirectory))
+        {
+            return;
+        }
+
+        _autosaveCancellation?.Cancel();
+        _autosaveCancellation?.Dispose();
+        _autosaveCancellation = null;
+        try
+        {
+            await _projectStore.DeleteIfExistsAsync(GetRecoveryPath(), cancellationToken);
+        }
+        catch (ProjectStoreException)
+        {
+            // The durable project was saved successfully; stale recovery cleanup is non-fatal.
+        }
+    }
+
+    private string GetRecoveryPath()
+    {
+        return Path.Combine(_recoveryDirectory!, $"{_projectId:N}.recovery.clipedit");
     }
 
     private void StartPreviewRefresh(

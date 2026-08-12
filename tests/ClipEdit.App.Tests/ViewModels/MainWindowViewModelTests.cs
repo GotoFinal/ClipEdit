@@ -1,10 +1,12 @@
 using System.Collections.Immutable;
 using ClipEdit.App.ViewModels;
 using ClipEdit.Application.Export;
+using ClipEdit.Application.Projects;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Export;
 using ClipEdit.Media.Probe;
+using ClipEdit.Persistence.Json;
 
 namespace ClipEdit.App.Tests.ViewModels;
 
@@ -135,6 +137,66 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(new PixelSize(1_919, 1_080), viewModel.SelectedMedia.Crop.ExportSize);
     }
 
+    [Fact]
+    public async Task Project_round_trip_restores_exact_cuts_crop_and_export_preset()
+    {
+        var projectPath = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
+        var sourcePath = Path.Combine(Path.GetTempPath(), "saved source.mkv");
+        var store = new JsonProjectStore();
+        using var original = new MainWindowViewModel(new StubProbe(), projectStore: store);
+
+        try
+        {
+            await original.ImportFilesAsync([sourcePath]);
+            var media = original.SelectedMedia!;
+            media.Crop = new CropRegion(media.VideoSize, 420, 0, 1_080, 1_080);
+            media.PlayheadSeconds = 5;
+            media.MarkSelectionStart();
+            media.PlayheadSeconds = 10;
+            media.MarkSelectionEnd();
+            media.RemoveSelection();
+            original.SelectedExportPreset = BuiltInExportPresets.WebM;
+            Assert.True(await original.SaveProjectAsync(projectPath));
+            Assert.False(original.IsProjectDirty);
+
+            using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.True(await restored.OpenProjectAsync(projectPath));
+
+            Assert.Equal(BuiltInExportPresets.WebM, restored.SelectedExportPreset);
+            Assert.Equal(media.Crop, restored.SelectedMedia!.Crop);
+            Assert.Equal(media.Edit!.SourceDuration, restored.SelectedMedia.Edit!.SourceDuration);
+            Assert.Equal<MediaRange>(media.KeptRanges, restored.SelectedMedia.KeptRanges);
+            Assert.False(restored.IsProjectDirty);
+
+            using var recovered = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.True(await recovered.RecoverProjectAsync(projectPath));
+            Assert.Null(recovered.ProjectPath);
+            Assert.True(recovered.IsProjectDirty);
+        }
+        finally
+        {
+            File.Delete(projectPath);
+        }
+    }
+
+    [Fact]
+    public async Task Dirty_edits_are_coalesced_into_a_recovery_autosave()
+    {
+        var store = new RecordingProjectStore();
+        using var viewModel = new MainWindowViewModel(
+            new StubProbe(),
+            projectStore: store,
+            recoveryDirectory: Path.GetTempPath(),
+            autosaveDelay: TimeSpan.FromMilliseconds(10));
+
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "autosave.mkv")]);
+        var document = await store.Saved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(viewModel.IsProjectDirty);
+        Assert.Single(document.Media);
+        Assert.EndsWith(".recovery.clipedit", store.SavedPath, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class StubProbe(string? failingPath = null) : IMediaProbe
     {
         public Task<MediaProbeResult> ProbeAsync(
@@ -169,6 +231,40 @@ public sealed class MainWindowViewModelTests
             Plan = plan;
             progress?.Report(new ExportProgress(1, "Complete", TimeSpan.FromSeconds(1)));
             return Task.FromResult(new ExportResult(plan.DestinationPath, 1_024, TimeSpan.FromSeconds(1)));
+        }
+    }
+
+    private sealed class RecordingProjectStore : IProjectStore
+    {
+        public TaskCompletionSource<ProjectDocument> Saved { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string? SavedPath { get; private set; }
+
+        public Task<ProjectDocument> LoadAsync(
+            string projectPath,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task SaveAsync(
+            string projectPath,
+            ProjectDocument document,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SavedPath = projectPath;
+            Saved.TrySetResult(document);
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteIfExistsAsync(
+            string projectPath,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
     }
 

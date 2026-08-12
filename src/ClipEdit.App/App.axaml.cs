@@ -10,6 +10,7 @@ using ClipEdit.Media.FFmpeg.Probe;
 using ClipEdit.Media.FFmpeg.Process;
 using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
+using ClipEdit.Persistence.Json;
 
 namespace ClipEdit.App;
 
@@ -35,7 +36,17 @@ public sealed partial class App : Avalonia.Application
             IExportRenderer? exportRenderer = ffmpegPath is null
                 ? null
                 : new FfmpegExportRenderer(ffmpegPath);
-            var viewModel = new MainWindowViewModel(mediaProbe, frameDecoder, exportRenderer);
+            var recoveryDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ClipEdit",
+                "Recovery");
+            Directory.CreateDirectory(recoveryDirectory);
+            var viewModel = new MainWindowViewModel(
+                mediaProbe,
+                frameDecoder,
+                exportRenderer,
+                new JsonProjectStore(),
+                recoveryDirectory);
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel,
@@ -43,16 +54,58 @@ public sealed partial class App : Avalonia.Application
 
             desktop.MainWindow = mainWindow;
 
-            var initialMediaPaths = desktop.Args?
+            var existingArguments = desktop.Args?
                 .Where(File.Exists)
+                .Select(Path.GetFullPath)
                 .ToArray() ?? [];
-            if (initialMediaPaths.Length > 0)
+            var initialProjectPath = existingArguments.FirstOrDefault(path =>
+                string.Equals(Path.GetExtension(path), ".clipedit", StringComparison.OrdinalIgnoreCase));
+            var initialMediaPaths = existingArguments
+                .Where(path => !string.Equals(
+                    Path.GetExtension(path),
+                    ".clipedit",
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var recoveryPath = initialProjectPath is null && initialMediaPaths.Length == 0
+                ? FindLatestRecovery(recoveryDirectory)
+                : null;
+            if (initialProjectPath is not null || recoveryPath is not null || initialMediaPaths.Length > 0)
             {
                 mainWindow.Opened += async (_, _) =>
-                    await mainWindow.ImportPathsAsync(initialMediaPaths);
+                {
+                    if (initialProjectPath is not null)
+                    {
+                        await viewModel.OpenProjectAsync(
+                            initialProjectPath,
+                            discardUnsavedChanges: true);
+                    }
+                    else if (recoveryPath is not null)
+                    {
+                        await viewModel.RecoverProjectAsync(recoveryPath);
+                    }
+                    else
+                    {
+                        await mainWindow.ImportPathsAsync(initialMediaPaths);
+                    }
+                };
             }
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static string? FindLatestRecovery(string recoveryDirectory)
+    {
+        try
+        {
+            return Directory
+                .EnumerateFiles(recoveryDirectory, "*.recovery.clipedit", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 }

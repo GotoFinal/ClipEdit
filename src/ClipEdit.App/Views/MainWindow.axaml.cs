@@ -18,6 +18,11 @@ public sealed partial class MainWindow : Window
         ],
     };
 
+    private static readonly FilePickerFileType ProjectFileType = new("ClipEdit projects")
+    {
+        Patterns = ["*.clipedit"],
+    };
+
     private readonly CancellationTokenSource _lifetimeCancellation = new();
 
     public MainWindow()
@@ -56,6 +61,79 @@ public sealed partial class MainWindow : Window
             .Where(path => !string.IsNullOrWhiteSpace(path));
 
         await ImportPathsAsync(paths);
+    }
+
+    private async void OpenProject_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is not { CanOpenProject: true } viewModel)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions
+            {
+                Title = "Open ClipEdit project",
+                AllowMultiple = false,
+                FileTypeFilter = [ProjectFileType, FilePickerFileTypes.All],
+            });
+        var projectUri = files
+            .Select(file => file.Path)
+            .FirstOrDefault(uri => uri.IsFile);
+        var projectPath = projectUri?.LocalPath;
+        if (!string.IsNullOrWhiteSpace(projectPath))
+        {
+            await viewModel.OpenProjectAsync(
+                projectPath,
+                discardUnsavedChanges: false,
+                _lifetimeCancellation.Token);
+        }
+    }
+
+    private async void SaveProject_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is not { CanSaveProject: true } viewModel)
+        {
+            return;
+        }
+
+        if (viewModel.ProjectPath is not null)
+        {
+            await viewModel.SaveProjectAsync(
+                cancellationToken: _lifetimeCancellation.Token);
+            return;
+        }
+
+        await SaveProjectAsAsync(viewModel);
+    }
+
+    private async Task SaveProjectAsAsync(MainWindowViewModel viewModel)
+    {
+        var destination = await StorageProvider.SaveFilePickerAsync(
+            new FilePickerSaveOptions
+            {
+                Title = "Save ClipEdit project",
+                SuggestedFileName = "Untitled.clipedit",
+                DefaultExtension = "clipedit",
+                ShowOverwritePrompt = true,
+                FileTypeChoices = [ProjectFileType],
+            });
+        if (destination?.Path is not { IsFile: true } destinationUri)
+        {
+            return;
+        }
+
+        var projectPath = destinationUri.LocalPath;
+        if (!projectPath.EndsWith(".clipedit", StringComparison.OrdinalIgnoreCase))
+        {
+            projectPath = Path.ChangeExtension(projectPath, ".clipedit");
+        }
+
+        await viewModel.SaveProjectAsync(projectPath, _lifetimeCancellation.Token);
     }
 
     private static void OnDragOver(object? sender, DragEventArgs eventArgs)

@@ -351,6 +351,31 @@ public sealed class MediaItemViewModel : ViewModelBase
         SelectionEnd = Edit.SourceDuration;
     }
 
+    public void RestoreEditing(CropRegion crop, SourceEdit edit)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
+        if (!HasVideo || Edit is null)
+        {
+            throw new InvalidOperationException("Only an imported video can restore saved edit decisions.");
+        }
+
+        if (crop.SourceSize != VideoSize)
+        {
+            throw new ArgumentException("The saved crop does not match the imported video dimensions.", nameof(crop));
+        }
+
+        if (edit.SourceDuration != Edit.SourceDuration)
+        {
+            throw new ArgumentException("The saved edit duration does not match the imported video.", nameof(edit));
+        }
+
+        Crop = crop;
+        Edit = edit;
+        SelectionStart = edit.KeptRanges.IsEmpty ? MediaTime.Zero : edit.KeptRanges[0].Start;
+        SelectionEnd = edit.KeptRanges.IsEmpty ? MediaTime.Zero : edit.KeptRanges[0].End;
+        Playhead = SelectionStart;
+    }
+
     private static string FormatDuration(ClipEdit.Domain.Timeline.MediaTime? duration)
     {
         if (duration is null)
