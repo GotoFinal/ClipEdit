@@ -23,6 +23,9 @@ public sealed class CropCanvas : Control
 
     public static readonly StyledProperty<bool> IsAspectRatioLockedProperty =
         AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsAspectRatioLocked));
+    public static readonly StyledProperty<int> SizeStepProperty =
+        AvaloniaProperty.Register<CropCanvas, int>(nameof(SizeStep), 1);
+
 
     private const double HandleRadius = 6;
     private const double HitRadius = 16;
@@ -41,7 +44,8 @@ public sealed class CropCanvas : Control
             SourceSizeProperty,
             CropProperty,
             IsOverlayOnlyProperty,
-            IsAspectRatioLockedProperty);
+            IsAspectRatioLockedProperty,
+            SizeStepProperty);
     }
 
     public CropCanvas()
@@ -74,6 +78,12 @@ public sealed class CropCanvas : Control
         get => GetValue(IsAspectRatioLockedProperty);
         set => SetValue(IsAspectRatioLockedProperty, value);
     }
+    public int SizeStep
+    {
+        get => GetValue(SizeStepProperty);
+        set => SetValue(SizeStepProperty, value);
+    }
+
 
 
     public override void Render(DrawingContext context)
@@ -155,7 +165,8 @@ public sealed class CropCanvas : Control
             _dragMode,
             deltaX,
             deltaY,
-            preserveAspect));
+            preserveAspect,
+            SizeStep));
         eventArgs.Handled = true;
     }
 
@@ -213,6 +224,17 @@ public sealed class CropCanvas : Control
         int deltaY,
         bool preserveAspectRatio)
     {
+        return ApplyDrag(start, mode, deltaX, deltaY, preserveAspectRatio, sizeStep: 1);
+    }
+
+    internal static CropRegion ApplyDrag(
+        CropRegion start,
+        CropDragMode mode,
+        int deltaX,
+        int deltaY,
+        bool preserveAspectRatio,
+        int sizeStep)
+    {
         if (mode == CropDragMode.Move)
         {
             return start.MoveClamped(start.X + deltaX, start.Y + deltaY);
@@ -244,9 +266,51 @@ public sealed class CropCanvas : Control
         }
 
         var freeResize = CropRegion.FromEdges(start.SourceSize, left, top, right, bottom);
-        return preserveAspectRatio
+        var resized = preserveAspectRatio
             ? ApplyAspectLockedResize(start, freeResize, mode)
             : freeResize;
+        return SnapResizeToStep(start, resized, mode, sizeStep);
+    }
+
+    private static CropRegion SnapResizeToStep(
+        CropRegion start,
+        CropRegion resized,
+        CropDragMode mode,
+        int sizeStep)
+    {
+        if (sizeStep <= 1)
+        {
+            return resized;
+        }
+
+        var width = SnapDimensionDown(resized.Width, resized.SourceSize.Width, sizeStep);
+        var height = SnapDimensionDown(resized.Height, resized.SourceSize.Height, sizeStep);
+        var centerX = resized.X + (resized.Width / 2d);
+        var centerY = resized.Y + (resized.Height / 2d);
+        var x = mode.HasFlag(CropDragMode.Left)
+            ? start.Right - width
+            : mode.HasFlag(CropDragMode.Right)
+                ? start.X
+                : checked((int)Math.Round(centerX - (width / 2d)));
+        var y = mode.HasFlag(CropDragMode.Top)
+            ? start.Bottom - height
+            : mode.HasFlag(CropDragMode.Bottom)
+                ? start.Y
+                : checked((int)Math.Round(centerY - (height / 2d)));
+        x = Math.Clamp(x, 0, resized.SourceSize.Width - width);
+        y = Math.Clamp(y, 0, resized.SourceSize.Height - height);
+        return new CropRegion(resized.SourceSize, x, y, width, height);
+    }
+
+    private static int SnapDimensionDown(int value, int maximum, int step)
+    {
+        if (maximum < step)
+        {
+            return Math.Clamp(value, 1, maximum);
+        }
+
+        var maximumValid = maximum - (maximum % step);
+        return Math.Clamp(value - (value % step), step, maximumValid);
     }
 
     private Rect GetImageViewport()

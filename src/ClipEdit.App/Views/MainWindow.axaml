@@ -341,6 +341,7 @@
                       IsOverlayOnly="True"
                       IsAspectRatioLocked="{Binding IsCropAspectLocked}"
                       IsHitTestVisible="{Binding IsCropToolActive}"
+                      SizeStep="{Binding CropSizeStep}"
                       ZIndex="10"
                       SourceSize="{Binding CanvasSize}"
                       ToolTip.Tip="Drag inside the crop to move it; drag a handle to resize" />

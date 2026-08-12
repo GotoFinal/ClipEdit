@@ -126,6 +126,43 @@ public sealed class CropCanvasTests
     }
 
     [Fact]
+    public void Resize_snaps_dimensions_down_to_the_export_step()
+    {
+        var start = new CropRegion(new PixelSize(1_920, 1_080), 100, 100, 1_000, 800);
+
+        var result = CropCanvas.ApplyDrag(
+            start,
+            CropDragMode.Right | CropDragMode.Bottom,
+            -1,
+            -1,
+            preserveAspectRatio: false,
+            sizeStep: 2);
+
+        Assert.Equal(new CropRegion(start.SourceSize, 100, 100, 998, 798), result);
+    }
+
+    [Fact]
+    public void Left_and_top_resize_snapping_preserves_the_opposite_edges()
+    {
+        var start = new CropRegion(new PixelSize(1_920, 1_080), 100, 100, 1_000, 800);
+
+        var result = CropCanvas.ApplyDrag(
+            start,
+            CropDragMode.Left | CropDragMode.Top,
+            1,
+            1,
+            preserveAspectRatio: false,
+            sizeStep: 2);
+
+        Assert.Equal(start.Right, result.Right);
+        Assert.Equal(start.Bottom, result.Bottom);
+        Assert.Equal(102, result.X);
+        Assert.Equal(102, result.Y);
+        Assert.Equal(998, result.Width);
+        Assert.Equal(798, result.Height);
+    }
+
+    [Fact]
     public void Crop_canvas_exposes_no_bitmap_source_that_could_duplicate_the_preview()
     {
         Assert.DoesNotContain(

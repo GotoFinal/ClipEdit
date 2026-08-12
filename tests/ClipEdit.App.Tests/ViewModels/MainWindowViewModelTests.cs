@@ -568,7 +568,7 @@ public sealed class MainWindowViewModelTests
             exportRenderer: new RecordingExportRenderer());
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
 
-        viewModel.CanvasCropWidth = 1_919;
+        viewModel.CanvasCrop = new CropRegion(viewModel.CanvasSize, 0, 0, 1_919, 1_080);
 
         Assert.False(viewModel.CanExport);
         Assert.Contains("even", viewModel.ExportAvailabilityText, StringComparison.OrdinalIgnoreCase);
@@ -579,6 +579,21 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.MakeExportCropCompatible());
         Assert.True(viewModel.CanExport);
         Assert.Equal(new PixelSize(1_918, 1_080), viewModel.CanvasCrop.ExportSize);
+    }
+
+    [Fact]
+    public async Task Numeric_crop_resize_snaps_to_export_compatible_dimensions()
+    {
+        var viewModel = new MainWindowViewModel(
+            new StubProbe(),
+            exportRenderer: new RecordingExportRenderer());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
+
+        viewModel.CanvasCropWidth = 1_919;
+        viewModel.CanvasCropHeight = 1_079;
+
+        Assert.Equal(new PixelSize(1_918, 1_078), viewModel.CanvasCrop.ExportSize);
+        Assert.True(viewModel.CanExport);
     }
 
     [Fact]

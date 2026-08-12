@@ -224,6 +224,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             ArgumentNullException.ThrowIfNull(value);
             if (SetProperty(ref _selectedExportPreset, value))
             {
+                OnPropertyChanged(nameof(CropSizeStep));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
             }
@@ -1130,11 +1131,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _isApplyingCropPreset = true;
         try
         {
-            CanvasCrop = SelectedCropAspectPreset.IsFullFrame
+            var proposedCrop = SelectedCropAspectPreset.IsFullFrame
                 ? CropRegion.FullFrame(CanvasSize)
                 : CanvasCrop.ResizeToAspectRatio(
                     SelectedCropAspectPreset.WidthUnits,
                     SelectedCropAspectPreset.HeightUnits);
+            CanvasCrop = SnapCropSizeCentered(proposedCrop);
         }
         finally
         {

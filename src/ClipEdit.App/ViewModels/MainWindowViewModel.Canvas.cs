@@ -74,6 +74,8 @@ public sealed partial class MainWindowViewModel
     }
 
     public string CanvasCropSizeText => $"{CanvasCrop.Width} × {CanvasCrop.Height}";
+    public int CropSizeStep => SelectedExportPreset.RequiresEvenDimensions ? 2 : 1;
+
 
     public string CanvasSizeText => $"{CanvasSize.Width} × {CanvasSize.Height} canvas";
 
@@ -111,7 +113,7 @@ public sealed partial class MainWindowViewModel
         _isApplyingCropPreset = true;
         try
         {
-            CanvasCrop = CropRegion.FullFrame(CanvasSize);
+            CanvasCrop = SnapCropSizeCentered(CropRegion.FullFrame(CanvasSize));
             _selectedCropAspectPreset = BuiltInCropAspectPresets.Custom;
             OnPropertyChanged(nameof(SelectedCropAspectPreset));
         }
@@ -177,6 +179,21 @@ public sealed partial class MainWindowViewModel
         {
             return;
         }
+        if (x < 0 || y < 0 || x >= CanvasSize.Width || y >= CanvasSize.Height)
+        {
+            return;
+        }
+
+        if (width != CanvasCrop.Width)
+        {
+            width = SnapDimensionDown(width, CanvasSize.Width - x, CropSizeStep);
+        }
+
+        if (height != CanvasCrop.Height)
+        {
+            height = SnapDimensionDown(height, CanvasSize.Height - y, CropSizeStep);
+        }
+
 
         try
         {
@@ -187,6 +204,34 @@ public sealed partial class MainWindowViewModel
         }
     }
 
+
+    private CropRegion SnapCropSizeCentered(CropRegion crop)
+    {
+        var width = SnapDimensionDown(crop.Width, crop.SourceSize.Width, CropSizeStep);
+        var height = SnapDimensionDown(crop.Height, crop.SourceSize.Height, CropSizeStep);
+        var centerX = crop.X + (crop.Width / 2d);
+        var centerY = crop.Y + (crop.Height / 2d);
+        var x = Math.Clamp(
+            checked((int)Math.Round(centerX - (width / 2d))),
+            0,
+            crop.SourceSize.Width - width);
+        var y = Math.Clamp(
+            checked((int)Math.Round(centerY - (height / 2d))),
+            0,
+            crop.SourceSize.Height - height);
+        return new CropRegion(crop.SourceSize, x, y, width, height);
+    }
+
+    private static int SnapDimensionDown(int value, int maximum, int step)
+    {
+        if (step <= 1 || maximum < step)
+        {
+            return Math.Clamp(value, 1, maximum);
+        }
+
+        var maximumValid = maximum - (maximum % step);
+        return Math.Clamp(value - (value % step), step, maximumValid);
+    }
     private void RaiseCanvasCropChanged()
     {
         OnPropertyChanged(nameof(CanvasCrop));
