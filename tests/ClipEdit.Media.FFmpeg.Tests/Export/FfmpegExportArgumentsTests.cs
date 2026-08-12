@@ -24,13 +24,48 @@ public sealed class FfmpegExportArgumentsTests
         var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
 
         Assert.Contains("[0:0]split=2[vsrc0][vsrc1]", graph);
-        Assert.Contains("[0:2]asplit=2[asrc0_0][asrc0_1]", graph);
+        Assert.Contains("[0:2]apad,asplit=2[asrc0_0][asrc0_1]", graph);
         Assert.Contains("trim=start=0:end=1.5,setpts=PTS-STARTPTS,crop=1080:1080:420:0,setsar=1[vseg0]", graph);
         Assert.Contains("[vseg0][vseg1]concat=n=2:v=1:a=0[vout]", graph);
         Assert.Contains("[aseg0_0][aseg0_1]concat=n=2:v=0:a=1[atrack0]", graph);
         Assert.Contains("[atrack0]volume=0dB[aout]", graph);
         Assert.Contains("libx264", arguments);
         Assert.Contains("+faststart", arguments);
+    }
+
+    [Fact]
+    public void External_audio_paths_become_deduplicated_inputs_and_not_filter_text()
+    {
+        const string source = "C:\\source.mkv";
+        const string music = "C:\\audio library\\music & ambience.mka";
+        var basePlan = CreatePlan(
+            source,
+            "C:\\clip.mp4",
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            audioTracks:
+            [
+                new ExportAudioTrackPlan(1, -3),
+                new ExportAudioTrackPlan(music, 0, -9),
+                new ExportAudioTrackPlan(music, 1, -12),
+            ]);
+
+        var arguments = FfmpegExportArguments.Create(plan, "C:\\clip.partial");
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.Equal(1, arguments.Count(argument => argument == music));
+        Assert.Contains("[0:1]apad,atrim=start=0:end=2", graph);
+        Assert.Contains("[1:0]apad,atrim=start=0:end=2", graph);
+        Assert.Contains("[1:1]apad,atrim=start=0:end=2", graph);
+        Assert.DoesNotContain(music, graph, StringComparison.Ordinal);
     }
 
     [Fact]

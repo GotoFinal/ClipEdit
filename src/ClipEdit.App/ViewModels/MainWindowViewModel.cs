@@ -281,11 +281,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 return "Multi-video export will be enabled with the sequence timeline";
             }
 
-            if (ExternalAudioItems.Any())
-            {
-                return "External-audio mixing must be configured before export";
-            }
-
             if (AudioTracks.Any(track => track.HasRangeEdits))
             {
                 return "Independent audio cuts need a ripple-versus-silence choice before export";
@@ -356,9 +351,15 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         ? []
         : AudioTracks
             .Where(track =>
-                !track.IsExternal &&
+                track.IsExternal ||
                 PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath))
-            .Select(track => new PreviewAudioTrack(track.StreamIndex, track.GainDb, track.IsMuted))
+            .Select(track => track.IsExternal
+                ? new PreviewAudioTrack(
+                    track.SourcePath,
+                    track.StreamIndex,
+                    track.GainDb,
+                    track.IsMuted)
+                : new PreviewAudioTrack(track.StreamIndex, track.GainDb, track.IsMuted))
             .ToArray();
 
     public string AudioMixerButtonText => ShowAudioMixer ? "Hide mixer" : "Mixer";
@@ -508,10 +509,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 replaceExistingDestination,
                 AudioTracks
                     .Where(track =>
-                        !track.IsExternal &&
                         !track.IsMuted &&
-                        PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath))
-                    .Select(track => new ExportAudioTrackPlan(track.StreamIndex, track.GainDb))
+                        (track.IsExternal ||
+                         PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath)))
+                    .Select(track => track.IsExternal
+                        ? new ExportAudioTrackPlan(track.SourcePath, track.StreamIndex, track.GainDb)
+                        : new ExportAudioTrackPlan(track.StreamIndex, track.GainDb))
                     .ToImmutableArray());
             IsExporting = true;
             ExportProgress = 0;

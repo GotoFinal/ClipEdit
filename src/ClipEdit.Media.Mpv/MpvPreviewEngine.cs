@@ -104,7 +104,9 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     {
         ArgumentNullException.ThrowIfNull(audioTracks);
         var snapshot = audioTracks.ToArray();
-        return InvokeAsync(client => client.SetAudioTracks(snapshot), cancellationToken);
+        return InvokeAsync(
+            client => client.SetAudioTracks(snapshot, cancellationToken),
+            cancellationToken);
     }
 
     public MpvOpenGlRenderContext CreateOpenGlRenderContext(

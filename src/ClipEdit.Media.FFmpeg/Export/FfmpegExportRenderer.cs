@@ -112,6 +112,14 @@ public sealed class FfmpegExportRenderer : IExportRenderer
                 "The source media no longer exists or cannot be accessed.");
         }
 
+        if (plan.AudioTracks.Any(track =>
+                track.ExternalSourcePath is not null && !File.Exists(track.ExternalSourcePath)))
+        {
+            throw new ExportException(
+                ExportFailure.SourceUnavailable,
+                "An external audio source no longer exists or cannot be accessed.");
+        }
+
         var pathComparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;

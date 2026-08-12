@@ -65,10 +65,11 @@ public sealed record ExportPlan
                 ? []
                 : [new ExportAudioTrackPlan(audioStreamIndex.Value, 0)]
             : audioTracks;
-        if (AudioTracks.Any(track => track is null) ||
-            AudioTracks.Select(track => track.StreamIndex).Distinct().Count() != AudioTracks.Length)
+        if (AudioTracks.Any(track => track is null) || HasDuplicateAudioTracks(AudioTracks))
         {
-            throw new ArgumentException("Export audio tracks must be non-null and use distinct stream indices.", nameof(audioTracks));
+            throw new ArgumentException(
+                "Export audio tracks must be non-null and use distinct source/stream identities.",
+                nameof(audioTracks));
         }
         Crop = crop;
         SourceRanges = sourceRanges;
@@ -120,6 +121,29 @@ public sealed record ExportPlan
             previousEnd = range.End;
         }
     }
+
+    private static bool HasDuplicateAudioTracks(ImmutableArray<ExportAudioTrackPlan> tracks)
+    {
+        var pathComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        for (var left = 0; left < tracks.Length; left++)
+        {
+            for (var right = left + 1; right < tracks.Length; right++)
+            {
+                if (tracks[left].StreamIndex == tracks[right].StreamIndex &&
+                    string.Equals(
+                        tracks[left].ExternalSourcePath,
+                        tracks[right].ExternalSourcePath,
+                        pathComparison))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 }
 
 public sealed record ExportAudioTrackPlan
@@ -136,9 +160,30 @@ public sealed record ExportAudioTrackPlan
         GainDb = gainDb;
     }
 
+    public ExportAudioTrackPlan(string externalSourcePath, int streamIndex, double gainDb)
+        : this(streamIndex, gainDb)
+    {
+        ExternalSourcePath = ValidateExternalSourcePath(externalSourcePath);
+    }
+
+    public string? ExternalSourcePath { get; }
+
+    public bool IsExternal => ExternalSourcePath is not null;
+
     public int StreamIndex { get; }
 
     public double GainDb { get; }
+
+    private static string ValidateExternalSourcePath(string sourcePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        if (!Path.IsPathFullyQualified(sourcePath))
+        {
+            throw new ArgumentException("An external export audio path must be absolute.", nameof(sourcePath));
+        }
+
+        return Path.GetFullPath(sourcePath);
+    }
 }
 
 public sealed class ExportPlanException(string message) : Exception(message);

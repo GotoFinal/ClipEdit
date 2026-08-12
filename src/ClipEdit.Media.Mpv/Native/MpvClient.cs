@@ -15,6 +15,7 @@ internal sealed class MpvClient : IDisposable
     private const int Int64Format = 4;
     private const int FlagFormat = 3;
     private readonly MpvNativeLibrary _native;
+    private IReadOnlyList<string> _loadedExternalAudioSources = [];
     private nint _handle;
 
     public MpvClient(MpvNativeLibrary native)
@@ -32,6 +33,7 @@ internal sealed class MpvClient : IDisposable
             SetOption("terminal", "no");
             SetOption("input-default-bindings", "no");
             SetOption("input-vo-keyboard", "no");
+            SetOption("audio-file-auto", "no");
             SetOption("keep-open", "yes");
             SetOption("pause", "yes");
             SetOption("vo", "libmpv");
@@ -58,6 +60,7 @@ internal sealed class MpvClient : IDisposable
 
         RunCommand("loadfile", fullPath, "replace");
         WaitUntilLoaded(cancellationToken);
+        _loadedExternalAudioSources = [];
     }
 
     public void Seek(MediaTime position)
@@ -126,16 +129,19 @@ internal sealed class MpvClient : IDisposable
         SetProperty("volume", (volume * 100).ToString("R", CultureInfo.InvariantCulture));
     }
 
-    public void SetAudioTracks(IReadOnlyList<PreviewAudioTrack> audioTracks)
+    public void SetAudioTracks(
+        IReadOnlyList<PreviewAudioTrack> audioTracks,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(audioTracks);
-        if (audioTracks.Any(track => track is null) ||
-            audioTracks.Select(track => track.StreamIndex).Distinct().Count() != audioTracks.Count)
+        if (audioTracks.Any(track => track is null) || HasDuplicateAudioTracks(audioTracks))
         {
             throw new ArgumentException(
-                "Preview audio tracks must be non-null and use distinct stream indices.",
+                "Preview audio tracks must be non-null and use distinct source/stream identities.",
                 nameof(audioTracks));
         }
+
+        SynchronizeExternalAudioSources(audioTracks, cancellationToken);
 
         var enabledTracks = audioTracks.Where(track => !track.IsMuted).ToArray();
         if (enabledTracks.Length == 0)
@@ -145,16 +151,21 @@ internal sealed class MpvClient : IDisposable
             return;
         }
 
-        var availableTracks = GetAudioTrackIdsByFfmpegIndex();
+        var availableTracks = GetAudioTracks();
         var graphTracks = enabledTracks.Select(track =>
         {
-            if (!availableTracks.TryGetValue(track.StreamIndex, out var mpvTrackId))
+            var availableTrack = availableTracks.FirstOrDefault(candidate =>
+                candidate.FfmpegIndex == track.StreamIndex &&
+                AudioSourceMatches(candidate.ExternalSourcePath, track.ExternalSourcePath));
+            if (availableTrack == default)
             {
                 throw new MpvPreviewException(
-                    $"libmpv did not expose embedded audio stream {track.StreamIndex}.");
+                    track.ExternalSourcePath is null
+                        ? $"libmpv did not expose embedded audio stream {track.StreamIndex}."
+                        : $"libmpv did not expose audio stream {track.StreamIndex} from the external source.");
             }
 
-            return new MpvAudioGraphTrack(mpvTrackId, track.GainDb);
+            return new MpvAudioGraphTrack(availableTrack.MpvTrackId, track.GainDb);
         }).ToArray();
 
         SetProperty("lavfi-complex", MpvAudioGraphBuilder.Build(graphTracks));
@@ -211,7 +222,77 @@ internal sealed class MpvClient : IDisposable
         Check(_native.SetPropertyString(_handle, nativeName.Pointer, nativeValue.Pointer), $"set property '{name}'");
     }
 
-    private IReadOnlyDictionary<int, long> GetAudioTrackIdsByFfmpegIndex()
+    private void SynchronizeExternalAudioSources(
+        IReadOnlyList<PreviewAudioTrack> audioTracks,
+        CancellationToken cancellationToken)
+    {
+        var pathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var desiredSources = audioTracks
+            .Where(track => track.ExternalSourcePath is not null)
+            .Select(track => track.ExternalSourcePath!)
+            .Distinct(pathComparer)
+            .ToArray();
+        if (_loadedExternalAudioSources.SequenceEqual(desiredSources, pathComparer))
+        {
+            return;
+        }
+
+        SetProperty("lavfi-complex", string.Empty);
+        SetProperty("aid", "no");
+        foreach (var trackId in GetAudioTracks()
+                     .Where(track => track.ExternalSourcePath is not null)
+                     .Select(track => track.MpvTrackId)
+                     .ToArray())
+        {
+            RunCommand("audio-remove", trackId.ToString(CultureInfo.InvariantCulture));
+        }
+
+        foreach (var sourcePath in desiredSources)
+        {
+            if (!File.Exists(sourcePath))
+            {
+                throw new FileNotFoundException("External preview audio was not found.", sourcePath);
+            }
+
+            RunCommand("audio-add", sourcePath, "auto", Path.GetFileName(sourcePath));
+        }
+
+        WaitUntilExternalAudioLoaded(desiredSources, cancellationToken);
+        _loadedExternalAudioSources = desiredSources;
+    }
+
+    private void WaitUntilExternalAudioLoaded(
+        IReadOnlyList<string> desiredSources,
+        CancellationToken cancellationToken)
+    {
+        if (desiredSources.Count == 0)
+        {
+            return;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var availableSources = GetAudioTracks()
+                .Where(track => track.ExternalSourcePath is not null)
+                .Select(track => track.ExternalSourcePath!)
+                .ToArray();
+            if (desiredSources.All(desired =>
+                    availableSources.Any(available => AudioSourceMatches(available, desired))))
+            {
+                return;
+            }
+
+            _native.WaitEvent(_handle, 0.05);
+        }
+
+        throw new TimeoutException("libmpv did not load external preview audio within 10 seconds.");
+    }
+
+    private IReadOnlyList<MpvAudioTrackDescriptor> GetAudioTracks()
     {
         var count = GetInt64Property("track-list/count");
         if (count is < 0 or > 10_000)
@@ -219,7 +300,7 @@ internal sealed class MpvClient : IDisposable
             throw new MpvPreviewException($"libmpv reported an invalid track count: {count}.");
         }
 
-        var tracks = new Dictionary<int, long>();
+        var tracks = new List<MpvAudioTrackDescriptor>();
         for (var index = 0; index < count; index++)
         {
             if (!string.Equals(
@@ -237,10 +318,61 @@ internal sealed class MpvClient : IDisposable
                 continue;
             }
 
-            tracks[checked((int)ffmpegIndex)] = mpvTrackId;
+            var isExternal = GetFlagProperty($"track-list/{index}/external");
+            var externalSourcePath = isExternal
+                ? NormalizeExternalSourcePath(GetStringProperty($"track-list/{index}/external-filename"))
+                : null;
+            tracks.Add(new MpvAudioTrackDescriptor(
+                mpvTrackId,
+                checked((int)ffmpegIndex),
+                externalSourcePath));
         }
 
         return tracks;
+    }
+
+    private static bool HasDuplicateAudioTracks(IReadOnlyList<PreviewAudioTrack> tracks)
+    {
+        for (var left = 0; left < tracks.Count; left++)
+        {
+            for (var right = left + 1; right < tracks.Count; right++)
+            {
+                if (tracks[left].StreamIndex == tracks[right].StreamIndex &&
+                    AudioSourceMatches(
+                        tracks[left].ExternalSourcePath,
+                        tracks[right].ExternalSourcePath))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool AudioSourceMatches(string? left, string? right)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        return string.Equals(left, right, comparison);
+    }
+
+    private static string? NormalizeExternalSourcePath(string? sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Path.GetFullPath(sourcePath);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        {
+            return sourcePath;
+        }
     }
 
     private long GetInt64Property(string name)
@@ -345,4 +477,9 @@ internal sealed class MpvClient : IDisposable
         public readonly int Reason;
         public readonly int Error;
     }
+
+    private readonly record struct MpvAudioTrackDescriptor(
+        long MpvTrackId,
+        int FfmpegIndex,
+        string? ExternalSourcePath);
 }

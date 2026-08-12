@@ -12,6 +12,68 @@ public sealed class FfmpegExportRendererLocalTests
 {
     [Fact]
     [Trait("Category", "LocalMedia")]
+    public async Task Renderer_pads_and_mixes_external_audio_that_ends_before_the_video()
+    {
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
+        var externalAudioPath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_EXTERNAL_AUDIO");
+        var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+        var ffprobePath = FfprobeExecutableLocator.Find();
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            string.IsNullOrWhiteSpace(externalAudioPath) ||
+            !File.Exists(sourcePath) ||
+            !File.Exists(externalAudioPath) ||
+            ffmpegPath is null ||
+            ffprobePath is null)
+        {
+            return;
+        }
+
+        var probe = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(sourcePath);
+        var video = probe.VideoStreams.First();
+        var embeddedAudio = probe.AudioStreams.First();
+        var externalProbe = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(externalAudioPath);
+        var externalAudio = externalProbe.AudioStreams.First();
+        var destinationPath = Path.Combine(
+            Path.GetTempPath(),
+            $"clipedit-external-audio-{Guid.NewGuid():N}.mp4");
+        var plan = new ExportPlan(
+            sourcePath,
+            destinationPath,
+            video.Index,
+            audioStreamIndex: null,
+            new CropRegion(video.OrientedSize, 0, 0, 320, 180),
+            [new MediaRange(MediaTime.Zero, new MediaTime(3, 1))],
+            new ExportPreset(
+                "mp4-local-external-audio",
+                "MP4 local external audio",
+                ".mp4",
+                ExportContainer.Mp4,
+                VideoCodecFamily.H264,
+                AudioCodecFamily.Aac,
+                requiresEvenDimensions: true),
+            audioTracks:
+            [
+                new ExportAudioTrackPlan(embeddedAudio.Index, -3),
+                new ExportAudioTrackPlan(externalAudioPath, externalAudio.Index, -12),
+            ]);
+
+        try
+        {
+            var result = await new FfmpegExportRenderer(ffmpegPath).RenderAsync(plan);
+            var rendered = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(result.DestinationPath);
+
+            Assert.True(result.FileSizeBytes > 0);
+            Assert.NotEmpty(rendered.AudioStreams);
+            Assert.True(rendered.Duration >= new MediaTime(29, 10));
+        }
+        finally
+        {
+            File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "LocalMedia")]
     public async Task Renderer_exports_a_short_cropped_av_clip_from_the_opt_in_sample()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");

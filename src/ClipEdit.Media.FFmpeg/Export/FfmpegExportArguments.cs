@@ -23,11 +23,18 @@ internal static class FfmpegExportArguments
             "-nostats",
             "-i",
             plan.SourcePath,
-            "-filter_complex",
-            CreateFilterGraph(plan),
-            "-map",
-            "[vout]",
         };
+
+        foreach (var externalSourcePath in GetExternalAudioSources(plan))
+        {
+            arguments.Add("-i");
+            arguments.Add(externalSourcePath);
+        }
+
+        arguments.Add("-filter_complex");
+        arguments.Add(CreateFilterGraph(plan));
+        arguments.Add("-map");
+        arguments.Add("[vout]");
 
         if (!plan.AudioTracks.IsEmpty)
         {
@@ -56,17 +63,18 @@ internal static class FfmpegExportArguments
     {
         var filters = new List<string>();
         var rangeCount = plan.SourceRanges.Length;
+        var externalAudioSources = GetExternalAudioSources(plan);
 
         if (rangeCount > 1)
         {
             filters.Add(CreateSplit($"0:{plan.VideoStreamIndex}", "split", "vsrc", rangeCount));
             for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
             {
-                filters.Add(CreateSplit(
-                    $"0:{plan.AudioTracks[trackIndex].StreamIndex}",
-                    "asplit",
-                    $"asrc{trackIndex}_",
-                    rangeCount));
+                var track = plan.AudioTracks[trackIndex];
+                var inputIndex = GetAudioInputIndex(track, externalAudioSources);
+                filters.Add(
+                    $"[{inputIndex}:{track.StreamIndex}]apad,asplit={rangeCount}" +
+                    string.Concat(Enumerable.Range(0, rangeCount).Select(index => $"[asrc{trackIndex}_{index}]")));
             }
         }
 
@@ -82,10 +90,14 @@ internal static class FfmpegExportArguments
 
             for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
             {
-                var streamIndex = plan.AudioTracks[trackIndex].StreamIndex;
-                var audioInput = rangeCount == 1 ? $"0:{streamIndex}" : $"asrc{trackIndex}_{index}";
+                var track = plan.AudioTracks[trackIndex];
+                var inputIndex = GetAudioInputIndex(track, externalAudioSources);
+                var audioInput = rangeCount == 1
+                    ? $"{inputIndex}:{track.StreamIndex}"
+                    : $"asrc{trackIndex}_{index}";
+                var pad = rangeCount == 1 ? "apad," : string.Empty;
                 filters.Add(
-                    $"[{audioInput}]atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                    $"[{audioInput}]{pad}atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
                     $"asetpts=PTS-STARTPTS[aseg{trackIndex}_{index}]");
             }
         }
@@ -134,6 +146,41 @@ internal static class FfmpegExportArguments
     {
         return $"[{input}]{filter}={count}" +
                string.Concat(Enumerable.Range(0, count).Select(index => $"[{outputPrefix}{index}]"));
+    }
+
+    private static IReadOnlyList<string> GetExternalAudioSources(ExportPlan plan)
+    {
+        var pathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        return plan.AudioTracks
+            .Where(track => track.ExternalSourcePath is not null)
+            .Select(track => track.ExternalSourcePath!)
+            .Distinct(pathComparer)
+            .ToArray();
+    }
+
+    private static int GetAudioInputIndex(
+        ExportAudioTrackPlan track,
+        IReadOnlyList<string> externalAudioSources)
+    {
+        if (track.ExternalSourcePath is null)
+        {
+            return 0;
+        }
+
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        for (var index = 0; index < externalAudioSources.Count; index++)
+        {
+            if (string.Equals(track.ExternalSourcePath, externalAudioSources[index], comparison))
+            {
+                return index + 1;
+            }
+        }
+
+        throw new ExportPlanException("An external audio source was not assigned an FFmpeg input.");
     }
 
     private static IEnumerable<string> CreatePresetArguments(ExportPlan plan)

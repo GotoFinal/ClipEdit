@@ -138,6 +138,32 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(track.StreamIndex, previewTrack.StreamIndex);
         Assert.Equal(-7.5, previewTrack.GainDb);
         Assert.True(previewTrack.IsMuted);
+        Assert.False(previewTrack.IsExternal);
+    }
+
+    [Fact]
+    public async Task External_audio_is_projected_to_preview_and_exact_export_from_time_zero()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        var videoPath = Path.Combine(Path.GetTempPath(), "source.mkv");
+        var musicPath = Path.Combine(Path.GetTempPath(), "music.flac");
+        await viewModel.ImportFilesAsync([videoPath, musicPath]);
+        var externalTrack = Assert.Single(viewModel.AudioTracks, track => track.IsExternal);
+        externalTrack.GainDb = -8;
+
+        var previewTrack = Assert.Single(viewModel.PreviewAudioTracks, track => track.IsExternal);
+        Assert.Equal(musicPath, previewTrack.ExternalSourcePath);
+        Assert.Equal(-8, previewTrack.GainDb);
+        Assert.True(viewModel.CanExport);
+
+        await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "mixed.mp4"),
+            replaceExistingDestination: false);
+
+        var exportedTrack = Assert.Single(renderer.Plan!.AudioTracks, track => track.IsExternal);
+        Assert.Equal(musicPath, exportedTrack.ExternalSourcePath);
+        Assert.Equal(-8, exportedTrack.GainDb);
     }
 
     [Fact]

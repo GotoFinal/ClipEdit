@@ -473,7 +473,10 @@
               <Border Padding="10" Background="#151820" CornerRadius="7" IsVisible="{Binding ShowAudioMixer}">
                 <Grid RowDefinitions="Auto,*" RowSpacing="8">
                   <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
+                      <TextBlock Classes="muted" FontSize="10" Text="External tracks start at 00:00" />
+                    </StackPanel>
                     <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding AudioTrackCountText}" />
                   </Grid>
                   <ScrollViewer Grid.Row="1" MaxHeight="230" VerticalScrollBarVisibility="Auto">
