@@ -642,10 +642,13 @@ public sealed class MainWindowViewModelTests
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "hover-preview.mkv")]);
         await decoder.WaitForCallCountAsync(14);
 
-        viewModel.TimelineHoverTime = 5;
+        viewModel.TimelineHoverTime = 5.013;
 
         Assert.True(viewModel.HasTimelineHoverPreview);
         Assert.Equal(0, decoder.HoverCalls);
+        await decoder.WaitForHoverCallCountAsync(1);
+        Assert.Equal(1, decoder.HoverCalls);
+        Assert.Equal(5.013, decoder.LastHoverTimestamp, 3);
     }
 
 
@@ -718,6 +721,7 @@ public sealed class MainWindowViewModelTests
         private int _activeTimelineDecodes;
         private int _maximumConcurrentTimelineDecodes;
         private int _hoverCalls;
+        private double _lastHoverTimestamp;
 
         public IReadOnlyList<double> TimelineTimestamps
         {
@@ -733,6 +737,8 @@ public sealed class MainWindowViewModelTests
         public int MaximumConcurrentTimelineDecodes => Volatile.Read(ref _maximumConcurrentTimelineDecodes);
 
         public int HoverCalls => Volatile.Read(ref _hoverCalls);
+
+        public double LastHoverTimestamp => Volatile.Read(ref _lastHoverTimestamp);
 
         public async Task<DecodedFrame> DecodeAsync(
             string sourcePath,
@@ -761,6 +767,7 @@ public sealed class MainWindowViewModelTests
             }
             else if (maximumSize == new PixelSize(360, 202))
             {
+                Volatile.Write(ref _lastHoverTimestamp, timestamp.TotalSeconds);
                 Interlocked.Increment(ref _hoverCalls);
             }
 
@@ -778,6 +785,20 @@ public sealed class MainWindowViewModelTests
             Assert.True(
                 TimelineTimestamps.Count >= count,
                 $"Expected {count} timeline frame requests, received {TimelineTimestamps.Count}.");
+            await Task.Delay(25);
+        }
+
+        public async Task WaitForHoverCallCountAsync(int count)
+        {
+            var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+            while (HoverCalls < count && DateTime.UtcNow < timeout)
+            {
+                await Task.Delay(10);
+            }
+
+            Assert.True(
+                HoverCalls >= count,
+                $"Expected {count} hover frame requests, received {HoverCalls}.");
             await Task.Delay(25);
         }
 

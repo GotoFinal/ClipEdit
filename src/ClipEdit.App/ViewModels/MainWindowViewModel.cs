@@ -49,6 +49,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _timelineHoverCancellation;
     private Bitmap? _timelineHoverPreviewImage;
     private TimelineFrameCacheKey? _timelineHoverCacheKey;
+    private TimelineFrameCacheKey? _timelineHoverRequestKey;
     private double _timelineHoverTime = -1;
     private int _sequenceTimelineVisualRevision;
     private readonly Dictionary<AudioTrackViewModel, CancellationTokenSource> _waveformCancellations = [];
@@ -1589,6 +1590,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _sequenceTimelineAnalysisCancellation = null;
         _timelineHoverCancellation?.Cancel();
         _timelineHoverCancellation = null;
+        _timelineHoverRequestKey = null;
         _exportCancellation?.Cancel();
         _exportCancellation?.Dispose();
         _exportCancellation = null;

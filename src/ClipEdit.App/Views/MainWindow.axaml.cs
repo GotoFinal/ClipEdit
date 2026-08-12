@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -370,6 +371,17 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         ViewModel?.FitSequenceTimeline();
+    }
+
+    private void SequenceTimeline_PointerMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        _ = sender;
+        var pointer = eventArgs.GetPosition(this);
+        var maximumLeft = Math.Max(4, Bounds.Width - TimelineHoverPreview.Width - 4);
+        var maximumTop = Math.Max(4, Bounds.Height - TimelineHoverPreview.Height - 4);
+        var left = Math.Clamp(pointer.X + 14, 4, maximumLeft);
+        var top = Math.Clamp(pointer.Y - TimelineHoverPreview.Height - 10, 4, maximumTop);
+        TimelineHoverPreview.Margin = new Thickness(left, top, 0, 0);
     }
 
     private void SplitClip_Click(object? sender, RoutedEventArgs eventArgs)

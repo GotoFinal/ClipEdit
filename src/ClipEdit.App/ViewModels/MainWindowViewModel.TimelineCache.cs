@@ -306,27 +306,24 @@ public sealed partial class MainWindowViewModel
 
     private void StartCachedTimelineHoverPreview(double timelineSeconds)
     {
-        _timelineHoverCancellation?.Cancel();
-        _timelineHoverCancellation = null;
         if (timelineSeconds < 0 || _frameDecoder is null)
         {
-            _timelineHoverCacheKey = null;
-            TimelineHoverPreviewImage = null;
+            ClearTimelineHoverPreview();
             return;
         }
 
-        var clip = FindClipAtTimelineTime(SequenceTimeFromSeconds(timelineSeconds));
+        var timelineTime = SequenceTimeFromSeconds(timelineSeconds);
+        var clip = FindClipAtTimelineTime(timelineTime);
         if (clip?.Source.Media?.Probe.VideoStreams.FirstOrDefault() is not { } video)
         {
-            _timelineHoverCacheKey = null;
-            TimelineHoverPreviewImage = null;
+            ClearTimelineHoverPreview();
             return;
         }
 
         var sourceTime = clip.SourceStart +
-                         (SequenceTimeFromSeconds(timelineSeconds) - clip.TimelineStart);
+                         (timelineTime - clip.TimelineStart);
         var boundedSourceSeconds = Math.Min(sourceTime.TotalSeconds, clip.SourceEndSeconds);
-        const double exactHoverBucketDuration = 0.25;
+        var exactHoverBucketDuration = Math.Max(clip.Source.FrameStepSeconds, 1d / 120d);
         var exactKey = TimelineFrameCacheKey.Create(
             clip.SourcePath,
             video.Index,
@@ -335,6 +332,7 @@ public sealed partial class MainWindowViewModel
             boundedSourceSeconds);
         if (_timelineFrameCache.TryGet(exactKey, out var exactImage))
         {
+            CancelTimelineHoverRequest();
             ShowCachedHover(exactKey, exactImage);
             return;
         }
@@ -358,14 +356,22 @@ public sealed partial class MainWindowViewModel
             TimelineHoverPreviewImage = null;
         }
 
+        if (_timelineHoverRequestKey == exactKey && _timelineHoverCancellation is not null)
+        {
+            return;
+        }
+
+        CancelTimelineHoverRequest();
         var request = new CancellationTokenSource();
         _timelineHoverCancellation = request;
-        _ = RefreshCachedTimelineHoverPreviewAsync(clip, video.Index, exactKey, request);
+        _timelineHoverRequestKey = exactKey;
+        _ = RefreshCachedTimelineHoverPreviewAsync(clip, video.Index, sourceTime, exactKey, request);
     }
 
     private async Task RefreshCachedTimelineHoverPreviewAsync(
         VideoClipViewModel clip,
         int videoStreamIndex,
+        MediaTime sourceTime,
         TimelineFrameCacheKey cacheKey,
         CancellationTokenSource request)
     {
@@ -373,8 +379,8 @@ public sealed partial class MainWindowViewModel
         try
         {
             // Warm filmstrip frames display immediately. Exact FFmpeg refinement is
-            // only launched after the pointer remains in one quarter-second bucket.
-            await Task.Delay(TimeSpan.FromMilliseconds(110), token);
+            // launched as soon as the pointer settles briefly on a source frame.
+            await Task.Delay(TimeSpan.FromMilliseconds(45), token);
             await _analysisSlots.WaitAsync(token);
             DecodedFrame decoded;
             try
@@ -382,7 +388,7 @@ public sealed partial class MainWindowViewModel
                 decoded = await _frameDecoder!.DecodeAsync(
                     clip.SourcePath,
                     videoStreamIndex,
-                    ToMediaTime(Math.Min(cacheKey.TimestampSeconds, clip.SourceEndSeconds)),
+                    Min(sourceTime, clip.SourceEnd),
                     TimelineHoverSize,
                     token);
             }
@@ -410,10 +416,25 @@ public sealed partial class MainWindowViewModel
             if (ReferenceEquals(_timelineHoverCancellation, request))
             {
                 _timelineHoverCancellation = null;
+                _timelineHoverRequestKey = null;
             }
 
             request.Dispose();
         }
+    }
+
+    private void ClearTimelineHoverPreview()
+    {
+        CancelTimelineHoverRequest();
+        _timelineHoverCacheKey = null;
+        TimelineHoverPreviewImage = null;
+    }
+
+    private void CancelTimelineHoverRequest()
+    {
+        _timelineHoverCancellation?.Cancel();
+        _timelineHoverCancellation = null;
+        _timelineHoverRequestKey = null;
     }
 
     private void ShowCachedHover(TimelineFrameCacheKey cacheKey, byte[] encodedImage)
