@@ -6,6 +6,8 @@ public sealed partial class MainWindowViewModel
 {
     private PixelSize _canvasSize = new(1, 1);
     private CropRegion _canvasCrop = CropRegion.FullFrame(new PixelSize(1, 1));
+    private double _clipWheelZoomPercent = 10;
+    private int _clipWheelRotationDegrees = 1;
     private CanvasInteractionTool _canvasTool = CanvasInteractionTool.Crop;
 
     public PixelSize CanvasSize
@@ -78,6 +80,28 @@ public sealed partial class MainWindowViewModel
 
 
     public string CanvasSizeText => $"{CanvasSize.Width} × {CanvasSize.Height} canvas";
+    public double ClipWheelZoomPercent
+    {
+        get => _clipWheelZoomPercent;
+        set
+        {
+            var next = double.IsFinite(value) ? Math.Clamp(value, 1, 50) : 10;
+            SetProperty(ref _clipWheelZoomPercent, next);
+        }
+    }
+
+    public int ClipWheelRotationDegrees
+    {
+        get => _clipWheelRotationDegrees;
+        set => SetProperty(ref _clipWheelRotationDegrees, Math.Clamp(value, 1, 45));
+    }
+
+    public void ResetCanvasInteractionSettings()
+    {
+        ClipWheelZoomPercent = 10;
+        ClipWheelRotationDegrees = 1;
+        StatusText = "Canvas controls reset: wheel zoom 10%, Shift+wheel rotation 1°";
+    }
 
     public CanvasInteractionTool CanvasTool
     {

@@ -32,6 +32,12 @@ public sealed class ClipTransformCanvas : Control
     public static readonly StyledProperty<bool> IsActiveProperty =
         AvaloniaProperty.Register<ClipTransformCanvas, bool>(nameof(IsActive));
 
+    public static readonly StyledProperty<double> WheelZoomPercentProperty =
+        AvaloniaProperty.Register<ClipTransformCanvas, double>(nameof(WheelZoomPercent), 10);
+
+    public static readonly StyledProperty<int> WheelRotationDegreesProperty =
+        AvaloniaProperty.Register<ClipTransformCanvas, int>(nameof(WheelRotationDegrees), 1);
+
     private static readonly IPen OutlinePen = new Pen(0xFF64D7F5, 1.5).ToImmutable();
     private static readonly IPen CenterPen = new Pen(0xCC64D7F5, 1).ToImmutable();
     private static readonly IBrush HandleBrush = new ImmutableSolidColorBrush(0xFF64D7F5);
@@ -80,7 +86,19 @@ public sealed class ClipTransformCanvas : Control
     public bool IsActive
     {
         get => GetValue(IsActiveProperty);
+
         set => SetValue(IsActiveProperty, value);
+    }
+    public double WheelZoomPercent
+    {
+        get => GetValue(WheelZoomPercentProperty);
+        set => SetValue(WheelZoomPercentProperty, value);
+    }
+
+    public int WheelRotationDegrees
+    {
+        get => GetValue(WheelRotationDegreesProperty);
+        set => SetValue(WheelRotationDegreesProperty, value);
     }
 
     public override void Render(DrawingContext context)
@@ -220,7 +238,7 @@ public sealed class ClipTransformCanvas : Control
 
         if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
-            var rotationDelta = checked((int)Math.Round(eventArgs.Delta.Y * 5));
+            var rotationDelta = CalculateWheelRotationDelta(eventArgs.Delta.Y, WheelRotationDegrees);
             SetCurrentValue(TransformProperty, Transform.Rotate(Transform.RotationDegrees + rotationDelta));
         }
         else
@@ -228,7 +246,7 @@ public sealed class ClipTransformCanvas : Control
             var pointer = ViewToCanvas(eventArgs.GetPosition(this), GetCanvasViewport());
             SetCurrentValue(
                 TransformProperty,
-                ApplyZoomAt(Transform, pointer, CanvasSize, Math.Pow(1.1, eventArgs.Delta.Y)));
+                ApplyZoomAt(Transform, pointer, CanvasSize, CalculateWheelZoomFactor(eventArgs.Delta.Y, WheelZoomPercent)));
         }
 
         eventArgs.Handled = true;
@@ -298,6 +316,21 @@ public sealed class ClipTransformCanvas : Control
         return new Rect((Bounds.Width - width) / 2, (Bounds.Height - height) / 2, width, height);
     }
 
+
+    internal static double CalculateWheelZoomFactor(double wheelDelta, double zoomPercent)
+    {
+        var boundedPercent = double.IsFinite(zoomPercent)
+            ? Math.Clamp(zoomPercent, 1, 50)
+            : 10;
+        return Math.Pow(1 + (boundedPercent / 100), wheelDelta);
+    }
+
+    internal static int CalculateWheelRotationDelta(double wheelDelta, int rotationDegrees)
+    {
+        return checked((int)Math.Round(
+            wheelDelta * Math.Clamp(rotationDegrees, 1, 45),
+            MidpointRounding.AwayFromZero));
+    }
     private Point ViewToCanvas(Point point, Rect viewport) =>
         new(
             (point.X - viewport.X) * CanvasSize.Width / viewport.Width,

@@ -117,6 +117,41 @@
               ToolTip.Tip="Lock crop ratio while resizing">
             <PathIcon Width="14" Height="14" Data="M4,7 V5 A4,4 0 0 1 12,5 V7 H14 V15 H2 V7 Z M6,7 H10 V5 A2,2 0 0 0 6,5 Z" />
           </ToggleButton>
+          <Button Padding="9,5" Classes="secondary" Content="Controls">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft">
+                <Border Width="260" Padding="12" Background="#20242D" CornerRadius="7">
+                  <StackPanel Spacing="9">
+                    <TextBlock FontSize="12" FontWeight="SemiBold" Text="Canvas controls" />
+                    <Grid ColumnDefinitions="*,82" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="7">
+                      <TextBlock VerticalAlignment="Center" Text="Wheel zoom (%)" />
+                      <NumericUpDown
+                          Grid.Column="1"
+                          Minimum="1"
+                          Maximum="50"
+                          Increment="1"
+                          Value="{Binding ClipWheelZoomPercent, Mode=TwoWay}" />
+                      <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Shift+wheel rotate (°)" />
+                      <NumericUpDown
+                          Grid.Row="1"
+                          Grid.Column="1"
+                          Minimum="1"
+                          Maximum="45"
+                          Increment="1"
+                          Value="{Binding ClipWheelRotationDegrees, Mode=TwoWay}" />
+                    </Grid>
+                    <TextBlock Classes="muted" FontSize="10" Text="Handle resize keeps aspect · Ctrl stretches one axis" />
+                    <Button
+                        HorizontalAlignment="Left"
+                        Padding="8,4"
+                        Classes="secondary"
+                        Click="ResetCanvasControls_Click"
+                        Content="Reset defaults" />
+                  </StackPanel>
+                </Border>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
         </StackPanel>
 
         <StackPanel
@@ -330,6 +365,8 @@
                       IsActive="{Binding IsTransformToolActive}"
                       IsHitTestVisible="{Binding IsTransformToolActive}"
                       SourceSize="{Binding SelectedVideoClip.VideoSize}"
+                      WheelRotationDegrees="{Binding ClipWheelRotationDegrees}"
+                      WheelZoomPercent="{Binding ClipWheelZoomPercent}"
                       Transform="{Binding SelectedVideoClip.CanvasTransform, Mode=TwoWay}"
                       ToolTip.Tip="Drag clip to move · drag cyan handles to resize · Ctrl stretches · drag amber point to rotate"
                       ZIndex="9" />

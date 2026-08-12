@@ -108,4 +108,14 @@ public sealed class ClipTransformCanvasTests
             ClipTransformCanvas.GetDragMode(new Point(20, 20), corners, new Point(200, 150)));
     }
 
+
+    [Fact]
+    public void Wheel_sensitivity_uses_configured_zoom_and_one_degree_rotation_defaults()
+    {
+        Assert.Equal(1.1, ClipTransformCanvas.CalculateWheelZoomFactor(1, 10), 6);
+        Assert.Equal(1d / 1.1, ClipTransformCanvas.CalculateWheelZoomFactor(-1, 10), 6);
+        Assert.Equal(1, ClipTransformCanvas.CalculateWheelRotationDelta(1, 1));
+        Assert.Equal(-1, ClipTransformCanvas.CalculateWheelRotationDelta(-1, 1));
+        Assert.Equal(5, ClipTransformCanvas.CalculateWheelRotationDelta(1, 5));
+    }
 }

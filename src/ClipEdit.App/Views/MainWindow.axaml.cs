@@ -177,6 +177,13 @@ public sealed partial class MainWindow : Window
         eventArgs.Handled = true;
     }
 
+    private void ResetCanvasControls_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.ResetCanvasInteractionSettings();
+    }
+
     private async void OnDrop(object? sender, DragEventArgs eventArgs)
     {
         _ = sender;

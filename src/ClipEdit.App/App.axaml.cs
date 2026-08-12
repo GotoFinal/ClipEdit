@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using ClipEdit.App.ViewModels;
+using ClipEdit.App.Settings;
 using ClipEdit.App.Views;
 using ClipEdit.Media.Analysis;
 using ClipEdit.Media.Export;
@@ -41,9 +42,10 @@ public sealed partial class App : Avalonia.Application
             IExportRenderer? exportRenderer = ffmpegPath is null
                 ? null
                 : new FfmpegExportRenderer(ffmpegPath);
+            var applicationDataDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipEdit");
             var recoveryDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ClipEdit",
+                applicationDataDirectory,
                 "Recovery");
             Directory.CreateDirectory(recoveryDirectory);
             var viewModel = new MainWindowViewModel(
@@ -53,9 +55,21 @@ public sealed partial class App : Avalonia.Application
                 new JsonProjectStore(),
                 recoveryDirectory,
                 waveformRenderer: waveformRenderer);
+            var settingsStore = new CanvasInteractionSettingsStore(
+                Path.Combine(applicationDataDirectory, "settings.json"));
+            var interactionSettings = settingsStore.Load();
+            viewModel.ClipWheelZoomPercent = interactionSettings.WheelZoomPercent;
+            viewModel.ClipWheelRotationDegrees = interactionSettings.WheelRotationDegrees;
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel,
+            };
+
+            mainWindow.Closed += (_, _) =>
+            {
+                settingsStore.Save(new CanvasInteractionSettings(
+                    viewModel.ClipWheelZoomPercent,
+                    viewModel.ClipWheelRotationDegrees));
             };
 
             desktop.MainWindow = mainWindow;
