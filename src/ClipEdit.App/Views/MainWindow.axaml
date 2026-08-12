@@ -1,0 +1,161 @@
+<Window
+    x:Class="ClipEdit.App.Views.MainWindow"
+    x:DataType="vm:MainWindowViewModel"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:ClipEdit.App.ViewModels"
+    Title="{Binding ProductName}"
+    Width="1180"
+    Height="760"
+    MinWidth="820"
+    MinHeight="560"
+    Background="#111318">
+
+  <Window.Styles>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#7C5CFC" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Padding" Value="20,10" />
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="Button.secondary">
+      <Setter Property="Background" Value="#252936" />
+      <Setter Property="Foreground" Value="#E9EAF0" />
+      <Setter Property="Padding" Value="16,9" />
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="64,*,36">
+    <Border
+        Grid.Row="0"
+        Padding="22,0"
+        Background="#181B22"
+        BorderBrush="#292D38"
+        BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+          <Border Width="32" Height="32" Background="#7C5CFC" CornerRadius="9">
+            <TextBlock
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                FontSize="18"
+                FontWeight="Bold"
+                Text="C" />
+          </Border>
+          <TextBlock
+              VerticalAlignment="Center"
+              FontSize="19"
+              FontWeight="SemiBold"
+              Text="{Binding ProductName}" />
+        </StackPanel>
+
+        <TextBlock
+            Grid.Column="1"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Foreground="#AEB3C2"
+            Text="{Binding WorkspaceTitle}" />
+
+        <Button Grid.Column="2" Classes="secondary" Content="Settings" IsEnabled="False" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="24" ColumnDefinitions="220,*" ColumnSpacing="20">
+      <Border
+          Grid.Column="0"
+          Padding="16"
+          Background="#181B22"
+          BorderBrush="#292D38"
+          BorderThickness="1"
+          CornerRadius="12">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16">
+          <TextBlock FontSize="14" FontWeight="SemiBold" Text="PROJECT MEDIA" />
+
+          <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+            <TextBlock
+                HorizontalAlignment="Center"
+                FontSize="30"
+                Foreground="#676D80"
+                Text="＋" />
+            <TextBlock Foreground="#8D93A5" Text="No media yet" />
+          </StackPanel>
+
+          <Button Grid.Row="2" Classes="secondary" Content="Add media" IsEnabled="False" />
+        </Grid>
+      </Border>
+
+      <Border
+          Grid.Column="1"
+          Background="#181B22"
+          BorderBrush="#303543"
+          BorderThickness="1"
+          CornerRadius="12">
+        <Grid Margin="28">
+          <Border
+              MaxWidth="650"
+              MaxHeight="380"
+              Padding="44"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Background="#151820"
+              BorderBrush="#4C5264"
+              BorderThickness="1"
+              CornerRadius="18">
+            <StackPanel HorizontalAlignment="Center" Spacing="16">
+              <Border
+                  Width="72"
+                  Height="72"
+                  HorizontalAlignment="Center"
+                  Background="#242033"
+                  CornerRadius="36">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    FontSize="34"
+                    Foreground="#A996FF"
+                    Text="▶" />
+              </Border>
+
+              <TextBlock
+                  HorizontalAlignment="Center"
+                  FontSize="24"
+                  FontWeight="SemiBold"
+                  Text="{Binding EmptyStateTitle}" />
+              <TextBlock
+                  MaxWidth="470"
+                  HorizontalAlignment="Center"
+                  Foreground="#AEB3C2"
+                  Text="{Binding EmptyStateDescription}"
+                  TextAlignment="Center"
+                  TextWrapping="Wrap" />
+
+              <StackPanel Margin="0,8,0,0" HorizontalAlignment="Center" Orientation="Horizontal" Spacing="10">
+                <Button Classes="primary" Content="Open video" IsEnabled="False" />
+                <Button Classes="secondary" Content="Open project" IsEnabled="False" />
+              </StackPanel>
+
+              <TextBlock
+                  HorizontalAlignment="Center"
+                  FontSize="12"
+                  Foreground="#767D91"
+                  Text="{Binding SupportedMediaHint}" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Border
+        Grid.Row="2"
+        Padding="16,0"
+        Background="#181B22"
+        BorderBrush="#292D38"
+        BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+        <TextBlock FontSize="12" Foreground="#777E91" Text="Local, private, and non-destructive" />
+        <TextBlock Grid.Column="1" FontSize="12" Foreground="#777E91" Text="Ready" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
