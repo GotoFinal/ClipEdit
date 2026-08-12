@@ -64,4 +64,14 @@ public sealed class MediaTimeTests
 
         Assert.Throws<OverflowException>(() => value + new MediaTime(1, 1));
     }
+
+    [Fact]
+    public void Scale_preserves_the_exact_time_base()
+    {
+        var timeBase = new MediaTime(1, 90_000);
+
+        var result = timeBase * 3_003;
+
+        Assert.Equal(new MediaTime(1001, 30_000), result);
+    }
 }

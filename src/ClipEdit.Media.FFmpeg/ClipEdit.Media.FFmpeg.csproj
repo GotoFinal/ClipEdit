@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClipEdit.Media.FFmpeg</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClipEdit.Domain\ClipEdit.Domain.csproj" />
+    <ProjectReference Include="..\ClipEdit.Media.Abstractions\ClipEdit.Media.Abstractions.csproj" />
+  </ItemGroup>
+</Project>
