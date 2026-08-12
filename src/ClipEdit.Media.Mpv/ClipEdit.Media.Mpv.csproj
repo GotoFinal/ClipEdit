@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClipEdit.Media.Mpv</RootNamespace>
+    <LibMpvRuntimePath>$(MSBuildThisFileDirectory)..\..\packages\native\libmpv\win-x64\2026-08-11-f4d13e1c2c\runtime</LibMpvRuntimePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClipEdit.Media.Abstractions\ClipEdit.Media.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) and Exists('$(LibMpvRuntimePath)\libmpv-2.dll')">
+    <None Include="$(LibMpvRuntimePath)\libmpv-2.dll"
+          Link="libmpv-2.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
