@@ -46,6 +46,14 @@ public sealed record SourceEdit
         KeptRanges[0].Start == MediaTime.Zero &&
         KeptRanges[0].End == SourceDuration;
 
+    public static SourceEdit FromKeptRanges(
+        MediaTime sourceDuration,
+        IEnumerable<MediaRange> keptRanges)
+    {
+        ArgumentNullException.ThrowIfNull(keptRanges);
+        return new SourceEdit(sourceDuration, keptRanges.ToImmutableArray());
+    }
+
     public SourceEdit Remove(MediaRange removal)
     {
         if (removal.IsEmpty || KeptRanges.IsEmpty)

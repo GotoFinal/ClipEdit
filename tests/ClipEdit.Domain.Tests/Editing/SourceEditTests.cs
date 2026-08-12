@@ -95,4 +95,31 @@ public sealed class SourceEditTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new SourceEdit(new MediaTime(-1, 1)));
     }
+
+    [Fact]
+    public void Saved_kept_ranges_can_be_restored_after_validation()
+    {
+        var ranges = new[]
+        {
+            new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+            new MediaRange(new MediaTime(8, 1), new MediaTime(10, 1)),
+        };
+
+        var edit = SourceEdit.FromKeptRanges(new MediaTime(10, 1), ranges);
+
+        Assert.Equal<MediaRange>(ranges, edit.KeptRanges);
+    }
+
+    [Fact]
+    public void Invalid_saved_ranges_are_rejected()
+    {
+        var overlapping = new[]
+        {
+            new MediaRange(MediaTime.Zero, new MediaTime(6, 1)),
+            new MediaRange(new MediaTime(5, 1), new MediaTime(10, 1)),
+        };
+
+        Assert.Throws<ArgumentException>(() =>
+            SourceEdit.FromKeptRanges(new MediaTime(10, 1), overlapping));
+    }
 }
