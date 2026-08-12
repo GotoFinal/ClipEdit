@@ -3,6 +3,7 @@
     x:DataType="vm:MainWindowViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ClipEdit.App.Controls"
     xmlns:vm="using:ClipEdit.App.ViewModels"
     Title="{Binding ProductName}"
     Width="1240"
@@ -208,11 +209,13 @@
             <Grid RowDefinitions="*,Auto" RowSpacing="12">
               <Border Background="#0B0D12" CornerRadius="8">
                 <Grid>
-                  <Image
+                  <controls:CropCanvas
                       Margin="8"
+                      AutomationProperties.Name="Video crop selection"
+                      Crop="{Binding SelectedMedia.Crop, Mode=TwoWay}"
                       IsVisible="{Binding HasPreviewImage}"
                       Source="{Binding PreviewImage}"
-                      Stretch="Uniform" />
+                      SourceSize="{Binding SelectedMedia.VideoSize}" />
 
                   <StackPanel
                       HorizontalAlignment="Center"
@@ -343,11 +346,22 @@
                 </ScrollViewer>
               </Grid>
 
-              <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="8">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CROP" />
-                <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding CropSizeText}" />
-                <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="AUDIO" />
-                <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="{Binding AudioSummaryText}" />
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="X" />
+                <TextBox Grid.Column="2" Width="58" Text="{Binding SelectedMedia.CropX, Mode=TwoWay}" />
+                <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Y" />
+                <TextBox Grid.Column="4" Width="58" Text="{Binding SelectedMedia.CropY, Mode=TwoWay}" />
+                <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="W" />
+                <TextBox Grid.Column="6" Width="66" Text="{Binding SelectedMedia.CropWidth, Mode=TwoWay}" />
+                <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="H" />
+                <TextBox Grid.Column="8" Width="66" Text="{Binding SelectedMedia.CropHeight, Mode=TwoWay}" />
+                <StackPanel Grid.Column="9" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="EXPORT" />
+                  <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding SelectedMedia.CropSizeText}" />
+                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="AUDIO" />
+                  <TextBlock VerticalAlignment="Center" Text="{Binding AudioSummaryText}" />
+                </StackPanel>
               </Grid>
 
               <Grid ColumnDefinitions="80,*" IsVisible="{Binding ShowAudioMixer}">

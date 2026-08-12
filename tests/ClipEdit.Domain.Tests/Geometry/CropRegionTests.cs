@@ -50,4 +50,27 @@ public sealed class CropRegionTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new CropRegion(new PixelSize(1_920, 1_080), x, y, width, height));
     }
+
+    [Fact]
+    public void MoveClamped_preserves_size_and_stays_in_source()
+    {
+        var crop = new CropRegion(new PixelSize(1_920, 1_080), 420, 0, 1_080, 1_080);
+
+        var moved = crop.MoveClamped(2_000, -50);
+
+        Assert.Equal(840, moved.X);
+        Assert.Equal(0, moved.Y);
+        Assert.Equal(crop.ExportSize, moved.ExportSize);
+    }
+
+    [Fact]
+    public void FromEdges_uses_half_open_pixel_edges()
+    {
+        var crop = CropRegion.FromEdges(new PixelSize(1_920, 1_080), 100, 50, 1_100, 850);
+
+        Assert.Equal(1_000, crop.Width);
+        Assert.Equal(800, crop.Height);
+        Assert.Equal(1_100, crop.Right);
+        Assert.Equal(850, crop.Bottom);
+    }
 }

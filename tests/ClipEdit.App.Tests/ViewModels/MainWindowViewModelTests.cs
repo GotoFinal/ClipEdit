@@ -22,6 +22,7 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.ShowRangeStrip);
         Assert.False(viewModel.ShowTimeline);
         Assert.False(viewModel.ShowAudioMixer);
+        Assert.Equal(new PixelSize(1_920, 1_080), viewModel.SelectedMedia!.Crop.ExportSize);
 
         await viewModel.ImportFilesAsync([secondVideo]);
 

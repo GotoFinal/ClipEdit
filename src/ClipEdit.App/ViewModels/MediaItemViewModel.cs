@@ -1,4 +1,5 @@
 using ClipEdit.Application.Media;
+using ClipEdit.Domain.Geometry;
 using ClipEdit.Media.Probe;
 
 namespace ClipEdit.App.ViewModels;
@@ -9,6 +10,7 @@ public sealed class MediaItemViewModel : ViewModelBase
     private string _statusText = "Waiting…";
     private string? _errorText;
     private bool _isProbing;
+    private CropRegion _crop;
 
     public MediaItemViewModel(string sourcePath)
     {
@@ -36,6 +38,7 @@ public sealed class MediaItemViewModel : ViewModelBase
                 OnPropertyChanged(nameof(HasVideo));
                 OnPropertyChanged(nameof(HasAudio));
                 OnPropertyChanged(nameof(IsExternalAudio));
+                OnPropertyChanged(nameof(VideoSize));
                 OnPropertyChanged(nameof(Summary));
                 OnPropertyChanged(nameof(Detail));
             }
@@ -55,6 +58,56 @@ public sealed class MediaItemViewModel : ViewModelBase
     public bool HasAudio => Media?.HasAudio == true;
 
     public bool IsExternalAudio => Media?.IsExternalAudio == true;
+
+    public PixelSize VideoSize =>
+        Media?.Probe.VideoStreams.FirstOrDefault()?.OrientedSize ?? new PixelSize(1, 1);
+
+    public CropRegion Crop
+    {
+        get => _crop;
+        set
+        {
+            if (value.SourceSize != VideoSize)
+            {
+                throw new ArgumentException("The crop must use this media item's oriented video size.", nameof(value));
+            }
+
+            if (SetProperty(ref _crop, value))
+            {
+                OnPropertyChanged(nameof(CropX));
+                OnPropertyChanged(nameof(CropY));
+                OnPropertyChanged(nameof(CropWidth));
+                OnPropertyChanged(nameof(CropHeight));
+                OnPropertyChanged(nameof(CropSizeText));
+            }
+        }
+    }
+
+    public int CropX
+    {
+        get => Crop.X;
+        set => TrySetCrop(value, Crop.Y, Crop.Width, Crop.Height);
+    }
+
+    public int CropY
+    {
+        get => Crop.Y;
+        set => TrySetCrop(Crop.X, value, Crop.Width, Crop.Height);
+    }
+
+    public int CropWidth
+    {
+        get => Crop.Width;
+        set => TrySetCrop(Crop.X, Crop.Y, value, Crop.Height);
+    }
+
+    public int CropHeight
+    {
+        get => Crop.Height;
+        set => TrySetCrop(Crop.X, Crop.Y, Crop.Width, value);
+    }
+
+    public string CropSizeText => $"{Crop.Width} × {Crop.Height}";
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorText);
 
@@ -132,6 +185,11 @@ public sealed class MediaItemViewModel : ViewModelBase
         try
         {
             Media = await importMedia.ExecuteAsync(SourcePath, cancellationToken);
+            var video = Media.Probe.VideoStreams.FirstOrDefault();
+            if (video is not null)
+            {
+                Crop = CropRegion.FullFrame(video.OrientedSize);
+            }
             StatusText = "Ready";
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -184,5 +242,17 @@ public sealed class MediaItemViewModel : ViewModelBase
         return bytes >= gibibyte
             ? $"{bytes / gibibyte:0.##} GiB"
             : $"{bytes / mebibyte:0.#} MiB";
+    }
+
+    private void TrySetCrop(int x, int y, int width, int height)
+    {
+        try
+        {
+            Crop = new CropRegion(VideoSize, x, y, width, height);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Numeric input is allowed to be temporarily invalid while the user edits it.
+        }
     }
 }
