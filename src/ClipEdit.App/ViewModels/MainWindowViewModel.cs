@@ -248,7 +248,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
                 RaiseWorkspaceStateChanged();
                 StartPreviewRefresh(value, debounce: false, clearExisting: true);
-                StartTimelineAnalysis(value, debounce: false);
                 OnPropertyChanged(nameof(CanRemoveSelectedMedia));
                 OnPropertyChanged(nameof(CanApplyCropPreset));
                 OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
@@ -1692,11 +1691,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             RaiseExportStateChanged();
         }
 
-        if (eventArgs.PropertyName is nameof(MediaItemViewModel.TimelineZoom) or
-            nameof(MediaItemViewModel.TimelineViewportStart))
-        {
-            StartTimelineAnalysis((MediaItemViewModel?)sender, debounce: true);
-        }
     }
 
     private void OnAudioTrackPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)

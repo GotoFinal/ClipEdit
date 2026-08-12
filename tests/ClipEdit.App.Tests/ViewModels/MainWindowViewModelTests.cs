@@ -602,26 +602,26 @@ public sealed class MainWindowViewModelTests
     }
 
     [AvaloniaFact]
-    public async Task Timeline_previews_resample_the_current_zoomed_viewport()
+    public async Task Sequence_filmstrip_resamples_the_current_zoomed_viewport()
     {
         var decoder = new RecordingFrameDecoder();
         using var viewModel = new MainWindowViewModel(new StubProbe(), frameDecoder: decoder);
 
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "timeline-preview.mkv")]);
-        await decoder.WaitForCallCountAsync(12);
-        var media = viewModel.SelectedMedia!;
+        await decoder.WaitForCallCountAsync(14);
+        var clip = viewModel.SelectedVideoClip!;
 
-        Assert.Equal(12, media.TimelineThumbnails.Count);
-        Assert.Equal(2.5, decoder.TimelineTimestamps[0], 3);
-        Assert.Equal(57.5, decoder.TimelineTimestamps[11], 3);
+        Assert.Equal(14, clip.TimelineThumbnails.Count);
+        Assert.Equal(2.143, decoder.TimelineTimestamps[0], 3);
+        Assert.Equal(57.857, decoder.TimelineTimestamps[13], 3);
 
-        media.ZoomTimeline(2, anchorSeconds: 30);
-        await decoder.WaitForCallCountAsync(24);
+        viewModel.ZoomSequenceTimeline(2, anchor: 30);
+        await decoder.WaitForCallCountAsync(28);
 
-        Assert.Equal(2, media.TimelineZoom);
-        Assert.Equal(15, media.TimelineViewportStart, 3);
-        Assert.Equal(16.25, decoder.TimelineTimestamps[12], 3);
-        Assert.Equal(43.75, decoder.TimelineTimestamps[23], 3);
+        Assert.Equal(2, viewModel.SequenceTimelineZoom);
+        Assert.Equal(15, viewModel.SequenceTimelineViewportStart, 3);
+        Assert.Equal(16.071, decoder.TimelineTimestamps[14], 3);
+        Assert.Equal(43.929, decoder.TimelineTimestamps[27], 3);
     }
 
     [AvaloniaFact]
@@ -700,7 +700,7 @@ public sealed class MainWindowViewModelTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (maximumSize == new PixelSize(240, 112))
+            if (maximumSize == new PixelSize(240, 120))
             {
                 _timelineTimestamps.Add(timestamp.TotalSeconds);
             }
