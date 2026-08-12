@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using ClipEdit.App.ViewModels;
 using ClipEdit.Media.Preview;
 
@@ -514,7 +515,16 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.ToggleAudioMixer();
+        if (ViewModel is not { } viewModel)
+        {
+            return;
+        }
+
+        viewModel.ToggleAudioMixer();
+        if (viewModel.ShowAudioMixer)
+        {
+            Dispatcher.UIThread.Post(AudioMixerPanel.BringIntoView, DispatcherPriority.Loaded);
+        }
     }
 
     private void FixExportCompatibility_Click(object? sender, RoutedEventArgs eventArgs)

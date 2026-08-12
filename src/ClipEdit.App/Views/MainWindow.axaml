@@ -435,19 +435,39 @@
                     <PathIcon Width="14" Height="14" Data="M2,2 L10,8 L2,14 Z M12,2 H14 V14 H12 Z" />
                   </Button>
                 </StackPanel>
-                <TextBlock
-                    Grid.Column="2"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Center"
-                    Classes="muted"
-                    FontSize="11"
-                    Text="{Binding SelectedMedia.Detail}" />
+                <Grid Grid.Column="2" ColumnDefinitions="Auto,70,Auto" ColumnSpacing="6" HorizontalAlignment="Right">
+                  <TextBlock
+                      VerticalAlignment="Center"
+                      Classes="muted"
+                      FontSize="9"
+                      Text="VOLUME" />
+                  <Slider
+                      Grid.Column="1"
+                      AutomationProperties.Name="Playback volume"
+                      Minimum="0"
+                      Maximum="1"
+                      SmallChange="0.05"
+                      ToolTip.Tip="Preview playback volume; export mix is unchanged"
+                      Value="{Binding Volume, ElementName=LivePreview, Mode=TwoWay}" />
+                  <TextBlock
+                      Grid.Column="2"
+                      MaxWidth="160"
+                      VerticalAlignment="Center"
+                      Classes="muted"
+                      FontSize="11"
+                      Text="{Binding SelectedMedia.Detail}"
+                      TextTrimming="CharacterEllipsis" />
+                </Grid>
               </Grid>
             </Grid>
           </Border>
 
           <Border Grid.Row="1" Classes="panel" Padding="10">
-            <StackPanel Spacing="6">
+            <ScrollViewer
+                x:Name="EditPaneScrollViewer"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+              <StackPanel Spacing="6">
               <Grid ColumnDefinitions="Auto,*,Auto">
                 <TextBlock FontSize="11" FontWeight="Bold" Text="EDIT" />
                 <TextBlock
@@ -545,7 +565,12 @@
                 </StackPanel>
               </Grid>
 
-              <Border Padding="10" Background="#151820" CornerRadius="7" IsVisible="{Binding ShowAudioMixer}">
+              <Border
+                  x:Name="AudioMixerPanel"
+                  Padding="10"
+                  Background="#151820"
+                  CornerRadius="7"
+                  IsVisible="{Binding ShowAudioMixer}">
                 <Grid RowDefinitions="Auto,*" RowSpacing="8">
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -610,6 +635,7 @@
                 </Grid>
               </Border>
             </StackPanel>
+            </ScrollViewer>
           </Border>
         </Grid>
       </Grid>
