@@ -7,7 +7,7 @@ using ClipEdit.Media.Probe;
 
 namespace ClipEdit.App.ViewModels;
 
-public sealed class MediaItemViewModel : ViewModelBase
+public sealed class MediaItemViewModel : ViewModelBase, IDisposable
 {
     private ImportedMedia? _media;
     private string _statusText = "Waiting…";
@@ -19,6 +19,11 @@ public sealed class MediaItemViewModel : ViewModelBase
     private MediaTime _playhead;
     private MediaTime _selectionStart;
     private MediaTime _selectionEnd;
+    private double _timelineZoom = 1;
+    private double _timelineViewportStart;
+    private IReadOnlyList<TimelineThumbnailFrame> _timelineThumbnails = [];
+    private bool _isTimelineLoading;
+    private string? _timelineErrorText;
 
     public MediaItemViewModel(string sourcePath)
     {
@@ -235,6 +240,99 @@ public sealed class MediaItemViewModel : ViewModelBase
         }
     }
 
+    public double TimelineZoom
+    {
+        get => _timelineZoom;
+        set
+        {
+            var zoom = TimelineViewportMath.ClampZoom(value);
+            if (!SetProperty(ref _timelineZoom, zoom))
+            {
+                return;
+            }
+
+            TimelineViewportStart = _timelineViewportStart;
+            OnPropertyChanged(nameof(TimelineViewportDurationSeconds));
+            OnPropertyChanged(nameof(TimelineViewportEndSeconds));
+            OnPropertyChanged(nameof(TimelineZoomText));
+            OnPropertyChanged(nameof(TimelineViewportText));
+            OnPropertyChanged(nameof(CanZoomTimelineIn));
+            OnPropertyChanged(nameof(CanZoomTimelineOut));
+        }
+    }
+
+    public double TimelineViewportStart
+    {
+        get => _timelineViewportStart;
+        set
+        {
+            var start = TimelineViewportMath.ClampStart(SourceDurationSeconds, TimelineZoom, value);
+            if (SetProperty(ref _timelineViewportStart, start))
+            {
+                OnPropertyChanged(nameof(TimelineViewportEndSeconds));
+                OnPropertyChanged(nameof(TimelineViewportText));
+            }
+        }
+    }
+
+    public double TimelineViewportDurationSeconds =>
+        TimelineViewportMath.VisibleDuration(SourceDurationSeconds, TimelineZoom);
+
+    public double TimelineViewportEndSeconds =>
+        Math.Min(SourceDurationSeconds, TimelineViewportStart + TimelineViewportDurationSeconds);
+
+    public string TimelineZoomText => $"{TimelineZoom:0.#}×";
+
+    public string TimelineViewportText =>
+        $"{FormatTimestamp(SecondsToDisplayTime(TimelineViewportStart))} – " +
+        $"{FormatTimestamp(SecondsToDisplayTime(TimelineViewportEndSeconds))}";
+
+    public bool CanZoomTimelineIn => TimelineZoom < TimelineViewportMath.MaximumZoom;
+
+    public bool CanZoomTimelineOut => TimelineZoom > 1;
+
+    public IReadOnlyList<TimelineThumbnailFrame> TimelineThumbnails
+    {
+        get => _timelineThumbnails;
+        private set
+        {
+            var previous = _timelineThumbnails;
+            if (!SetProperty(ref _timelineThumbnails, value))
+            {
+                return;
+            }
+
+            foreach (var thumbnail in previous)
+            {
+                thumbnail.Dispose();
+            }
+
+            OnPropertyChanged(nameof(HasTimelineThumbnails));
+        }
+    }
+
+    public bool HasTimelineThumbnails => TimelineThumbnails.Count > 0;
+
+    public bool IsTimelineLoading
+    {
+        get => _isTimelineLoading;
+        internal set => SetProperty(ref _isTimelineLoading, value);
+    }
+
+    public string? TimelineErrorText
+    {
+        get => _timelineErrorText;
+        internal set
+        {
+            if (SetProperty(ref _timelineErrorText, value))
+            {
+                OnPropertyChanged(nameof(HasTimelineError));
+            }
+        }
+    }
+
+    public bool HasTimelineError => !string.IsNullOrWhiteSpace(TimelineErrorText);
+
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorText);
 
     public string StatusText
@@ -408,6 +506,44 @@ public sealed class MediaItemViewModel : ViewModelBase
         }
     }
 
+    public void ZoomTimeline(double factor, double? anchorSeconds = null)
+    {
+        if (!double.IsFinite(factor) || factor <= 0)
+        {
+            return;
+        }
+
+        var anchor = anchorSeconds ??
+                     (PlayheadSeconds >= TimelineViewportStart && PlayheadSeconds <= TimelineViewportEndSeconds
+                         ? PlayheadSeconds
+                         : TimelineViewportStart + (TimelineViewportDurationSeconds / 2));
+        var viewport = TimelineViewportMath.ZoomAround(
+            SourceDurationSeconds,
+            TimelineZoom,
+            TimelineViewportStart,
+            TimelineZoom * factor,
+            anchor);
+        TimelineZoom = viewport.Zoom;
+        TimelineViewportStart = viewport.Start;
+    }
+
+    public void FitTimeline()
+    {
+        TimelineZoom = 1;
+        TimelineViewportStart = 0;
+    }
+
+    internal void SetTimelineThumbnails(IReadOnlyList<TimelineThumbnailFrame> thumbnails)
+    {
+        ArgumentNullException.ThrowIfNull(thumbnails);
+        TimelineThumbnails = thumbnails;
+    }
+
+    public void Dispose()
+    {
+        SetTimelineThumbnails([]);
+    }
+
     public void RestoreEditing(CropRegion crop, SourceEdit edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
@@ -494,6 +630,9 @@ public sealed class MediaItemViewModel : ViewModelBase
         Playhead = Min(new MediaTime(1, 1), duration.Value / 10);
         OnPropertyChanged(nameof(HasEditableDuration));
         OnPropertyChanged(nameof(SourceDurationSeconds));
+        OnPropertyChanged(nameof(TimelineViewportDurationSeconds));
+        OnPropertyChanged(nameof(TimelineViewportEndSeconds));
+        OnPropertyChanged(nameof(TimelineViewportText));
     }
 
     private MediaTime QuantizeSeconds(double seconds)
@@ -540,6 +679,12 @@ public sealed class MediaItemViewModel : ViewModelBase
         return hours > 0
             ? $"{hours}:{minutes:00}:{seconds:00}.{milliseconds:000}"
             : $"{minutes:00}:{seconds:00}.{milliseconds:000}";
+    }
+
+    private static MediaTime SecondsToDisplayTime(double seconds)
+    {
+        var milliseconds = checked((long)Math.Round(Math.Max(0, seconds) * 1_000));
+        return new MediaTime(milliseconds, 1_000);
     }
 
     private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;

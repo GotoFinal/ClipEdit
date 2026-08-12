@@ -1,10 +1,13 @@
 using System.Collections.Immutable;
+using Avalonia.Headless.XUnit;
 using ClipEdit.App.ViewModels;
 using ClipEdit.Application.Export;
 using ClipEdit.Application.Projects;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
+using ClipEdit.Media.Analysis;
 using ClipEdit.Media.Export;
+using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
 using ClipEdit.Persistence.Json;
 
@@ -12,6 +15,9 @@ namespace ClipEdit.App.Tests.ViewModels;
 
 public sealed class MainWindowViewModelTests
 {
+    private static readonly byte[] TinyPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+
     [Fact]
     public async Task Progressive_workspace_reveals_only_when_content_requires_it()
     {
@@ -385,6 +391,54 @@ public sealed class MainWindowViewModelTests
         Assert.EndsWith(".recovery.clipedit", store.SavedPath, StringComparison.OrdinalIgnoreCase);
     }
 
+    [AvaloniaFact]
+    public async Task Timeline_previews_resample_the_current_zoomed_viewport()
+    {
+        var decoder = new RecordingFrameDecoder();
+        using var viewModel = new MainWindowViewModel(new StubProbe(), frameDecoder: decoder);
+
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "timeline-preview.mkv")]);
+        await decoder.WaitForCallCountAsync(12);
+        var media = viewModel.SelectedMedia!;
+
+        Assert.Equal(12, media.TimelineThumbnails.Count);
+        Assert.Equal(2.5, decoder.TimelineTimestamps[0], 3);
+        Assert.Equal(57.5, decoder.TimelineTimestamps[11], 3);
+
+        media.ZoomTimeline(2, anchorSeconds: 30);
+        await decoder.WaitForCallCountAsync(24);
+
+        Assert.Equal(2, media.TimelineZoom);
+        Assert.Equal(15, media.TimelineViewportStart, 3);
+        Assert.Equal(16.25, decoder.TimelineTimestamps[12], 3);
+        Assert.Equal(43.75, decoder.TimelineTimestamps[23], 3);
+    }
+
+    [AvaloniaFact]
+    public async Task Mixer_waveform_regenerates_for_the_zoomed_visible_range()
+    {
+        var renderer = new RecordingWaveformRenderer();
+        using var viewModel = new MainWindowViewModel(
+            new StubProbe(),
+            waveformRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "waveform.mkv")]);
+        var track = Assert.Single(viewModel.AudioTracks);
+
+        viewModel.ToggleAudioMixer();
+        await renderer.WaitForCallCountAsync(1);
+
+        Assert.True(track.HasWaveform);
+        Assert.Equal(MediaTime.Zero, renderer.Ranges[0].Start);
+        Assert.Equal(new MediaTime(60, 1), renderer.Ranges[0].End);
+        Assert.Equal(new PixelSize(1_600, 72), renderer.Sizes[0]);
+
+        track.ZoomTimeline(2, anchorSeconds: 30);
+        await renderer.WaitForCallCountAsync(2);
+
+        Assert.Equal(new MediaTime(15, 1), renderer.Ranges[1].Start);
+        Assert.Equal(new MediaTime(45, 1), renderer.Ranges[1].End);
+    }
+
     private sealed class StubProbe(string? failingPath = null) : IMediaProbe
     {
         public Task<MediaProbeResult> ProbeAsync(
@@ -419,6 +473,75 @@ public sealed class MainWindowViewModelTests
             Plan = plan;
             progress?.Report(new ExportProgress(1, "Complete", TimeSpan.FromSeconds(1)));
             return Task.FromResult(new ExportResult(plan.DestinationPath, 1_024, TimeSpan.FromSeconds(1)));
+        }
+    }
+
+    private sealed class RecordingFrameDecoder : IFrameDecoder
+    {
+        private readonly List<double> _timelineTimestamps = [];
+
+        public IReadOnlyList<double> TimelineTimestamps => _timelineTimestamps;
+
+        public Task<DecodedFrame> DecodeAsync(
+            string sourcePath,
+            int videoStreamIndex,
+            MediaTime timestamp,
+            PixelSize maximumSize,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (maximumSize == new PixelSize(240, 112))
+            {
+                _timelineTimestamps.Add(timestamp.TotalSeconds);
+            }
+            return Task.FromResult(new DecodedFrame(TinyPng, "image/png"));
+        }
+
+        public async Task WaitForCallCountAsync(int count)
+        {
+            var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+            while (_timelineTimestamps.Count < count && DateTime.UtcNow < timeout)
+            {
+                await Task.Delay(10);
+            }
+
+            Assert.True(
+                _timelineTimestamps.Count >= count,
+                $"Expected {count} timeline frame requests, received {_timelineTimestamps.Count}.");
+        }
+    }
+
+    private sealed class RecordingWaveformRenderer : IWaveformRenderer
+    {
+        private readonly List<MediaRange> _ranges = [];
+        private readonly List<PixelSize> _sizes = [];
+
+        public IReadOnlyList<MediaRange> Ranges => _ranges;
+
+        public IReadOnlyList<PixelSize> Sizes => _sizes;
+
+        public Task<WaveformImage> RenderAsync(
+            string sourcePath,
+            int audioStreamIndex,
+            MediaRange visibleRange,
+            PixelSize outputSize,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _ranges.Add(visibleRange);
+            _sizes.Add(outputSize);
+            return Task.FromResult(new WaveformImage(TinyPng, "image/png"));
+        }
+
+        public async Task WaitForCallCountAsync(int count)
+        {
+            var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+            while (_ranges.Count < count && DateTime.UtcNow < timeout)
+            {
+                await Task.Delay(10);
+            }
+
+            Assert.True(_ranges.Count >= count, $"Expected {count} waveform requests, received {_ranges.Count}.");
         }
     }
 

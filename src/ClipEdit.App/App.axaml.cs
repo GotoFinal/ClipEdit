@@ -3,7 +3,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Views;
+using ClipEdit.Media.Analysis;
 using ClipEdit.Media.Export;
+using ClipEdit.Media.FFmpeg.Analysis;
 using ClipEdit.Media.FFmpeg.Export;
 using ClipEdit.Media.FFmpeg.Frames;
 using ClipEdit.Media.FFmpeg.Probe;
@@ -33,6 +35,9 @@ public sealed partial class App : Avalonia.Application
             IFrameDecoder? frameDecoder = ffmpegPath is null
                 ? null
                 : new FfmpegFrameDecoder(ffmpegPath);
+            IWaveformRenderer? waveformRenderer = ffmpegPath is null
+                ? null
+                : new FfmpegWaveformRenderer(ffmpegPath);
             IExportRenderer? exportRenderer = ffmpegPath is null
                 ? null
                 : new FfmpegExportRenderer(ffmpegPath);
@@ -46,7 +51,8 @@ public sealed partial class App : Avalonia.Application
                 frameDecoder,
                 exportRenderer,
                 new JsonProjectStore(),
-                recoveryDirectory);
+                recoveryDirectory,
+                waveformRenderer: waveformRenderer);
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel,

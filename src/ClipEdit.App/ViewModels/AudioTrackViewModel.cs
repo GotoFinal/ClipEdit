@@ -6,7 +6,7 @@ using ClipEdit.Media.Probe;
 
 namespace ClipEdit.App.ViewModels;
 
-public sealed class AudioTrackViewModel : ViewModelBase
+public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 {
     private const double MaximumTimelineOffsetSeconds = 7 * 24 * 60 * 60;
     private readonly MediaTime _timelineQuantum;
@@ -17,6 +17,11 @@ public sealed class AudioTrackViewModel : ViewModelBase
     private double _gainDb;
     private bool _isMuted;
     private MediaTime _timelineOffset;
+    private double _timelineZoom = 1;
+    private double _timelineViewportStart;
+    private TimelineBitmapVisual? _waveform;
+    private bool _isWaveformLoading;
+    private string? _waveformErrorText;
 
     public AudioTrackViewModel(ImportedMedia media, AudioStreamInfo stream)
     {
@@ -73,6 +78,8 @@ public sealed class AudioTrackViewModel : ViewModelBase
     public bool HasRangeEdits => !Edit.IsUnedited;
 
     public double DurationSeconds => Edit.SourceDuration.TotalSeconds;
+
+    public double FrameStepSeconds => _timelineQuantum.TotalSeconds;
 
     public double PlayheadSeconds
     {
@@ -173,6 +180,93 @@ public sealed class AudioTrackViewModel : ViewModelBase
 
     public string OutputDurationText => $"Audible {FormatTimestamp(Edit.OutputDuration)}";
 
+    public double TimelineZoom
+    {
+        get => _timelineZoom;
+        set
+        {
+            var zoom = TimelineViewportMath.ClampZoom(value);
+            if (!SetProperty(ref _timelineZoom, zoom))
+            {
+                return;
+            }
+
+            TimelineViewportStart = _timelineViewportStart;
+            OnPropertyChanged(nameof(TimelineViewportDurationSeconds));
+            OnPropertyChanged(nameof(TimelineViewportEndSeconds));
+            OnPropertyChanged(nameof(TimelineZoomText));
+            OnPropertyChanged(nameof(TimelineViewportText));
+            OnPropertyChanged(nameof(CanZoomTimelineIn));
+            OnPropertyChanged(nameof(CanZoomTimelineOut));
+        }
+    }
+
+    public double TimelineViewportStart
+    {
+        get => _timelineViewportStart;
+        set
+        {
+            var start = TimelineViewportMath.ClampStart(DurationSeconds, TimelineZoom, value);
+            if (SetProperty(ref _timelineViewportStart, start))
+            {
+                OnPropertyChanged(nameof(TimelineViewportEndSeconds));
+                OnPropertyChanged(nameof(TimelineViewportText));
+            }
+        }
+    }
+
+    public double TimelineViewportDurationSeconds =>
+        TimelineViewportMath.VisibleDuration(DurationSeconds, TimelineZoom);
+
+    public double TimelineViewportEndSeconds =>
+        Math.Min(DurationSeconds, TimelineViewportStart + TimelineViewportDurationSeconds);
+
+    public string TimelineZoomText => $"{TimelineZoom:0.#}×";
+
+    public string TimelineViewportText =>
+        $"{FormatTimestamp(SecondsToDisplayTime(TimelineViewportStart))} – " +
+        $"{FormatTimestamp(SecondsToDisplayTime(TimelineViewportEndSeconds))}";
+
+    public bool CanZoomTimelineIn => TimelineZoom < TimelineViewportMath.MaximumZoom;
+
+    public bool CanZoomTimelineOut => TimelineZoom > 1;
+
+    public TimelineBitmapVisual? Waveform
+    {
+        get => _waveform;
+        private set
+        {
+            var previous = _waveform;
+            if (SetProperty(ref _waveform, value))
+            {
+                previous?.Dispose();
+                OnPropertyChanged(nameof(HasWaveform));
+            }
+        }
+    }
+
+    public bool HasWaveform => Waveform is not null;
+
+    public bool IsWaveformLoading
+    {
+        get => _isWaveformLoading;
+        internal set => SetProperty(ref _isWaveformLoading, value);
+    }
+
+    public string? WaveformErrorText
+    {
+        get => _waveformErrorText;
+        internal set
+        {
+            if (SetProperty(ref _waveformErrorText, value))
+            {
+                OnPropertyChanged(nameof(HasWaveformError));
+            }
+        }
+    }
+
+    public bool HasWaveformError => !string.IsNullOrWhiteSpace(WaveformErrorText);
+
     public bool RemoveSelection()
     {
         if (!CanRemoveSelection)
@@ -193,6 +287,43 @@ public sealed class AudioTrackViewModel : ViewModelBase
         IsMuted = false;
         TimelineOffset = MediaTime.Zero;
         RaiseSelectionChanged();
+    }
+
+    public void ZoomTimeline(double factor, double? anchorSeconds = null)
+    {
+        if (!double.IsFinite(factor) || factor <= 0)
+        {
+            return;
+        }
+
+        var anchor = anchorSeconds ??
+                     (PlayheadSeconds >= TimelineViewportStart && PlayheadSeconds <= TimelineViewportEndSeconds
+                         ? PlayheadSeconds
+                         : TimelineViewportStart + (TimelineViewportDurationSeconds / 2));
+        var viewport = TimelineViewportMath.ZoomAround(
+            DurationSeconds,
+            TimelineZoom,
+            TimelineViewportStart,
+            TimelineZoom * factor,
+            anchor);
+        TimelineZoom = viewport.Zoom;
+        TimelineViewportStart = viewport.Start;
+    }
+
+    public void FitTimeline()
+    {
+        TimelineZoom = 1;
+        TimelineViewportStart = 0;
+    }
+
+    internal void SetWaveform(TimelineBitmapVisual? waveform)
+    {
+        Waveform = waveform;
+    }
+
+    public void Dispose()
+    {
+        SetWaveform(null);
     }
 
     public void Restore(SourceEdit edit, double gainDb, bool isMuted)
@@ -278,5 +409,11 @@ public sealed class AudioTrackViewModel : ViewModelBase
         var seconds = (totalMilliseconds / 1_000) % 60;
         var milliseconds = totalMilliseconds % 1_000;
         return $"{minutes:00}:{seconds:00}.{milliseconds:000}";
+    }
+
+    private static MediaTime SecondsToDisplayTime(double seconds)
+    {
+        var milliseconds = checked((long)Math.Round(Math.Max(0, seconds) * 1_000));
+        return new MediaTime(milliseconds, 1_000);
     }
 }

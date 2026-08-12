@@ -406,24 +406,57 @@
               </Grid>
 
               <Border
-                  Height="54"
+                  Height="104"
                   Background="#20242D"
                   CornerRadius="7"
                   IsVisible="{Binding ShowRangeStrip}">
-                <Grid Margin="8" ColumnDefinitions="90,*">
-                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="SOURCE RANGE" />
+                <Grid Margin="8" ColumnDefinitions="90,*" RowDefinitions="24,*" RowSpacing="4">
+                  <StackPanel Grid.RowSpan="2" VerticalAlignment="Center" Spacing="3">
+                    <TextBlock Classes="muted" FontSize="11" Text="SOURCE RANGE" />
+                    <TextBlock Classes="muted" FontSize="9" Text="{Binding SelectedMedia.TimelineViewportText}" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Classes="muted"
+                        FontSize="9"
+                        IsVisible="{Binding SelectedMedia.IsTimelineLoading}"
+                        Text="Generating timeline previews…" />
+                    <Button
+                        Grid.Column="1"
+                        Padding="8,1"
+                        Classes="secondary"
+                        Click="TimelineZoomOut_Click"
+                        Content="−"
+                        IsEnabled="{Binding SelectedMedia.CanZoomTimelineOut}"
+                        ToolTip.Tip="Zoom out" />
+                    <TextBlock Grid.Column="2" MinWidth="35" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" Text="{Binding SelectedMedia.TimelineZoomText}" />
+                    <Button
+                        Grid.Column="3"
+                        Padding="8,1"
+                        Classes="secondary"
+                        Click="TimelineZoomIn_Click"
+                        Content="+"
+                        IsEnabled="{Binding SelectedMedia.CanZoomTimelineIn}"
+                        ToolTip.Tip="Zoom in" />
+                    <Button Grid.Column="4" Padding="8,1" Classes="secondary" Click="TimelineFit_Click" Content="Fit" IsEnabled="{Binding SelectedMedia.CanZoomTimelineOut}" />
+                  </Grid>
                   <controls:SourceRangeCanvas
                       Grid.Column="1"
-                      Margin="8,4"
+                      Grid.Row="1"
+                      Margin="8,0"
                       AutomationProperties.Name="Kept source ranges and cut selection"
-                      AutomationProperties.HelpText="Drag either white selection edge for live trim preview. After selecting an edge, use Left or Right for one-frame adjustment and Shift for ten frames."
+                      AutomationProperties.HelpText="Wheel zooms around the pointer. Shift wheel or middle drag pans. Drag either white selection edge for live trim preview."
                       Duration="{Binding SelectedMedia.SourceDurationSeconds}"
                       KeptRanges="{Binding SelectedMedia.KeptRanges}"
                       Playhead="{Binding SelectedMedia.PlayheadSeconds, Mode=TwoWay}"
                       SelectionEnd="{Binding SelectedMedia.SelectionEndSeconds, Mode=TwoWay}"
                       SelectionStart="{Binding SelectedMedia.SelectionStartSeconds, Mode=TwoWay}"
                       Step="{Binding SelectedMedia.FrameStepSeconds}"
-                      ToolTip.Tip="Drag a white edge to adjust it with live preview; arrow keys nudge the active edge by one frame" />
+                      ThumbnailFrames="{Binding SelectedMedia.TimelineThumbnails}"
+                      ToolTip.Tip="Wheel to zoom · Shift+wheel or middle-drag to pan · drag white edges to trim"
+                      ViewportStart="{Binding SelectedMedia.TimelineViewportStart, Mode=TwoWay}"
+                      Zoom="{Binding SelectedMedia.TimelineZoom, Mode=TwoWay}" />
                 </Grid>
               </Border>
 
@@ -524,7 +557,7 @@
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:AudioTrackViewModel">
                           <Border Margin="0,0,0,7" Padding="9" Background="#20242D" CornerRadius="6">
-                            <Grid RowDefinitions="Auto,34,Auto" RowSpacing="7">
+                            <Grid RowDefinitions="Auto,Auto,64,Auto" RowSpacing="7">
                               <Grid ColumnDefinitions="*,Auto,72,Auto,150,58" ColumnSpacing="8">
                                 <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" IsVisible="{Binding IsExternal}" Text="Start (s)" />
@@ -533,15 +566,32 @@
                                 <Slider Grid.Column="4" Minimum="-60" Maximum="12" Value="{Binding GainDb, Mode=TwoWay}" />
                                 <TextBlock Grid.Column="5" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Text="{Binding GainText}" />
                               </Grid>
+                              <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
+                                <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                                  <TextBlock Classes="muted" FontSize="9" Text="{Binding TimelineViewportText}" />
+                                  <TextBlock Classes="muted" FontSize="9" IsVisible="{Binding IsWaveformLoading}" Text="Generating waveform…" />
+                                  <TextBlock Foreground="#E88E8E" FontSize="9" IsVisible="{Binding HasWaveformError}" Text="Waveform unavailable" ToolTip.Tip="{Binding WaveformErrorText}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Padding="8,1" Classes="secondary" Click="AudioTimelineZoomOut_Click" Content="−" IsEnabled="{Binding CanZoomTimelineOut}" ToolTip.Tip="Zoom waveform out" />
+                                <TextBlock Grid.Column="2" MinWidth="35" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" Text="{Binding TimelineZoomText}" />
+                                <Button Grid.Column="3" Padding="8,1" Classes="secondary" Click="AudioTimelineZoomIn_Click" Content="+" IsEnabled="{Binding CanZoomTimelineIn}" ToolTip.Tip="Zoom waveform in" />
+                                <Button Grid.Column="4" Padding="8,1" Classes="secondary" Click="AudioTimelineFit_Click" Content="Fit" IsEnabled="{Binding CanZoomTimelineOut}" />
+                              </Grid>
                               <controls:SourceRangeCanvas
-                                  Grid.Row="1"
+                                  Grid.Row="2"
                                   AutomationProperties.Name="Audio audible ranges and silence selection"
+                                  AutomationProperties.HelpText="Wheel zooms the waveform around the pointer. Shift wheel or middle drag pans."
                                   Duration="{Binding DurationSeconds}"
                                   KeptRanges="{Binding KeptRanges}"
                                   Playhead="{Binding PlayheadSeconds, Mode=TwoWay}"
                                   SelectionEnd="{Binding SelectionEndSeconds, Mode=TwoWay}"
-                                  SelectionStart="{Binding SelectionStartSeconds, Mode=TwoWay}" />
-                              <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                                  SelectionStart="{Binding SelectionStartSeconds, Mode=TwoWay}"
+                                  Step="{Binding FrameStepSeconds}"
+                                  ToolTip.Tip="Wheel to zoom · Shift+wheel or middle-drag to pan · waveform follows the visible range"
+                                  ViewportStart="{Binding TimelineViewportStart, Mode=TwoWay}"
+                                  Waveform="{Binding Waveform}"
+                                  Zoom="{Binding TimelineZoom, Mode=TwoWay}" />
+                              <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
                                 <Button
                                     Classes="secondary"
                                     Click="RemoveAudioSelection_Click"

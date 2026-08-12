@@ -275,6 +275,27 @@ public sealed partial class MainWindow : Window
         ViewModel?.SelectedMedia?.ResetCrop();
     }
 
+    private void TimelineZoomOut_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.ZoomTimeline(0.5);
+    }
+
+    private void TimelineZoomIn_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.ZoomTimeline(2);
+    }
+
+    private void TimelineFit_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.FitTimeline();
+    }
+
     private async void RemoveSelectedMedia_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
@@ -309,6 +330,33 @@ public sealed partial class MainWindow : Window
         if (sender is Control { DataContext: AudioTrackViewModel track })
         {
             track.Reset();
+        }
+    }
+
+    private static void AudioTimelineZoomOut_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is Control { DataContext: AudioTrackViewModel track })
+        {
+            track.ZoomTimeline(0.5);
+        }
+    }
+
+    private static void AudioTimelineZoomIn_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is Control { DataContext: AudioTrackViewModel track })
+        {
+            track.ZoomTimeline(2);
+        }
+    }
+
+    private static void AudioTimelineFit_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is Control { DataContext: AudioTrackViewModel track })
+        {
+            track.FitTimeline();
         }
     }
 

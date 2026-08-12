@@ -8,6 +8,7 @@ using ClipEdit.Application.Projects;
 using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
+using ClipEdit.Media.Analysis;
 using ClipEdit.Media.Export;
 using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
@@ -24,6 +25,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly HashSet<string> _knownPaths = new(PathComparer);
     private readonly ImportMediaUseCase? _importMedia;
     private readonly IFrameDecoder? _frameDecoder;
+    private readonly IWaveformRenderer? _waveformRenderer;
     private readonly IExportRenderer? _exportRenderer;
     private readonly SingleSourceExportPlanner _exportPlanner = new();
     private readonly IProjectStore? _projectStore;
@@ -36,6 +38,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private Bitmap? _previewImage;
     private string? _previewErrorText;
     private CancellationTokenSource? _previewCancellation;
+    private CancellationTokenSource? _timelineAnalysisCancellation;
+    private readonly Dictionary<AudioTrackViewModel, CancellationTokenSource> _waveformCancellations = [];
+    private readonly SemaphoreSlim _analysisSlots = new(initialCount: 2, maxCount: 2);
     private CancellationTokenSource? _exportCancellation;
     private CancellationTokenSource? _autosaveCancellation;
     private ExportPreset _selectedExportPreset = BuiltInExportPresets.Mp4Compatible;
@@ -55,9 +60,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         IExportRenderer? exportRenderer = null,
         IProjectStore? projectStore = null,
         string? recoveryDirectory = null,
-        TimeSpan? autosaveDelay = null)
+        TimeSpan? autosaveDelay = null,
+        IWaveformRenderer? waveformRenderer = null)
     {
         _frameDecoder = frameDecoder;
+        _waveformRenderer = waveformRenderer;
         _exportRenderer = exportRenderer;
         _projectStore = projectStore;
         _recoveryDirectory = recoveryDirectory;
@@ -166,6 +173,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             if (_selectedMedia is not null)
             {
                 _selectedMedia.PropertyChanged -= OnSelectedMediaPropertyChanged;
+                _selectedMedia.SetTimelineThumbnails([]);
             }
 
             if (SetProperty(ref _selectedMedia, value))
@@ -177,6 +185,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
                 RaiseWorkspaceStateChanged();
                 StartPreviewRefresh(value, debounce: false, clearExisting: true);
+                StartTimelineAnalysis(value, debounce: false);
                 OnPropertyChanged(nameof(CanRemoveSelectedMedia));
             }
         }
@@ -590,6 +599,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _isAudioMixerExpanded = !_isAudioMixerExpanded;
         OnPropertyChanged(nameof(ShowAudioMixer));
         OnPropertyChanged(nameof(AudioMixerButtonText));
+        if (ShowAudioMixer)
+        {
+            foreach (var track in AudioTracks)
+            {
+                StartWaveformAnalysis(track, debounce: false);
+            }
+        }
     }
 
     public async Task<bool> NewProjectAsync(
@@ -643,10 +659,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                      .ToArray())
         {
             audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
+            CancelWaveformAnalysis(audioTrack);
+            audioTrack.Dispose();
             AudioTracks.Remove(audioTrack);
         }
 
         MediaItems.Remove(mediaItem);
+        mediaItem.Dispose();
         _knownPaths.Remove(mediaItem.SourcePath);
         _unavailableProjectMedia.RemoveAll(saved =>
             PathComparer.Equals(saved.SourcePath, mediaItem.SourcePath));
@@ -732,6 +751,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             foreach (var audioTrack in AudioTracks)
             {
                 audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
+                CancelWaveformAnalysis(audioTrack);
+                audioTrack.Dispose();
+            }
+
+            foreach (var mediaItem in MediaItems)
+            {
+                mediaItem.Dispose();
             }
 
             AudioTracks.Clear();
@@ -841,11 +867,20 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         foreach (var audioTrack in AudioTracks)
         {
             audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
+            CancelWaveformAnalysis(audioTrack);
+            audioTrack.Dispose();
+        }
+
+        foreach (var mediaItem in MediaItems)
+        {
+            mediaItem.Dispose();
         }
 
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
         _previewCancellation = null;
+        _timelineAnalysisCancellation?.Cancel();
+        _timelineAnalysisCancellation = null;
         _exportCancellation?.Cancel();
         _exportCancellation?.Dispose();
         _exportCancellation = null;
@@ -886,6 +921,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         foreach (var audioTrack in AudioTracks)
         {
             audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
+            CancelWaveformAnalysis(audioTrack);
+            audioTrack.Dispose();
+        }
+
+        foreach (var mediaItem in MediaItems)
+        {
+            mediaItem.Dispose();
         }
 
         AudioTracks.Clear();
@@ -921,6 +963,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             RaiseExportStateChanged();
         }
+
+        if (eventArgs.PropertyName is nameof(MediaItemViewModel.TimelineZoom) or
+            nameof(MediaItemViewModel.TimelineViewportStart))
+        {
+            StartTimelineAnalysis((MediaItemViewModel?)sender, debounce: true);
+        }
     }
 
     private void OnAudioTrackPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -933,6 +981,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             MarkProjectDirty();
             RaiseExportStateChanged();
             OnPropertyChanged(nameof(PreviewAudioTracks));
+        }
+
+        if (eventArgs.PropertyName is nameof(AudioTrackViewModel.TimelineZoom) or
+            nameof(AudioTrackViewModel.TimelineViewportStart))
+        {
+            StartWaveformAnalysis((AudioTrackViewModel)sender!, debounce: true);
         }
     }
 
@@ -965,6 +1019,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         RaiseWorkspaceStateChanged();
+        if (ShowAudioMixer)
+        {
+            foreach (var track in AudioTracks.Where(track => !track.HasWaveform))
+            {
+                StartWaveformAnalysis(track, debounce: false);
+            }
+        }
     }
 
     private void RaiseExportStateChanged()
@@ -1256,5 +1317,227 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 IsPreviewLoading = false;
             }
         }
+    }
+
+    private void StartTimelineAnalysis(MediaItemViewModel? mediaItem, bool debounce)
+    {
+        _timelineAnalysisCancellation?.Cancel();
+        _timelineAnalysisCancellation = null;
+        if (mediaItem?.Media?.Probe.VideoStreams.FirstOrDefault() is null || _frameDecoder is null)
+        {
+            return;
+        }
+
+        var request = new CancellationTokenSource();
+        _timelineAnalysisCancellation = request;
+        _ = RefreshTimelineAnalysisAsync(mediaItem, request, debounce);
+    }
+
+    private async Task RefreshTimelineAnalysisAsync(
+        MediaItemViewModel mediaItem,
+        CancellationTokenSource request,
+        bool debounce)
+    {
+        const int thumbnailCount = 12;
+        var cancellationToken = request.Token;
+        var thumbnails = new List<TimelineThumbnailFrame>(thumbnailCount);
+        try
+        {
+            if (debounce)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(220), cancellationToken);
+            }
+
+            var video = mediaItem.Media!.Probe.VideoStreams.First();
+            var start = mediaItem.TimelineViewportStart;
+            var duration = mediaItem.TimelineViewportDurationSeconds;
+            if (duration <= 0)
+            {
+                return;
+            }
+
+            mediaItem.IsTimelineLoading = true;
+            mediaItem.TimelineErrorText = null;
+            var cellDuration = duration / thumbnailCount;
+            for (var index = 0; index < thumbnailCount; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var cellStart = start + (index * cellDuration);
+                var cellEnd = Math.Min(mediaItem.SourceDurationSeconds, cellStart + cellDuration);
+                if (cellEnd <= cellStart)
+                {
+                    break;
+                }
+
+                var timestamp = cellStart + ((cellEnd - cellStart) / 2);
+                await _analysisSlots.WaitAsync(cancellationToken);
+                DecodedFrame decodedFrame;
+                try
+                {
+                    decodedFrame = await _frameDecoder!.DecodeAsync(
+                        mediaItem.SourcePath,
+                        video.Index,
+                        ToMediaTime(timestamp),
+                        new PixelSize(240, 112),
+                        cancellationToken);
+                }
+                finally
+                {
+                    _analysisSlots.Release();
+                }
+                await using var stream = new MemoryStream(decodedFrame.EncodedImage.ToArray(), writable: false);
+                cancellationToken.ThrowIfCancellationRequested();
+                thumbnails.Add(new TimelineThumbnailFrame(cellStart, cellEnd, timestamp, new Bitmap(stream)));
+            }
+
+            if (ReferenceEquals(_timelineAnalysisCancellation, request) &&
+                ReferenceEquals(SelectedMedia, mediaItem))
+            {
+                mediaItem.SetTimelineThumbnails(thumbnails.ToArray());
+                thumbnails.Clear();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A new source or viewport superseded this thumbnail request.
+        }
+        catch (FrameDecodeException exception)
+        {
+            if (ReferenceEquals(_timelineAnalysisCancellation, request))
+            {
+                mediaItem.TimelineErrorText = exception.Message;
+            }
+        }
+        catch (Exception exception)
+        {
+            if (ReferenceEquals(_timelineAnalysisCancellation, request))
+            {
+                mediaItem.TimelineErrorText = $"Could not generate timeline previews: {exception.Message}";
+            }
+        }
+        finally
+        {
+            foreach (var thumbnail in thumbnails)
+            {
+                thumbnail.Dispose();
+            }
+
+            if (ReferenceEquals(_timelineAnalysisCancellation, request))
+            {
+                mediaItem.IsTimelineLoading = false;
+                _timelineAnalysisCancellation = null;
+            }
+
+            request.Dispose();
+        }
+    }
+
+    private void StartWaveformAnalysis(AudioTrackViewModel track, bool debounce)
+    {
+        if (_waveformRenderer is null)
+        {
+            return;
+        }
+
+        CancelWaveformAnalysis(track);
+        var request = new CancellationTokenSource();
+        _waveformCancellations.Add(track, request);
+        _ = RefreshWaveformAsync(track, request, debounce);
+    }
+
+    private async Task RefreshWaveformAsync(
+        AudioTrackViewModel track,
+        CancellationTokenSource request,
+        bool debounce)
+    {
+        var cancellationToken = request.Token;
+        TimelineBitmapVisual? visual = null;
+        try
+        {
+            if (debounce)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(220), cancellationToken);
+            }
+
+            var start = track.TimelineViewportStart;
+            var end = track.TimelineViewportEndSeconds;
+            if (end <= start)
+            {
+                return;
+            }
+
+            track.IsWaveformLoading = true;
+            track.WaveformErrorText = null;
+            await _analysisSlots.WaitAsync(cancellationToken);
+            WaveformImage image;
+            try
+            {
+                image = await _waveformRenderer!.RenderAsync(
+                    track.SourcePath,
+                    track.StreamIndex,
+                    new MediaRange(ToMediaTime(start), ToMediaTime(end)),
+                    new PixelSize(1_600, 72),
+                    cancellationToken);
+            }
+            finally
+            {
+                _analysisSlots.Release();
+            }
+            await using var stream = new MemoryStream(image.EncodedImage.ToArray(), writable: false);
+            cancellationToken.ThrowIfCancellationRequested();
+            visual = new TimelineBitmapVisual(start, end, new Bitmap(stream));
+            if (_waveformCancellations.TryGetValue(track, out var activeRequest) &&
+                ReferenceEquals(activeRequest, request))
+            {
+                track.SetWaveform(visual);
+                visual = null;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A newer waveform viewport superseded this request.
+        }
+        catch (WaveformRenderException exception)
+        {
+            if (_waveformCancellations.TryGetValue(track, out var activeRequest) &&
+                ReferenceEquals(activeRequest, request))
+            {
+                track.WaveformErrorText = exception.Message;
+            }
+        }
+        catch (Exception exception)
+        {
+            if (_waveformCancellations.TryGetValue(track, out var activeRequest) &&
+                ReferenceEquals(activeRequest, request))
+            {
+                track.WaveformErrorText = $"Could not generate waveform: {exception.Message}";
+            }
+        }
+        finally
+        {
+            visual?.Dispose();
+            if (_waveformCancellations.TryGetValue(track, out var activeRequest) &&
+                ReferenceEquals(activeRequest, request))
+            {
+                track.IsWaveformLoading = false;
+                _waveformCancellations.Remove(track);
+            }
+
+            request.Dispose();
+        }
+    }
+
+    private void CancelWaveformAnalysis(AudioTrackViewModel track)
+    {
+        if (_waveformCancellations.Remove(track, out var request))
+        {
+            request.Cancel();
+        }
+    }
+
+    private static MediaTime ToMediaTime(double seconds)
+    {
+        var microseconds = checked((long)Math.Round(Math.Max(0, seconds) * 1_000_000));
+        return new MediaTime(microseconds, 1_000_000);
     }
 }

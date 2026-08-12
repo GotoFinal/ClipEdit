@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
+using ClipEdit.App.ViewModels;
 using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.App.Controls;
@@ -31,8 +32,21 @@ public sealed class SourceRangeCanvas : Control
     public static readonly StyledProperty<double> StepProperty =
         AvaloniaProperty.Register<SourceRangeCanvas, double>(nameof(Step), 1d / 30);
 
+    public static readonly StyledProperty<double> ZoomProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, double>(nameof(Zoom), 1d);
+
+    public static readonly StyledProperty<double> ViewportStartProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, double>(nameof(ViewportStart));
+
+    public static readonly StyledProperty<IReadOnlyList<TimelineThumbnailFrame>?> ThumbnailFramesProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, IReadOnlyList<TimelineThumbnailFrame>?>(nameof(ThumbnailFrames));
+
+    public static readonly StyledProperty<TimelineBitmapVisual?> WaveformProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, TimelineBitmapVisual?>(nameof(Waveform));
+
     private static readonly IBrush TrackBrush = new ImmutableSolidColorBrush(0xFF252936);
-    private static readonly IBrush KeptBrush = new ImmutableSolidColorBrush(0xFF5B45BE);
+    private static readonly IBrush KeptBrush = new ImmutableSolidColorBrush(0x665B45BE);
+    private static readonly IBrush RemovedBrush = new ImmutableSolidColorBrush(0xB8151820);
     private static readonly IBrush SelectionBrush = new ImmutableSolidColorBrush(0x41FFFFFF);
     private static readonly IPen SelectionPen = new Pen(0xFFD8CCFF, 1).ToImmutable();
     private static readonly IPen PlayheadPen = new Pen(0xFFF4F5FA, 2).ToImmutable();
@@ -45,6 +59,9 @@ public sealed class SourceRangeCanvas : Control
     private double _dragEnd;
     private SourceRangeDragMode _dragMode;
     private SourceRangeDragMode _activeEdge;
+    private bool _isPanning;
+    private double _panStartX;
+    private double _panViewportStart;
 
     static SourceRangeCanvas()
     {
@@ -53,7 +70,11 @@ public sealed class SourceRangeCanvas : Control
             DurationProperty,
             PlayheadProperty,
             SelectionStartProperty,
-            SelectionEndProperty);
+            SelectionEndProperty,
+            ZoomProperty,
+            ViewportStartProperty,
+            ThumbnailFramesProperty,
+            WaveformProperty);
     }
 
     public SourceRangeCanvas()
@@ -98,6 +119,30 @@ public sealed class SourceRangeCanvas : Control
         set => SetValue(StepProperty, value);
     }
 
+    public double Zoom
+    {
+        get => GetValue(ZoomProperty);
+        set => SetValue(ZoomProperty, value);
+    }
+
+    public double ViewportStart
+    {
+        get => GetValue(ViewportStartProperty);
+        set => SetValue(ViewportStartProperty, value);
+    }
+
+    public IReadOnlyList<TimelineThumbnailFrame>? ThumbnailFrames
+    {
+        get => GetValue(ThumbnailFramesProperty);
+        set => SetValue(ThumbnailFramesProperty, value);
+    }
+
+    public TimelineBitmapVisual? Waveform
+    {
+        get => GetValue(WaveformProperty);
+        set => SetValue(WaveformProperty, value);
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -108,12 +153,23 @@ public sealed class SourceRangeCanvas : Control
             return;
         }
 
+        DrawAnalysisVisuals(context);
+
         foreach (var range in KeptRanges ?? [])
         {
-            var left = TimeToX(range.Start.TotalSeconds);
-            var right = TimeToX(range.End.TotalSeconds);
-            context.FillRectangle(KeptBrush, new Rect(left, 0, Math.Max(0, right - left), Bounds.Height), 5);
+            var start = Math.Max(range.Start.TotalSeconds, EffectiveViewportStart);
+            var end = Math.Min(range.End.TotalSeconds, EffectiveViewportEnd);
+            if (end <= start)
+            {
+                continue;
+            }
+
+            var left = TimeToX(start);
+            var right = TimeToX(end);
+            context.FillRectangle(KeptBrush, new Rect(left, 0, right - left, Bounds.Height), 5);
         }
+
+        DrawRemovedRanges(context);
 
         var selectionLeft = TimeToX(Math.Min(SelectionStart, SelectionEnd));
         var selectionRight = TimeToX(Math.Max(SelectionStart, SelectionEnd));
@@ -122,24 +178,46 @@ public sealed class SourceRangeCanvas : Control
             var selection = new Rect(selectionLeft, 1, selectionRight - selectionLeft, Math.Max(0, Bounds.Height - 2));
             context.FillRectangle(SelectionBrush, selection, 4);
             context.DrawRectangle(null, SelectionPen, selection, 4);
-            context.FillRectangle(
-                EdgeHandleBrush,
-                new Rect(selectionLeft - (EdgeHandleWidth / 2), 0, EdgeHandleWidth, Bounds.Height),
-                2);
-            context.FillRectangle(
-                EdgeHandleBrush,
-                new Rect(selectionRight - (EdgeHandleWidth / 2), 0, EdgeHandleWidth, Bounds.Height),
-                2);
+            if (IsVisibleTime(Math.Min(SelectionStart, SelectionEnd)))
+            {
+                context.FillRectangle(
+                    EdgeHandleBrush,
+                    new Rect(selectionLeft - (EdgeHandleWidth / 2), 0, EdgeHandleWidth, Bounds.Height),
+                    2);
+            }
+
+            if (IsVisibleTime(Math.Max(SelectionStart, SelectionEnd)))
+            {
+                context.FillRectangle(
+                    EdgeHandleBrush,
+                    new Rect(selectionRight - (EdgeHandleWidth / 2), 0, EdgeHandleWidth, Bounds.Height),
+                    2);
+            }
         }
 
-        var playheadX = TimeToX(Playhead);
-        context.DrawLine(PlayheadPen, new Point(playheadX, 0), new Point(playheadX, Bounds.Height));
+        if (IsVisibleTime(Playhead))
+        {
+            var playheadX = TimeToX(Playhead);
+            context.DrawLine(PlayheadPen, new Point(playheadX, 0), new Point(playheadX, Bounds.Height));
+        }
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs eventArgs)
     {
         base.OnPointerPressed(eventArgs);
-        if (!eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed || Duration <= 0)
+        var point = eventArgs.GetCurrentPoint(this);
+        if (point.Properties.IsMiddleButtonPressed && Duration > 0 && EffectiveZoom > 1)
+        {
+            Focus();
+            _isPanning = true;
+            _panStartX = eventArgs.GetPosition(this).X;
+            _panViewportStart = EffectiveViewportStart;
+            eventArgs.Pointer.Capture(this);
+            eventArgs.Handled = true;
+            return;
+        }
+
+        if (!point.Properties.IsLeftButtonPressed || Duration <= 0)
         {
             return;
         }
@@ -150,8 +228,8 @@ public sealed class SourceRangeCanvas : Control
         var normalizedEnd = Math.Max(SelectionStart, SelectionEnd);
         _dragMode = GetDragMode(
             pointerX,
-            TimeToX(normalizedStart),
-            TimeToX(normalizedEnd));
+            IsVisibleTime(normalizedStart) ? TimeToX(normalizedStart) : double.NegativeInfinity,
+            IsVisibleTime(normalizedEnd) ? TimeToX(normalizedEnd) : double.PositiveInfinity);
         _activeEdge = _dragMode is SourceRangeDragMode.StartEdge or SourceRangeDragMode.EndEdge
             ? _dragMode
             : SourceRangeDragMode.None;
@@ -166,6 +244,16 @@ public sealed class SourceRangeCanvas : Control
     protected override void OnPointerMoved(PointerEventArgs eventArgs)
     {
         base.OnPointerMoved(eventArgs);
+        if (_isPanning && eventArgs.Pointer.Captured == this)
+        {
+            var deltaX = eventArgs.GetPosition(this).X - _panStartX;
+            SetCurrentValue(
+                ViewportStartProperty,
+                ClampViewportStart(_panViewportStart - (deltaX * EffectiveViewportDuration / Math.Max(1, Bounds.Width))));
+            eventArgs.Handled = true;
+            return;
+        }
+
         if (_dragAnchor is null ||
             _dragMode == SourceRangeDragMode.None ||
             eventArgs.Pointer.Captured != this)
@@ -188,6 +276,7 @@ public sealed class SourceRangeCanvas : Control
 
         _dragAnchor = null;
         _dragMode = SourceRangeDragMode.None;
+        _isPanning = false;
         eventArgs.Handled = true;
     }
 
@@ -196,6 +285,38 @@ public sealed class SourceRangeCanvas : Control
         base.OnPointerCaptureLost(eventArgs);
         _dragAnchor = null;
         _dragMode = SourceRangeDragMode.None;
+        _isPanning = false;
+    }
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs eventArgs)
+    {
+        base.OnPointerWheelChanged(eventArgs);
+        if (Duration <= 0 || eventArgs.Delta.Y == 0)
+        {
+            return;
+        }
+
+        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) && EffectiveZoom > 1)
+        {
+            SetCurrentValue(
+                ViewportStartProperty,
+                ClampViewportStart(EffectiveViewportStart - (eventArgs.Delta.Y * EffectiveViewportDuration * 0.12)));
+        }
+        else
+        {
+            var pointerX = eventArgs.GetPosition(this).X;
+            var anchor = XToTime(pointerX);
+            var requestedZoom = Math.Clamp(
+                EffectiveZoom * Math.Pow(1.25, eventArgs.Delta.Y),
+                1,
+                TimelineViewportMath.MaximumZoom);
+            var relative = Math.Clamp(pointerX / Math.Max(1, Bounds.Width), 0, 1);
+            var newDuration = Duration / requestedZoom;
+            SetCurrentValue(ZoomProperty, requestedZoom);
+            SetCurrentValue(ViewportStartProperty, ClampViewportStart(anchor - (relative * newDuration), requestedZoom));
+        }
+
+        eventArgs.Handled = true;
     }
 
     protected override void OnKeyDown(KeyEventArgs eventArgs)
@@ -288,12 +409,137 @@ public sealed class SourceRangeCanvas : Control
 
     private double TimeToX(double seconds)
     {
-        return Math.Clamp(seconds / Duration, 0, 1) * Bounds.Width;
+        return ((seconds - EffectiveViewportStart) / EffectiveViewportDuration) * Bounds.Width;
     }
 
     private double XToTime(double x)
     {
-        return Math.Clamp(x / Math.Max(1, Bounds.Width), 0, 1) * Duration;
+        return EffectiveViewportStart +
+               (Math.Clamp(x / Math.Max(1, Bounds.Width), 0, 1) * EffectiveViewportDuration);
+    }
+
+    private double EffectiveZoom => Math.Clamp(double.IsFinite(Zoom) ? Zoom : 1, 1, TimelineViewportMath.MaximumZoom);
+
+    private double EffectiveViewportDuration => Duration / EffectiveZoom;
+
+    private double EffectiveViewportStart => ClampViewportStart(ViewportStart);
+
+    private double EffectiveViewportEnd => EffectiveViewportStart + EffectiveViewportDuration;
+
+    private bool IsVisibleTime(double seconds) =>
+        seconds >= EffectiveViewportStart && seconds <= EffectiveViewportEnd;
+
+    private double ClampViewportStart(double start, double? zoom = null)
+    {
+        var effectiveZoom = Math.Clamp(zoom ?? EffectiveZoom, 1, TimelineViewportMath.MaximumZoom);
+        return Math.Clamp(
+            double.IsFinite(start) ? start : 0,
+            0,
+            Math.Max(0, Duration - (Duration / effectiveZoom)));
+    }
+
+    private void DrawAnalysisVisuals(DrawingContext context)
+    {
+        using var clip = context.PushClip(new Rect(Bounds.Size));
+        if (Waveform is { } waveform)
+        {
+            DrawBitmapRange(context, waveform.Image, waveform.Start, waveform.End);
+        }
+
+        foreach (var thumbnail in ThumbnailFrames ?? [])
+        {
+            var start = Math.Max(thumbnail.Start, EffectiveViewportStart);
+            var end = Math.Min(thumbnail.End, EffectiveViewportEnd);
+            if (end <= start)
+            {
+                continue;
+            }
+
+            var destination = new Rect(
+                TimeToX(start),
+                0,
+                TimeToX(end) - TimeToX(start),
+                Bounds.Height);
+            var source = CreateCoverSourceRect(
+                thumbnail.Image.PixelSize.Width,
+                thumbnail.Image.PixelSize.Height,
+                destination.Width,
+                destination.Height);
+            context.DrawImage(thumbnail.Image, source, destination);
+        }
+    }
+
+    private void DrawBitmapRange(DrawingContext context, Avalonia.Media.Imaging.Bitmap image, double start, double end)
+    {
+        var visibleStart = Math.Max(start, EffectiveViewportStart);
+        var visibleEnd = Math.Min(end, EffectiveViewportEnd);
+        if (visibleEnd <= visibleStart)
+        {
+            return;
+        }
+
+        var imageWidth = image.PixelSize.Width;
+        var sourceLeft = ((visibleStart - start) / (end - start)) * imageWidth;
+        var sourceRight = ((visibleEnd - start) / (end - start)) * imageWidth;
+        context.DrawImage(
+            image,
+            new Rect(sourceLeft, 0, sourceRight - sourceLeft, image.PixelSize.Height),
+            new Rect(
+                TimeToX(visibleStart),
+                0,
+                TimeToX(visibleEnd) - TimeToX(visibleStart),
+                Bounds.Height));
+    }
+
+    private void DrawRemovedRanges(DrawingContext context)
+    {
+        var cursor = EffectiveViewportStart;
+        foreach (var range in (KeptRanges ?? []).OrderBy(range => range.Start))
+        {
+            var keptStart = Math.Clamp(range.Start.TotalSeconds, EffectiveViewportStart, EffectiveViewportEnd);
+            var keptEnd = Math.Clamp(range.End.TotalSeconds, EffectiveViewportStart, EffectiveViewportEnd);
+            if (keptStart > cursor)
+            {
+                DrawRemovedRange(context, cursor, keptStart);
+            }
+
+            cursor = Math.Max(cursor, keptEnd);
+        }
+
+        if (cursor < EffectiveViewportEnd)
+        {
+            DrawRemovedRange(context, cursor, EffectiveViewportEnd);
+        }
+    }
+
+    private void DrawRemovedRange(DrawingContext context, double start, double end)
+    {
+        context.FillRectangle(
+            RemovedBrush,
+            new Rect(TimeToX(start), 0, Math.Max(0, TimeToX(end) - TimeToX(start)), Bounds.Height));
+    }
+
+    private static Rect CreateCoverSourceRect(
+        double sourceWidth,
+        double sourceHeight,
+        double destinationWidth,
+        double destinationHeight)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
+        {
+            return new Rect(0, 0, Math.Max(0, sourceWidth), Math.Max(0, sourceHeight));
+        }
+
+        var sourceAspect = sourceWidth / sourceHeight;
+        var destinationAspect = destinationWidth / destinationHeight;
+        if (sourceAspect > destinationAspect)
+        {
+            var width = sourceHeight * destinationAspect;
+            return new Rect((sourceWidth - width) / 2, 0, width, sourceHeight);
+        }
+
+        var height = sourceWidth / destinationAspect;
+        return new Rect(0, (sourceHeight - height) / 2, sourceWidth, height);
     }
 }
 

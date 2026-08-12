@@ -1,4 +1,5 @@
 using ClipEdit.App.Controls;
+using ClipEdit.App.ViewModels;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -43,6 +44,76 @@ public sealed class SourceRangeCanvasTests
         Assert.Equal(25, rangeCanvas.SelectionStart);
         Assert.Equal(80, rangeCanvas.SelectionEnd);
         Assert.Equal(25, rangeCanvas.Playhead);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Wheel_zoom_keeps_the_time_under_the_pointer_stationary()
+    {
+        var rangeCanvas = new SourceRangeCanvas
+        {
+            Width = 400,
+            Height = 40,
+            Duration = 100,
+            SelectionStart = 20,
+            SelectionEnd = 80,
+        };
+        var window = new Window
+        {
+            Width = 400,
+            Height = 40,
+            WindowDecorations = WindowDecorations.None,
+            Content = rangeCanvas,
+        };
+        window.Show();
+
+        window.MouseWheel(
+            new Avalonia.Point(300, 20),
+            new Avalonia.Vector(0, 1),
+            RawInputModifiers.None);
+
+        Assert.Equal(1.25, rangeCanvas.Zoom, 6);
+        Assert.Equal(15, rangeCanvas.ViewportStart, 6);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Edge_drag_uses_the_zoomed_visible_time_window()
+    {
+        var rangeCanvas = new SourceRangeCanvas
+        {
+            Width = 400,
+            Height = 40,
+            Duration = 100,
+            Zoom = 2,
+            ViewportStart = 25,
+            SelectionStart = 30,
+            SelectionEnd = 60,
+        };
+        var window = new Window
+        {
+            Width = 400,
+            Height = 40,
+            WindowDecorations = WindowDecorations.None,
+            Content = rangeCanvas,
+        };
+        window.Show();
+
+        window.MouseDown(
+            new Avalonia.Point(40, 20),
+            MouseButton.Left,
+            RawInputModifiers.LeftMouseButton);
+        window.MouseMove(
+            new Avalonia.Point(80, 20),
+            RawInputModifiers.LeftMouseButton);
+        window.MouseUp(
+            new Avalonia.Point(80, 20),
+            MouseButton.Left,
+            RawInputModifiers.None);
+
+        Assert.Equal(35, rangeCanvas.SelectionStart, 6);
+        Assert.Equal(60, rangeCanvas.SelectionEnd, 6);
+        Assert.Equal(35, rangeCanvas.Playhead, 6);
         window.Close();
     }
 
@@ -97,5 +168,19 @@ public sealed class SourceRangeCanvasTests
             current: 10);
 
         Assert.Equal((20, 20, 20), result);
+    }
+
+    [Fact]
+    public void Viewport_zoom_preserves_an_arbitrary_anchor_position()
+    {
+        var viewport = TimelineViewportMath.ZoomAround(
+            duration: 100,
+            currentZoom: 2,
+            currentStart: 20,
+            requestedZoom: 4,
+            anchor: 30);
+
+        Assert.Equal(4, viewport.Zoom);
+        Assert.Equal(25, viewport.Start);
     }
 }
