@@ -90,11 +90,42 @@ internal static class FfmpegExportArguments
         {
             var segment = plan.VideoSegments[segmentIndex];
             var range = segment.SourceRange;
-            filters.Add(
-                $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
-                $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
-                $"setpts=PTS-STARTPTS,crop={segment.Crop.Width}:{segment.Crop.Height}:{segment.Crop.X}:{segment.Crop.Y}," +
-                $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,setsar=1[vseg{segmentIndex}]");
+            if (segment.UsesCanvasTransform)
+            {
+                var transform = segment.CanvasTransform;
+                var rotation = transform.RotationDegrees == 0
+                    ? string.Empty
+                    : $",format=rgba,rotate={transform.RotationDegrees}*PI/180:ow=rotw(iw):oh=roth(ih):c=black@0";
+                filters.Add(
+                    $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
+                    $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                    $"setpts=PTS-STARTPTS,split=2[vseg{segmentIndex}basein][vseg{segmentIndex}contentin]");
+                filters.Add(
+                    $"[vseg{segmentIndex}basein]" +
+                    $"scale={segment.CanvasSize.Width}:{segment.CanvasSize.Height}:flags=fast_bilinear," +
+                    $"drawbox=c=black:t=fill[vseg{segmentIndex}base]");
+                filters.Add(
+                    $"[vseg{segmentIndex}contentin]" +
+                    $"scale=round(iw*{FormatScalar(transform.Scale)}):" +
+                    $"round(ih*{FormatScalar(transform.Scale)}):flags=lanczos" +
+                    $"{rotation}[vseg{segmentIndex}content]");
+                filters.Add(
+                    $"[vseg{segmentIndex}base][vseg{segmentIndex}content]" +
+                    $"overlay=x=(W-w)/2{FormatSignedScalar(transform.OffsetX)}:" +
+                    $"y=(H-h)/2{FormatSignedScalar(transform.OffsetY)}:shortest=1," +
+                    $"crop={segment.CanvasCrop.Width}:{segment.CanvasCrop.Height}:" +
+                    $"{segment.CanvasCrop.X}:{segment.CanvasCrop.Y}," +
+                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos," +
+                    $"setsar=1[vseg{segmentIndex}]");
+            }
+            else
+            {
+                filters.Add(
+                    $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
+                    $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                    $"setpts=PTS-STARTPTS,crop={segment.Crop.Width}:{segment.Crop.Height}:{segment.Crop.X}:{segment.Crop.Y}," +
+                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,setsar=1[vseg{segmentIndex}]");
+            }
 
             if (!hasEmbeddedAudio)
             {
@@ -401,6 +432,16 @@ internal static class FfmpegExportArguments
     private static string FormatGain(double gainDb)
     {
         return gainDb.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatScalar(double value)
+    {
+        return value.ToString("0.########", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatSignedScalar(double value)
+    {
+        return value >= 0 ? $"+{FormatScalar(value)}" : FormatScalar(value);
     }
 
     private static string CreateDelay(MediaTime timelineOffset)

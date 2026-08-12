@@ -222,12 +222,37 @@ public sealed record ExportVideoSegmentPlan
         MediaRange sourceRange,
         CropRegion crop,
         ImmutableArray<ExportAudioTrackPlan> audioTracks = default)
+        : this(
+            sourcePath,
+            videoStreamIndex,
+            sourceRange,
+            crop.SourceSize,
+            crop,
+            ClipCanvasTransform.Identity,
+            audioTracks)
+    {
+        UsesCanvasTransform = false;
+    }
+
+    public ExportVideoSegmentPlan(
+        string sourcePath,
+        int videoStreamIndex,
+        MediaRange sourceRange,
+        PixelSize canvasSize,
+        CropRegion canvasCrop,
+        ClipCanvasTransform canvasTransform,
+        ImmutableArray<ExportAudioTrackPlan> audioTracks = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
         if (!Path.IsPathFullyQualified(sourcePath) || sourceRange.IsEmpty || sourceRange.Start < MediaTime.Zero)
         {
             throw new ArgumentException("A video segment source and range must be valid.");
+        }
+
+        if (canvasCrop.SourceSize != canvasSize)
+        {
+            throw new ArgumentException("The canvas crop must use the segment canvas size.", nameof(canvasCrop));
         }
 
         var embeddedTracks = audioTracks.IsDefault ? [] : audioTracks;
@@ -242,8 +267,11 @@ public sealed record ExportVideoSegmentPlan
         SourcePath = Path.GetFullPath(sourcePath);
         VideoStreamIndex = videoStreamIndex;
         SourceRange = sourceRange;
-        Crop = crop;
+        CanvasSize = canvasSize;
+        CanvasCrop = canvasCrop;
+        CanvasTransform = canvasTransform;
         AudioTracks = embeddedTracks;
+        UsesCanvasTransform = true;
     }
 
     public string SourcePath { get; }
@@ -252,7 +280,15 @@ public sealed record ExportVideoSegmentPlan
 
     public MediaRange SourceRange { get; }
 
-    public CropRegion Crop { get; }
+    public PixelSize CanvasSize { get; }
+
+    public CropRegion CanvasCrop { get; }
+
+    public ClipCanvasTransform CanvasTransform { get; }
+
+    public bool UsesCanvasTransform { get; private init; }
+
+    public CropRegion Crop => CanvasCrop;
 
     public ImmutableArray<ExportAudioTrackPlan> AudioTracks { get; }
 }
