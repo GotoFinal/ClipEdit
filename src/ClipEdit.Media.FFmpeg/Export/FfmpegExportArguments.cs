@@ -21,22 +21,40 @@ internal static class FfmpegExportArguments
             "-progress",
             "pipe:1",
             "-nostats",
-            "-i",
-            plan.SourcePath,
         };
 
-        foreach (var externalSourcePath in GetExternalAudioSources(plan))
+        if (plan.IsSequence)
+        {
+            foreach (var segment in plan.VideoSegments)
+            {
+                arguments.Add("-i");
+                arguments.Add(segment.SourcePath);
+            }
+
+            foreach (var externalSourcePath in GetSequenceExternalAudioSources(plan))
+            {
+                arguments.Add("-i");
+                arguments.Add(externalSourcePath);
+            }
+        }
+        else
         {
             arguments.Add("-i");
-            arguments.Add(externalSourcePath);
+            arguments.Add(plan.SourcePath);
+
+            foreach (var externalSourcePath in GetExternalAudioSources(plan))
+            {
+                arguments.Add("-i");
+                arguments.Add(externalSourcePath);
+            }
         }
 
         arguments.Add("-filter_complex");
-        arguments.Add(CreateFilterGraph(plan));
+        arguments.Add(plan.IsSequence ? CreateSequenceFilterGraph(plan) : CreateFilterGraph(plan));
         arguments.Add("-map");
         arguments.Add("[vout]");
 
-        if (!plan.AudioTracks.IsEmpty)
+        if (HasAnyAudio(plan))
         {
             arguments.Add("-map");
             arguments.Add("[aout]");
@@ -57,6 +75,118 @@ internal static class FfmpegExportArguments
         arguments.Add(GetMuxer(plan.Preset.Container));
         arguments.Add(temporaryOutputPath);
         return arguments;
+    }
+
+    internal static string CreateSequenceFilterGraph(ExportPlan plan)
+    {
+        if (!plan.IsSequence)
+        {
+            throw new ArgumentException("The plan is not a sequence export.", nameof(plan));
+        }
+
+        var filters = new List<string>();
+        var hasEmbeddedAudio = plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty);
+        for (var segmentIndex = 0; segmentIndex < plan.VideoSegments.Length; segmentIndex++)
+        {
+            var segment = plan.VideoSegments[segmentIndex];
+            var range = segment.SourceRange;
+            filters.Add(
+                $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
+                $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                $"setpts=PTS-STARTPTS,crop={segment.Crop.Width}:{segment.Crop.Height}:{segment.Crop.X}:{segment.Crop.Y}," +
+                $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,setsar=1[vseg{segmentIndex}]");
+
+            if (!hasEmbeddedAudio)
+            {
+                continue;
+            }
+
+            if (segment.AudioTracks.IsEmpty)
+            {
+                filters.Add(
+                    $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(range.Duration)}[aseg{segmentIndex}]");
+                continue;
+            }
+
+            for (var trackIndex = 0; trackIndex < segment.AudioTracks.Length; trackIndex++)
+            {
+                var track = segment.AudioTracks[trackIndex];
+                filters.Add(
+                    $"[{segmentIndex}:{track.StreamIndex}]" +
+                    CreateRangeMask(track) +
+                    $"apad,atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                    "asetpts=PTS-STARTPTS,aresample=48000," +
+                    "aformat=sample_fmts=fltp:channel_layouts=stereo," +
+                    $"volume={FormatGain(track.GainDb)}dB[seg{segmentIndex}a{trackIndex}]");
+            }
+
+            if (segment.AudioTracks.Length == 1)
+            {
+                filters.Add($"[seg{segmentIndex}a0]anull[aseg{segmentIndex}]");
+            }
+            else
+            {
+                filters.Add(
+                    string.Concat(Enumerable.Range(0, segment.AudioTracks.Length)
+                        .Select(index => $"[seg{segmentIndex}a{index}]")) +
+                    $"amix=inputs={segment.AudioTracks.Length}:duration=longest:normalize=0," +
+                    $"alimiter=limit=0.95[aseg{segmentIndex}]");
+            }
+        }
+
+        if (hasEmbeddedAudio)
+        {
+            filters.Add(
+                string.Concat(Enumerable.Range(0, plan.VideoSegments.Length)
+                    .Select(index => $"[vseg{index}][aseg{index}]")) +
+                $"concat=n={plan.VideoSegments.Length}:v=1:a=1[vbase][abase]");
+        }
+        else
+        {
+            filters.Add(
+                string.Concat(Enumerable.Range(0, plan.VideoSegments.Length)
+                    .Select(index => $"[vseg{index}]")) +
+                $"concat=n={plan.VideoSegments.Length}:v=1:a=0[vbase]");
+        }
+
+        var externalSources = GetSequenceExternalAudioSources(plan);
+        var mixInputs = new List<string>();
+        if (hasEmbeddedAudio)
+        {
+            mixInputs.Add("abase");
+        }
+
+        for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
+        {
+            var track = plan.AudioTracks[trackIndex];
+            var inputIndex = plan.VideoSegments.Length +
+                             GetExternalAudioSourceIndex(track, externalSources);
+            var output = $"exta{trackIndex}";
+            filters.Add(
+                $"[{inputIndex}:{track.StreamIndex}]" +
+                CreateRangeMask(track) +
+                CreateDelay(track.TimelineOffset) +
+                $"apad,atrim=start={FormatTime(plan.SequenceTimelineStart)}:" +
+                $"end={FormatTime(plan.SequenceTimelineStart + plan.ExpectedDuration)},asetpts=PTS-STARTPTS," +
+                "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo," +
+                $"volume={FormatGain(track.GainDb)}dB[{output}]");
+            mixInputs.Add(output);
+        }
+
+        filters.Add("[vbase]null[vout]");
+        if (mixInputs.Count == 1)
+        {
+            filters.Add($"[{mixInputs[0]}]anull[aout]");
+        }
+        else if (mixInputs.Count > 1)
+        {
+            filters.Add(
+                string.Concat(mixInputs.Select(input => $"[{input}]")) +
+                $"amix=inputs={mixInputs.Count}:duration=longest:normalize=0," +
+                "alimiter=limit=0.95[aout]");
+        }
+
+        return string.Join(';', filters);
     }
 
     internal static string CreateFilterGraph(ExportPlan plan)
@@ -203,7 +333,7 @@ internal static class FfmpegExportArguments
             _ => throw new ExportPlanException($"Unsupported video codec family: {plan.Preset.VideoCodec}."),
         };
 
-        if (!plan.AudioTracks.IsEmpty)
+        if (HasAnyAudio(plan))
         {
             arguments.AddRange(plan.Preset.AudioCodec switch
             {
@@ -228,6 +358,40 @@ internal static class FfmpegExportArguments
         ExportContainer.WebM => "webm",
         _ => throw new ArgumentOutOfRangeException(nameof(container), container, "Unsupported output container."),
     };
+
+    private static bool HasAnyAudio(ExportPlan plan) =>
+        plan.IsSequence
+            ? plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty) || !plan.AudioTracks.IsEmpty
+            : !plan.AudioTracks.IsEmpty;
+
+    private static IReadOnlyList<string> GetSequenceExternalAudioSources(ExportPlan plan)
+    {
+        var pathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        return plan.AudioTracks
+            .Select(track => track.ExternalSourcePath!)
+            .Distinct(pathComparer)
+            .ToArray();
+    }
+
+    private static int GetExternalAudioSourceIndex(
+        ExportAudioTrackPlan track,
+        IReadOnlyList<string> externalAudioSources)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        for (var index = 0; index < externalAudioSources.Count; index++)
+        {
+            if (string.Equals(track.ExternalSourcePath, externalAudioSources[index], comparison))
+            {
+                return index;
+            }
+        }
+
+        throw new ExportPlanException("An external audio source was not assigned an FFmpeg input.");
+    }
 
     private static string FormatTime(MediaTime value)
     {

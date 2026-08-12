@@ -129,6 +129,40 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Contains("libvpx-vp9", arguments);
     }
 
+    [Fact]
+    public void Multi_source_sequence_uses_one_input_per_segment_and_concatenates_scaled_crops()
+    {
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    "C:\\first.mkv",
+                    0,
+                    new MediaRange(new MediaTime(2, 1), new MediaTime(5, 1)),
+                    new CropRegion(new PixelSize(1_920, 1_080), 420, 0, 1_080, 1_080),
+                    [new ExportAudioTrackPlan(1, -3)]),
+                new ExportVideoSegmentPlan(
+                    "C:\\second.mkv",
+                    2,
+                    new MediaRange(MediaTime.Zero, new MediaTime(4, 1)),
+                    new CropRegion(new PixelSize(3_840, 2_160), 1_080, 0, 1_680, 2_160),
+                    [new ExportAudioTrackPlan(3, 0)]),
+            ],
+            new PixelSize(1_080, 1_080),
+            "C:\\sequence.mp4",
+            Mp4Compatible);
+
+        var arguments = FfmpegExportArguments.Create(plan, "C:\\.sequence.partial");
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.Contains("C:\\first.mkv", arguments);
+        Assert.Contains("C:\\second.mkv", arguments);
+        Assert.Contains("[0:0]trim=start=2:end=5,setpts=PTS-STARTPTS,crop=1080:1080:420:0,scale=1080:1080", graph);
+        Assert.Contains("[1:2]trim=start=0:end=4,setpts=PTS-STARTPTS,crop=1680:2160:1080:0,scale=1080:1080", graph);
+        Assert.Contains("[vseg0][aseg0][vseg1][aseg1]concat=n=2:v=1:a=1[vbase][abase]", graph);
+        Assert.Contains("[vbase]null[vout]", graph);
+        Assert.Contains("[abase]anull[aout]", graph);
+    }
+
     private static ExportPlan CreatePlan(
         string sourcePath,
         string destinationPath,

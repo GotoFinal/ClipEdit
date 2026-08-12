@@ -379,12 +379,8 @@ public sealed class MainWindowViewModelTests
         var renderer = new RecordingExportRenderer();
         var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
-        var media = viewModel.SelectedMedia!;
-        media.PlayheadSeconds = 5;
-        media.MarkSelectionStart();
-        media.PlayheadSeconds = 10;
-        media.MarkSelectionEnd();
-        media.RemoveSelection();
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 10;
         Assert.Single(viewModel.AudioTracks).GainDb = -3;
         viewModel.SelectedExportPreset = BuiltInExportPresets.WebM;
         var destination = Path.Combine(Path.GetTempPath(), "rendered clip.webm");
@@ -393,9 +389,10 @@ public sealed class MainWindowViewModelTests
 
         Assert.NotNull(result);
         Assert.Equal(BuiltInExportPresets.WebM, renderer.Plan!.Preset);
-        Assert.Equal(media.KeptRanges, renderer.Plan.SourceRanges);
-        Assert.Equal(media.Crop, renderer.Plan.Crop);
-        Assert.Equal(-3, Assert.Single(renderer.Plan.AudioTracks).GainDb);
+        var segment = Assert.Single(renderer.Plan!.VideoSegments);
+        Assert.Equal(new MediaRange(new MediaTime(5, 1), new MediaTime(10, 1)), segment.SourceRange);
+        Assert.Equal(viewModel.SelectedVideoClip!.SourceWindow, segment.Crop);
+        Assert.Equal(-3, Assert.Single(segment.AudioTracks).GainDb);
         Assert.Equal(destination, renderer.Plan.DestinationPath);
         Assert.Equal("source-clip.webm", viewModel.GetSuggestedExportFileName());
     }
@@ -406,9 +403,8 @@ public sealed class MainWindowViewModelTests
         var renderer = new RecordingExportRenderer();
         var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "selected-export.mkv")]);
-        var media = viewModel.SelectedMedia!;
-        media.SelectionStartSeconds = 5;
-        media.SelectionEndSeconds = 12;
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 12;
 
         var result = await viewModel.ExportAsync(
             Path.Combine(Path.GetTempPath(), "selected-export.mp4"),
@@ -419,6 +415,31 @@ public sealed class MainWindowViewModelTests
             new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
             Assert.Single(renderer.Plan!.SourceRanges));
         Assert.Equal(new MediaTime(7, 1), renderer.Plan.ExpectedDuration);
+    }
+
+    [Fact]
+    public async Task Export_selected_range_can_cross_multiple_sources_in_sequence_order()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        var firstPath = Path.Combine(Path.GetTempPath(), "export-first.mkv");
+        var secondPath = Path.Combine(Path.GetTempPath(), "export-second.mkv");
+        await viewModel.ImportFilesAsync([firstPath, secondPath]);
+        viewModel.SequenceSelectionStartSeconds = 55;
+        viewModel.SequenceSelectionEndSeconds = 65;
+
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "multi-export.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, renderer.Plan!.VideoSegments.Length);
+        Assert.Equal(firstPath, renderer.Plan.VideoSegments[0].SourcePath);
+        Assert.Equal(new MediaRange(new MediaTime(55, 1), new MediaTime(60, 1)), renderer.Plan.VideoSegments[0].SourceRange);
+        Assert.Equal(secondPath, renderer.Plan.VideoSegments[1].SourcePath);
+        Assert.Equal(new MediaRange(MediaTime.Zero, new MediaTime(5, 1)), renderer.Plan.VideoSegments[1].SourceRange);
+        Assert.Equal(new MediaTime(10, 1), renderer.Plan.ExpectedDuration);
+        Assert.Equal(new MediaTime(55, 1), renderer.Plan.SequenceTimelineStart);
     }
 
     [Fact]
@@ -485,7 +506,7 @@ public sealed class MainWindowViewModelTests
             Path.Combine(Path.GetTempPath(), "audio-cut.mp4"),
             replaceExistingDestination: false);
 
-        var exportedTrack = Assert.Single(renderer.Plan!.AudioTracks);
+        var exportedTrack = Assert.Single(Assert.Single(renderer.Plan!.VideoSegments).AudioTracks);
         Assert.Equal<MediaRange>(audioTrack.KeptRanges, exportedTrack.AudioEdit!.KeptRanges);
         Assert.Equal(new MediaTime(60, 1), exportedTrack.AudioEdit.SourceDuration);
     }
@@ -498,11 +519,11 @@ public sealed class MainWindowViewModelTests
             exportRenderer: new RecordingExportRenderer());
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
 
-        viewModel.SelectedMedia!.CropWidth = 1_919;
+        viewModel.SelectedVideoClip!.CropWidth = 1_919;
 
         Assert.False(viewModel.CanExport);
         Assert.Contains("even", viewModel.ExportAvailabilityText, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(new PixelSize(1_919, 1_080), viewModel.SelectedMedia.Crop.ExportSize);
+        Assert.Equal(new PixelSize(1_919, 1_080), viewModel.SelectedVideoClip.SourceWindow.ExportSize);
     }
 
     [Fact]

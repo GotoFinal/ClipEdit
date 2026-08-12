@@ -15,6 +15,8 @@ public enum ExportStrategy
 /// </summary>
 public sealed record ExportPlan
 {
+    private readonly PixelSize _outputSize;
+
     public ExportPlan(
         string sourcePath,
         string destinationPath,
@@ -76,6 +78,63 @@ public sealed record ExportPlan
         SourceRanges = sourceRanges;
         Preset = preset;
         ReplaceExistingDestination = replaceExistingDestination;
+        VideoSegments = [];
+        _outputSize = crop.ExportSize;
+        SequenceTimelineStart = MediaTime.Zero;
+    }
+
+    public ExportPlan(
+        ImmutableArray<ExportVideoSegmentPlan> videoSegments,
+        PixelSize outputSize,
+        string destinationPath,
+        ExportPreset preset,
+        bool replaceExistingDestination = false,
+        ImmutableArray<ExportAudioTrackPlan> externalAudioTracks = default,
+        MediaTime sequenceTimelineStart = default)
+    {
+        if (videoSegments.IsDefaultOrEmpty || videoSegments.Any(segment => segment is null))
+        {
+            throw new ArgumentException("At least one video segment is required.", nameof(videoSegments));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        ArgumentNullException.ThrowIfNull(preset);
+        if (!Path.IsPathFullyQualified(destinationPath))
+        {
+            throw new ArgumentException("The export destination path must be absolute.", nameof(destinationPath));
+        }
+
+        if (preset.RequiresEvenDimensions &&
+            (((outputSize.Width & 1) != 0) || ((outputSize.Height & 1) != 0)))
+        {
+            throw new ExportPlanException(
+                $"{preset.DisplayName} requires even dimensions, but the output is {outputSize.Width} × {outputSize.Height}.");
+        }
+
+        var externalTracks = externalAudioTracks.IsDefault ? [] : externalAudioTracks;
+        if (sequenceTimelineStart < MediaTime.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sequenceTimelineStart));
+        }
+        if (externalTracks.Any(track => track is null || !track.IsExternal) ||
+            HasDuplicateAudioTracks(externalTracks))
+        {
+            throw new ArgumentException(
+                "Sequence-level audio tracks must be distinct external sources.",
+                nameof(externalAudioTracks));
+        }
+
+        VideoSegments = videoSegments;
+        _outputSize = outputSize;
+        DestinationPath = Path.GetFullPath(destinationPath);
+        Preset = preset;
+        ReplaceExistingDestination = replaceExistingDestination;
+        AudioTracks = externalTracks;
+        SourcePath = videoSegments[0].SourcePath;
+        VideoStreamIndex = videoSegments[0].VideoStreamIndex;
+        Crop = videoSegments[0].Crop;
+        SourceRanges = videoSegments.Select(segment => segment.SourceRange).ToImmutableArray();
+        SequenceTimelineStart = sequenceTimelineStart;
     }
 
     public string SourcePath { get; }
@@ -85,6 +144,12 @@ public sealed record ExportPlan
     public int VideoStreamIndex { get; }
 
     public ImmutableArray<ExportAudioTrackPlan> AudioTracks { get; }
+
+    public ImmutableArray<ExportVideoSegmentPlan> VideoSegments { get; }
+
+    public bool IsSequence => !VideoSegments.IsDefaultOrEmpty;
+
+    public MediaTime SequenceTimelineStart { get; }
 
     public int? AudioStreamIndex => AudioTracks.Length == 1 ? AudioTracks[0].StreamIndex : null;
 
@@ -98,10 +163,12 @@ public sealed record ExportPlan
 
     public ExportStrategy Strategy => ExportStrategy.ExactTranscode;
 
-    public PixelSize OutputSize => Crop.ExportSize;
+    public PixelSize OutputSize => _outputSize;
 
     public MediaTime ExpectedDuration =>
-        SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
+        IsSequence
+            ? VideoSegments.Aggregate(MediaTime.Zero, static (total, segment) => total + segment.SourceRange.Duration)
+            : SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
 
     private static void ValidateRanges(ImmutableArray<MediaRange> ranges)
     {
@@ -145,6 +212,49 @@ public sealed record ExportPlan
 
         return false;
     }
+}
+
+public sealed record ExportVideoSegmentPlan
+{
+    public ExportVideoSegmentPlan(
+        string sourcePath,
+        int videoStreamIndex,
+        MediaRange sourceRange,
+        CropRegion crop,
+        ImmutableArray<ExportAudioTrackPlan> audioTracks = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
+        if (!Path.IsPathFullyQualified(sourcePath) || sourceRange.IsEmpty || sourceRange.Start < MediaTime.Zero)
+        {
+            throw new ArgumentException("A video segment source and range must be valid.");
+        }
+
+        var embeddedTracks = audioTracks.IsDefault ? [] : audioTracks;
+        if (embeddedTracks.Any(track => track is null || track.IsExternal) ||
+            embeddedTracks.Select(track => track.StreamIndex).Distinct().Count() != embeddedTracks.Length)
+        {
+            throw new ArgumentException(
+                "Segment audio tracks must be distinct embedded streams.",
+                nameof(audioTracks));
+        }
+
+        SourcePath = Path.GetFullPath(sourcePath);
+        VideoStreamIndex = videoStreamIndex;
+        SourceRange = sourceRange;
+        Crop = crop;
+        AudioTracks = embeddedTracks;
+    }
+
+    public string SourcePath { get; }
+
+    public int VideoStreamIndex { get; }
+
+    public MediaRange SourceRange { get; }
+
+    public CropRegion Crop { get; }
+
+    public ImmutableArray<ExportAudioTrackPlan> AudioTracks { get; }
 }
 
 public sealed record ExportAudioTrackPlan

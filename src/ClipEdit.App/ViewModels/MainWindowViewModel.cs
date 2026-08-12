@@ -543,35 +543,46 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 return "FFmpeg was not found; export is unavailable";
             }
 
-            if (SelectedMedia?.Media is null || !SelectedMedia.HasVideo)
+            var slices = GetSequenceExportSlices();
+            if (slices.Count == 0)
             {
-                return "Select an imported video to export";
+                return "The timeline selection contains no video";
             }
 
-            if (VideoItems.Count() > 1)
-            {
-                return "Multi-video export will be enabled with the sequence timeline";
-            }
-
-            if (SelectedMedia.GetExportEdit() is not { } exportEdit || exportEdit.IsEmpty)
-            {
-                return "The selected range contains no kept video";
-            }
-
+            var outputSize = slices[0].Clip.SourceWindow.ExportSize;
             if (SelectedExportPreset.RequiresEvenDimensions &&
-                (((SelectedMedia.Crop.Width & 1) != 0) || ((SelectedMedia.Crop.Height & 1) != 0)))
+                (((outputSize.Width & 1) != 0) || ((outputSize.Height & 1) != 0) ||
+                 slices.Any(slice =>
+                     (slice.Clip.SourceWindow.X & 1) != 0 ||
+                     (slice.Clip.SourceWindow.Y & 1) != 0 ||
+                     (slice.Clip.SourceWindow.Width & 1) != 0 ||
+                     (slice.Clip.SourceWindow.Height & 1) != 0)))
             {
-                return $"{SelectedExportPreset.DisplayName} needs an even crop width and height";
+                return $"{SelectedExportPreset.DisplayName} needs even crop coordinates and dimensions on every selected clip";
             }
 
             return "Ready to export";
         }
     }
 
-    public string ExportPlanSummary => SelectedMedia?.GetExportEdit() is null
-        ? SelectedExportPreset.DisplayName
-        : $"{SelectedExportPreset.DisplayName} · exact re-encode · " +
-          $"{SelectedMedia.CropSizeText} · {SelectedMedia.SelectedExportDurationText}";
+    public string ExportPlanSummary
+    {
+        get
+        {
+            var slices = GetSequenceExportSlices();
+            if (slices.Count == 0)
+            {
+                return SelectedExportPreset.DisplayName;
+            }
+
+            var outputSize = slices[0].Clip.SourceWindow.ExportSize;
+            var duration = slices.Aggregate(
+                MediaTime.Zero,
+                static (total, slice) => total + slice.SourceRange.Duration);
+            return $"{SelectedExportPreset.DisplayName} · exact sequence re-encode · " +
+                   $"{outputSize.Width} × {outputSize.Height} · {FormatSequenceTimestamp(duration)}";
+        }
+    }
 
     public bool IsBusy
     {
@@ -770,10 +781,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
-        if (!CanExport ||
-            _exportRenderer is null ||
-            SelectedMedia?.Media is null ||
-            SelectedMedia.GetExportEdit() is not { } exportEdit)
+        var slices = GetSequenceExportSlices();
+        if (!CanExport || _exportRenderer is null || slices.Count == 0)
         {
             StatusText = ExportAvailabilityText;
             return null;
@@ -786,31 +795,47 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
         try
         {
-            var plan = _exportPlanner.Create(
-                SelectedMedia.Media,
-                exportEdit,
-                SelectedMedia.Crop,
-                SelectedExportPreset,
-                destinationPath,
-                replaceExistingDestination,
-                AudioTracks
+            var videoSegments = slices.Select(slice =>
+            {
+                var video = slice.Clip.Source.Media!.Probe.VideoStreams.First();
+                var embeddedAudio = AudioTracks
                     .Where(track =>
+                        !track.IsExternal &&
                         !track.IsMuted &&
                         !track.Edit.IsEmpty &&
-                        (track.IsExternal ||
-                         PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath)))
-                    .Select(track => track.IsExternal
-                        ? new ExportAudioTrackPlan(
-                            track.SourcePath,
-                            track.StreamIndex,
-                            track.GainDb,
-                            track.TimelineOffset,
-                            track.Edit)
-                        : new ExportAudioTrackPlan(
-                            track.StreamIndex,
-                            track.GainDb,
-                            track.Edit))
-                    .ToImmutableArray());
+                        PathComparer.Equals(track.SourcePath, slice.Clip.SourcePath))
+                    .Select(track => new ExportAudioTrackPlan(
+                        track.StreamIndex,
+                        track.GainDb,
+                        track.Edit))
+                    .ToImmutableArray();
+                return new ExportVideoSegmentPlan(
+                    slice.Clip.SourcePath,
+                    video.Index,
+                    slice.SourceRange,
+                    slice.Clip.SourceWindow,
+                    embeddedAudio);
+            }).ToImmutableArray();
+            var externalAudio = AudioTracks
+                .Where(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty)
+                .Select(track => new ExportAudioTrackPlan(
+                    track.SourcePath,
+                    track.StreamIndex,
+                    track.GainDb,
+                    track.TimelineOffset,
+                    track.Edit))
+                .ToImmutableArray();
+            var selectionStart = HasSequenceSelection
+                ? NormalizedSequenceSelection().Start
+                : MediaTime.Zero;
+            var plan = new ExportPlan(
+                videoSegments,
+                slices[0].Clip.SourceWindow.ExportSize,
+                destinationPath,
+                SelectedExportPreset,
+                replaceExistingDestination,
+                externalAudio,
+                selectionStart);
             IsExporting = true;
             ExportProgress = 0;
             ExportPhaseText = "Preparing";
@@ -1961,6 +1986,36 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             Min(_sequenceSelectionStart, _sequenceSelectionEnd),
             Max(_sequenceSelectionStart, _sequenceSelectionEnd));
 
+    private IReadOnlyList<SequenceExportSlice> GetSequenceExportSlices()
+    {
+        if (VideoClips.Count == 0)
+        {
+            return [];
+        }
+
+        var selection = HasSequenceSelection
+            ? NormalizedSequenceSelection()
+            : new MediaRange(MediaTime.Zero, SequenceTimeFromSeconds(SequenceDurationSeconds));
+        var slices = new List<SequenceExportSlice>(VideoClips.Count);
+        foreach (var clip in VideoClips)
+        {
+            var timelineStart = Max(selection.Start, clip.TimelineStart);
+            var timelineEnd = Min(selection.End, clip.TimelineEnd);
+            if (timelineEnd <= timelineStart)
+            {
+                continue;
+            }
+
+            slices.Add(new SequenceExportSlice(
+                clip,
+                new MediaRange(
+                    clip.SourceStart + (timelineStart - clip.TimelineStart),
+                    clip.SourceStart + (timelineEnd - clip.TimelineStart))));
+        }
+
+        return slices;
+    }
+
     private MediaTime SequenceTimeFromSeconds(double seconds)
     {
         var bounded = Math.Clamp(
@@ -2888,3 +2943,7 @@ file static class ReadOnlyListExtensions
         return -1;
     }
 }
+
+internal readonly record struct SequenceExportSlice(
+    VideoClipViewModel Clip,
+    MediaRange SourceRange);
