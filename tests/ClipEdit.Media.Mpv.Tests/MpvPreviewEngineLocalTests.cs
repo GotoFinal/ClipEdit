@@ -36,5 +36,21 @@ public sealed class MpvPreviewEngineLocalTests
 
         await engine.SetPausedAsync(true, CancellationToken.None);
         Assert.Equal(PreviewState.Paused, engine.State);
+
+        var beforeStep = await engine.GetPositionAsync(CancellationToken.None);
+        Assert.NotNull(beforeStep);
+        await engine.StepFrameAsync(PreviewFrameStepDirection.Forward, CancellationToken.None);
+        MediaTime? afterStep = null;
+        for (var attempt = 0;
+             attempt < 20 && (afterStep is null || afterStep.Value <= beforeStep.Value);
+             attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(25));
+            afterStep = await engine.GetPositionAsync(CancellationToken.None);
+        }
+
+        Assert.True(afterStep > beforeStep.Value);
+        await engine.StepFrameAsync(PreviewFrameStepDirection.Backward, CancellationToken.None);
+        Assert.Equal(PreviewState.Paused, engine.State);
     }
 }

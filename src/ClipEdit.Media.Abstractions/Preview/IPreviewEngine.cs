@@ -16,9 +16,19 @@ public interface IPreviewEngine : IAsyncDisposable
 
     Task SetPausedAsync(bool isPaused, CancellationToken cancellationToken);
 
+    Task StepFrameAsync(
+        PreviewFrameStepDirection direction,
+        CancellationToken cancellationToken);
+
     Task SetVolumeAsync(double volume, CancellationToken cancellationToken);
 
     Task SetAudioTracksAsync(
         IReadOnlyList<PreviewAudioTrack> audioTracks,
         CancellationToken cancellationToken);
+}
+
+public enum PreviewFrameStepDirection
+{
+    Backward,
+    Forward,
 }

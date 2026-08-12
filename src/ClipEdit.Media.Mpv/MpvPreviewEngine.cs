@@ -95,6 +95,17 @@ public sealed class MpvPreviewEngine : IPreviewEngine
             },
             cancellationToken);
 
+    public Task StepFrameAsync(
+        PreviewFrameStepDirection direction,
+        CancellationToken cancellationToken) =>
+        InvokeAsync(
+            client =>
+            {
+                client.StepFrame(direction);
+                Volatile.Write(ref _state, (int)PreviewState.Paused);
+            },
+            cancellationToken);
+
     public Task SetVolumeAsync(double volume, CancellationToken cancellationToken) =>
         InvokeAsync(client => client.SetVolume(volume), cancellationToken);
 

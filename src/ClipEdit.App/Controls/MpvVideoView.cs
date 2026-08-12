@@ -195,6 +195,45 @@ public sealed class MpvVideoView : OpenGlControlBase
         SetCurrentValue(IsPausedProperty, !IsPaused);
     }
 
+    public async Task StepFrameAsync(
+        PreviewFrameStepDirection direction,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsPlaybackAvailable || !_mediaLoaded || _engine is null || _shutdownStarted)
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _positionTimer.Stop();
+        SetCurrentValue(IsPausedProperty, true);
+        await _engine.SetPausedAsync(true, cancellationToken);
+        var positionBeforeStep = Position;
+        await _engine.StepFrameAsync(direction, cancellationToken);
+
+        // libmpv accepts the command before the decoded frame/playback clock is updated.
+        PreviewPlaybackSnapshot snapshot = default;
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken);
+            snapshot = await _engine.GetPlaybackSnapshotAsync(cancellationToken);
+            if (snapshot.Position is { } updatedPosition && updatedPosition != positionBeforeStep)
+            {
+                break;
+            }
+        }
+
+        if (snapshot.Position is { } position)
+        {
+            SetPositionFromPlayback(position);
+        }
+
+        _isEndOfFile = snapshot.IsEndOfFile;
+        PlaybackStatus = direction == PreviewFrameStepDirection.Forward
+            ? "Stepped one source frame forward"
+            : "Stepped one source frame backward (best effort)";
+    }
+
     public async Task ShutdownAsync()
     {
         if (_shutdownStarted)

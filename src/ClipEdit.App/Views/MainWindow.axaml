@@ -346,11 +346,25 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                   <Button Classes="secondary" Click="GoToStart_Click" Content="│◀" />
                   <Button
+                      AutomationProperties.Name="Previous source frame"
+                      Classes="secondary"
+                      Click="StepFrameBackward_Click"
+                      Content="◀"
+                      IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
+                      ToolTip.Tip="Previous source frame (best effort)" />
+                  <Button
                       Classes="primary"
                       Click="TogglePlayback_Click"
                       Content="{Binding PlayButtonText, ElementName=LivePreview}"
                       IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
                       ToolTip.Tip="{Binding PlaybackStatus, ElementName=LivePreview}" />
+                  <Button
+                      AutomationProperties.Name="Next source frame"
+                      Classes="secondary"
+                      Click="StepFrameForward_Click"
+                      Content="▶"
+                      IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
+                      ToolTip.Tip="Next source frame" />
                   <Button Classes="secondary" Click="GoToEnd_Click" Content="▶│" />
                 </StackPanel>
                 <TextBlock

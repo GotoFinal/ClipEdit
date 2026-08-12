@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using ClipEdit.App.ViewModels;
+using ClipEdit.Media.Preview;
 
 namespace ClipEdit.App.Views;
 
@@ -176,6 +177,24 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         await LivePreview.TogglePlaybackAsync(_lifetimeCancellation.Token);
+    }
+
+    private async void StepFrameBackward_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        await LivePreview.StepFrameAsync(
+            PreviewFrameStepDirection.Backward,
+            _lifetimeCancellation.Token);
+    }
+
+    private async void StepFrameForward_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        await LivePreview.StepFrameAsync(
+            PreviewFrameStepDirection.Forward,
+            _lifetimeCancellation.Token);
     }
 
     private void GoToEnd_Click(object? sender, RoutedEventArgs eventArgs)

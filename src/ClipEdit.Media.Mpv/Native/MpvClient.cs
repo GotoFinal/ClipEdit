@@ -119,6 +119,17 @@ internal sealed class MpvClient : IDisposable
 
     public void SetPaused(bool isPaused) => SetProperty("pause", isPaused ? "yes" : "no");
 
+    public void StepFrame(PreviewFrameStepDirection direction)
+    {
+        SetPaused(true);
+        RunCommand(direction switch
+        {
+            PreviewFrameStepDirection.Backward => "frame-back-step",
+            PreviewFrameStepDirection.Forward => "frame-step",
+            _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, null),
+        });
+    }
+
     public void SetVolume(double volume)
     {
         if (!double.IsFinite(volume) || volume is < 0 or > 1)
