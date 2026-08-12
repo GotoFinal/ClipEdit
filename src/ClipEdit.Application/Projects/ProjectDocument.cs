@@ -6,9 +6,10 @@ public sealed record ProjectDocument(
     string? ExportPresetId,
     IReadOnlyList<ProjectMediaDocument> Media,
     IReadOnlyList<ProjectVideoClipDocument>? VideoClips = null,
-    ProjectCropSettingsDocument? CropSettings = null)
+    ProjectCropSettingsDocument? CropSettings = null,
+    ProjectCanvasDocument? Canvas = null)
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 }
 
 public sealed record ProjectMediaDocument(
@@ -40,11 +41,23 @@ public sealed record ProjectVideoClipDocument(
     int SourceWindowX,
     int SourceWindowY,
     int SourceWindowWidth,
-    int SourceWindowHeight);
+    int SourceWindowHeight,
+    double CanvasOffsetX = 0,
+    double CanvasOffsetY = 0,
+    double CanvasScale = 1,
+    int CanvasRotationDegrees = 0);
 
 public sealed record ProjectCropSettingsDocument(
     string PresetId,
     bool IsAspectLocked);
+
+public sealed record ProjectCanvasDocument(
+    int Width,
+    int Height,
+    int CropX,
+    int CropY,
+    int CropWidth,
+    int CropHeight);
 
 public sealed record ProjectRangeDocument(
     long StartNumerator,

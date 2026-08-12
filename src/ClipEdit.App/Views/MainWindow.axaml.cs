@@ -277,7 +277,7 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.ResetSelectedClipPlacement();
+        ViewModel?.ResetCanvasCrop();
     }
 
     private void ApplyCropPreset_Click(object? sender, RoutedEventArgs eventArgs)
@@ -292,6 +292,34 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         ViewModel?.ApplyCropPresetToAllVideos();
+    }
+
+    private void UseCropTool_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.UseCropTool();
+    }
+
+    private void UseTransformTool_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.UseTransformTool();
+    }
+
+    private void FillClipCanvas_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.ResetSelectedClipToFill();
+    }
+
+    private void FitClipCanvas_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.FitSelectedClipToCanvas();
     }
 
     private void MoveVideoLeft_Click(object? sender, RoutedEventArgs eventArgs)

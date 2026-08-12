@@ -172,28 +172,27 @@ public sealed class MainWindowViewModelTests
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "crop-preset.mkv")]);
-        var clip = viewModel.SelectedVideoClip!;
         viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Square;
 
-        Assert.Equal(new CropRegion(clip.VideoSize, 420, 0, 1_080, 1_080), clip.SourceWindow);
+        Assert.Equal(new CropRegion(viewModel.CanvasSize, 420, 0, 1_080, 1_080), viewModel.CanvasCrop);
         Assert.Same(BuiltInCropAspectPresets.Square, viewModel.SelectedCropAspectPreset);
         Assert.False(viewModel.IsCropAspectLocked);
 
-        clip.SourceWindow = CropRegion.FromEdges(
-            clip.VideoSize,
-            clip.SourceWindow.X,
-            clip.SourceWindow.Y,
-            clip.SourceWindow.Right + 120,
-            clip.SourceWindow.Bottom);
+        viewModel.CanvasCrop = CropRegion.FromEdges(
+            viewModel.CanvasSize,
+            viewModel.CanvasCrop.X,
+            viewModel.CanvasCrop.Y,
+            viewModel.CanvasCrop.Right + 120,
+            viewModel.CanvasCrop.Bottom);
 
-        Assert.Equal(1_200, clip.SourceWindow.Width);
-        Assert.Equal(1_080, clip.SourceWindow.Height);
+        Assert.Equal(1_200, viewModel.CanvasCrop.Width);
+        Assert.Equal(1_080, viewModel.CanvasCrop.Height);
         Assert.Same(BuiltInCropAspectPresets.Custom, viewModel.SelectedCropAspectPreset);
         Assert.True(viewModel.IsProjectDirty);
     }
 
     [Fact]
-    public async Task Same_crop_preset_applies_to_every_video_but_positions_remain_independent()
+    public async Task One_crop_frame_stays_shared_while_clip_transforms_remain_independent()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
         await viewModel.ImportFilesAsync(
@@ -204,23 +203,24 @@ public sealed class MainWindowViewModelTests
         var clips = viewModel.VideoClips.ToArray();
         viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Portrait916;
 
-        Assert.All(clips, clip => Assert.Equal(new PixelSize(603, 1_072), clip.SourceWindow.ExportSize));
+        Assert.Equal(new PixelSize(603, 1_072), viewModel.CanvasCrop.ExportSize);
+        Assert.All(clips, clip => Assert.Equal(CropRegion.FullFrame(clip.VideoSize), clip.SourceWindow));
 
-        clips[0].SourceWindow = clips[0].SourceWindow.MoveClamped(0, 0);
+        clips[0].CanvasOffsetX = 240;
 
-        Assert.Equal(0, clips[0].SourceWindow.X);
-        Assert.Equal(659, clips[1].SourceWindow.X);
-        Assert.Equal(new PixelSize(603, 1_072), clips[1].SourceWindow.ExportSize);
+        Assert.Equal(240, clips[0].CanvasTransform.OffsetX);
+        Assert.Equal(0, clips[1].CanvasTransform.OffsetX);
+        Assert.Equal(new PixelSize(603, 1_072), viewModel.CanvasCrop.ExportSize);
 
-        clips[0].SourceWindow = new CropRegion(clips[0].VideoSize, 50, 100, 500, 800);
+        viewModel.CanvasCrop = new CropRegion(viewModel.CanvasSize, 50, 100, 500, 800);
 
         Assert.Same(BuiltInCropAspectPresets.Custom, viewModel.SelectedCropAspectPreset);
-        Assert.Equal(new PixelSize(500, 800), clips[1].SourceWindow.ExportSize);
-        Assert.NotEqual(clips[0].SourceWindow.X, clips[1].SourceWindow.X);
+        Assert.Equal(new PixelSize(500, 800), viewModel.CanvasCrop.ExportSize);
+        Assert.NotEqual(clips[0].CanvasTransform.OffsetX, clips[1].CanvasTransform.OffsetX);
     }
 
     [Fact]
-    public async Task Video_clips_can_be_selected_and_reordered_without_losing_their_own_crop()
+    public async Task Video_clips_can_be_selected_and_reordered_without_losing_their_transform()
     {
         var firstPath = Path.Combine(Path.GetTempPath(), "sequence-first.mkv");
         var musicPath = Path.Combine(Path.GetTempPath(), "sequence-music.flac");
@@ -230,7 +230,7 @@ public sealed class MainWindowViewModelTests
         await viewModel.ImportFilesAsync([firstPath, musicPath, secondPath, thirdPath]);
         viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Square;
         var clips = viewModel.VideoClips.ToArray();
-        clips[1].SourceWindow = clips[1].SourceWindow.MoveClamped(100, 0);
+        clips[1].CanvasOffsetX = 100;
         viewModel.SelectedVideoClip = clips[1];
 
         Assert.True(viewModel.CanMoveSelectedVideoLeft);
@@ -241,7 +241,8 @@ public sealed class MainWindowViewModelTests
             [secondPath, firstPath, thirdPath],
             viewModel.VideoClips.Select(clip => clip.SourcePath));
         Assert.Same(clips[1], viewModel.SelectedVideoClip);
-        Assert.Equal(new CropRegion(clips[1].VideoSize, 100, 0, 1_080, 1_080), clips[1].SourceWindow);
+        Assert.Equal(100, clips[1].CanvasTransform.OffsetX);
+        Assert.Equal(new PixelSize(1_080, 1_080), viewModel.CanvasCrop.ExportSize);
         Assert.Equal(
             [secondPath, firstPath, thirdPath],
             viewModel.CreateProjectDocument().VideoClips!
@@ -254,7 +255,7 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public async Task Reordered_clips_and_independent_crop_positions_survive_project_round_trip()
+    public async Task Reordered_clips_shared_crop_and_independent_transforms_survive_project_round_trip()
     {
         var projectPath = Path.Combine(Path.GetTempPath(), $"crop-sequence-{Guid.NewGuid():N}.clipedit");
         var firstPath = Path.Combine(Path.GetTempPath(), "roundtrip-first.mkv");
@@ -267,8 +268,10 @@ public sealed class MainWindowViewModelTests
                 await original.ImportFilesAsync([firstPath, secondPath]);
                 original.SelectedCropAspectPreset = BuiltInCropAspectPresets.Square;
                 var clips = original.VideoClips.ToArray();
-                clips[0].SourceWindow = clips[0].SourceWindow.MoveClamped(0, 0);
-                clips[1].SourceWindow = clips[1].SourceWindow.MoveClamped(800, 0);
+                clips[0].CanvasOffsetX = -100;
+                clips[1].CanvasOffsetX = 800;
+                clips[1].CanvasScalePercent = 125;
+                clips[1].CanvasRotationDegrees = 15;
                 original.SelectedVideoClip = clips[1];
                 original.IsCropAspectLocked = true;
                 Assert.True(original.MoveSelectedVideoLeft());
@@ -279,11 +282,55 @@ public sealed class MainWindowViewModelTests
             Assert.True(await restored.OpenProjectAsync(projectPath));
             var restoredClips = restored.VideoClips.ToArray();
             Assert.Equal([secondPath, firstPath], restoredClips.Select(clip => clip.SourcePath));
-            Assert.Equal(800, restoredClips[0].SourceWindow.X);
-            Assert.Equal(0, restoredClips[1].SourceWindow.X);
-            Assert.All(restoredClips, clip => Assert.Equal(new PixelSize(1_080, 1_080), clip.SourceWindow.ExportSize));
+            Assert.Equal(800, restoredClips[0].CanvasTransform.OffsetX);
+            Assert.Equal(1.25, restoredClips[0].CanvasTransform.Scale);
+            Assert.Equal(15, restoredClips[0].CanvasTransform.RotationDegrees);
+            Assert.Equal(-100, restoredClips[1].CanvasTransform.OffsetX);
+            Assert.Equal(new PixelSize(1_080, 1_080), restored.CanvasCrop.ExportSize);
             Assert.Same(BuiltInCropAspectPresets.Square, restored.SelectedCropAspectPreset);
             Assert.True(restored.IsCropAspectLocked);
+        }
+        finally
+        {
+            File.Delete(projectPath);
+        }
+    }
+
+    [Fact]
+    public async Task Schema_two_clip_windows_migrate_to_one_crop_and_equivalent_clip_transforms()
+    {
+        var projectPath = Path.Combine(Path.GetTempPath(), $"schema-two-{Guid.NewGuid():N}.clipedit");
+        var store = new JsonProjectStore();
+        try
+        {
+            using (var legacy = new MainWindowViewModel(new StubProbe()))
+            {
+                await legacy.ImportFilesAsync(
+                [
+                    Path.Combine(Path.GetTempPath(), "schema-two-first.mkv"),
+                    Path.Combine(Path.GetTempPath(), "schema-two-second.mkv"),
+                ]);
+                var clips = legacy.VideoClips.ToArray();
+                clips[0].SourceWindow = new CropRegion(clips[0].VideoSize, 420, 0, 1_080, 1_080);
+                clips[1].SourceWindow = new CropRegion(clips[1].VideoSize, 0, 0, 1_080, 1_080);
+                var schemaTwo = legacy.CreateProjectDocument() with
+                {
+                    SchemaVersion = 2,
+                    Canvas = null,
+                };
+                await store.SaveAsync(projectPath, schemaTwo);
+            }
+
+            using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.True(await restored.OpenProjectAsync(projectPath));
+
+            Assert.Equal(
+                new CropRegion(restored.CanvasSize, 420, 0, 1_080, 1_080),
+                restored.CanvasCrop);
+            var restoredClips = restored.VideoClips.ToArray();
+            Assert.Equal(ClipCanvasTransform.Identity, restoredClips[0].CanvasTransform);
+            Assert.Equal(420, restoredClips[1].CanvasTransform.OffsetX);
+            Assert.Equal(1, restoredClips[1].CanvasTransform.Scale);
         }
         finally
         {
@@ -391,7 +438,9 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(BuiltInExportPresets.WebM, renderer.Plan!.Preset);
         var segment = Assert.Single(renderer.Plan!.VideoSegments);
         Assert.Equal(new MediaRange(new MediaTime(5, 1), new MediaTime(10, 1)), segment.SourceRange);
-        Assert.Equal(viewModel.SelectedVideoClip!.SourceWindow, segment.Crop);
+        Assert.Equal(viewModel.CanvasSize, segment.CanvasSize);
+        Assert.Equal(viewModel.CanvasCrop, segment.CanvasCrop);
+        Assert.Equal(viewModel.SelectedVideoClip!.CanvasTransform, segment.CanvasTransform);
         Assert.Equal(-3, Assert.Single(segment.AudioTracks).GainDb);
         Assert.Equal(destination, renderer.Plan.DestinationPath);
         Assert.Equal("source-clip.webm", viewModel.GetSuggestedExportFileName());
@@ -519,17 +568,17 @@ public sealed class MainWindowViewModelTests
             exportRenderer: new RecordingExportRenderer());
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
 
-        viewModel.SelectedVideoClip!.CropWidth = 1_919;
+        viewModel.CanvasCropWidth = 1_919;
 
         Assert.False(viewModel.CanExport);
         Assert.Contains("even", viewModel.ExportAvailabilityText, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(new PixelSize(1_919, 1_080), viewModel.SelectedVideoClip.SourceWindow.ExportSize);
+        Assert.Equal(new PixelSize(1_919, 1_080), viewModel.CanvasCrop.ExportSize);
         Assert.True(viewModel.CanFixExportCompatibility);
         Assert.Equal("Use 1918 × 1080", viewModel.ExportCompatibilityActionText);
 
         Assert.True(viewModel.MakeExportCropCompatible());
         Assert.True(viewModel.CanExport);
-        Assert.Equal(new PixelSize(1_918, 1_080), viewModel.SelectedVideoClip.SourceWindow.ExportSize);
+        Assert.Equal(new PixelSize(1_918, 1_080), viewModel.CanvasCrop.ExportSize);
     }
 
     [Fact]

@@ -161,6 +161,7 @@ public sealed class JsonProjectStoreTests
                     1_080,
                     1_080),
             ],
-            new ProjectCropSettingsDocument("1-1", true));
+            new ProjectCropSettingsDocument("1-1", true),
+            new ProjectCanvasDocument(1_920, 1_080, 420, 0, 1_080, 1_080));
     }
 }

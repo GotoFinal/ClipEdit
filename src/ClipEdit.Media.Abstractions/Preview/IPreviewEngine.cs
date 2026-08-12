@@ -22,6 +22,10 @@ public interface IPreviewEngine : IAsyncDisposable
 
     Task SetVolumeAsync(double volume, CancellationToken cancellationToken);
 
+    Task SetVideoTransformAsync(
+        PreviewVideoTransform transform,
+        CancellationToken cancellationToken);
+
     Task SetAudioTracksAsync(
         IReadOnlyList<PreviewAudioTrack> audioTracks,
         CancellationToken cancellationToken);
@@ -31,4 +35,34 @@ public enum PreviewFrameStepDirection
 {
     Backward,
     Forward,
+}
+
+public readonly record struct PreviewVideoTransform
+{
+    public PreviewVideoTransform(
+        double zoomFactor,
+        double panX,
+        double panY,
+        int rotationDegrees)
+    {
+        if (!double.IsFinite(zoomFactor) || zoomFactor is < 0.01 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(zoomFactor));
+        }
+
+        if (!double.IsFinite(panX) || !double.IsFinite(panY))
+        {
+            throw new ArgumentOutOfRangeException(nameof(panX));
+        }
+
+        ZoomFactor = zoomFactor;
+        PanX = panX;
+        PanY = panY;
+        RotationDegrees = ((rotationDegrees % 360) + 360) % 360;
+    }
+
+    public double ZoomFactor { get; }
+    public double PanX { get; }
+    public double PanY { get; }
+    public int RotationDegrees { get; }
 }

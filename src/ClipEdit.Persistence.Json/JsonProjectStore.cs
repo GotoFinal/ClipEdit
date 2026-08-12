@@ -259,6 +259,8 @@ public sealed class JsonProjectStore : IProjectStore
                     clip.SourceWindowY,
                     clip.SourceWindowWidth,
                     clip.SourceWindowHeight);
+                _ = new ClipCanvasTransform(
+                    clip.CanvasOffsetX, clip.CanvasOffsetY, clip.CanvasScale, clip.CanvasRotationDegrees);
             }
             catch (Exception exception) when (
                 exception is ArgumentException or OverflowException or DivideByZeroException)
@@ -267,6 +269,28 @@ public sealed class JsonProjectStore : IProjectStore
                     ProjectStoreFailure.InvalidDocument,
                     "A saved video clip range or placement is invalid.",
                     exception);
+            }
+        }
+
+        if (document.SchemaVersion >= 3)
+        {
+            if (document.Canvas is not { } canvas)
+            {
+                throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "The project canvas is missing.");
+            }
+
+            try
+            {
+                _ = new CropRegion(
+                    new PixelSize(canvas.Width, canvas.Height),
+                    canvas.CropX,
+                    canvas.CropY,
+                    canvas.CropWidth,
+                    canvas.CropHeight);
+            }
+            catch (Exception exception) when (exception is ArgumentException or OverflowException)
+            {
+                throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "The project canvas is invalid.", exception);
             }
         }
     }

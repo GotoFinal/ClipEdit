@@ -4,9 +4,11 @@ using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Mpv;
 using ClipEdit.Media.Preview;
+using DomainPixelSize = ClipEdit.Domain.Geometry.PixelSize;
 
 namespace ClipEdit.App.Controls;
 
@@ -23,6 +25,21 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     public static readonly StyledProperty<double> VolumeProperty =
         AvaloniaProperty.Register<MpvVideoView, double>(nameof(Volume), defaultValue: 1);
+
+    public static readonly StyledProperty<DomainPixelSize> SourceVideoSizeProperty =
+        AvaloniaProperty.Register<MpvVideoView, DomainPixelSize>(
+            nameof(SourceVideoSize),
+            new DomainPixelSize(1, 1));
+
+    public static readonly StyledProperty<DomainPixelSize> CanvasSizeProperty =
+        AvaloniaProperty.Register<MpvVideoView, DomainPixelSize>(
+            nameof(CanvasSize),
+            new DomainPixelSize(1, 1));
+
+    public static readonly StyledProperty<ClipCanvasTransform> CanvasTransformProperty =
+        AvaloniaProperty.Register<MpvVideoView, ClipCanvasTransform>(
+            nameof(CanvasTransform),
+            ClipCanvasTransform.Identity);
 
     public static readonly StyledProperty<IReadOnlyList<PreviewAudioTrack>> AudioTracksProperty =
         AvaloniaProperty.Register<MpvVideoView, IReadOnlyList<PreviewAudioTrack>>(
@@ -77,6 +94,8 @@ public sealed class MpvVideoView : OpenGlControlBase
     private bool _positionPollInProgress;
     private bool _updatingPositionFromPlayback;
     private bool _isEndOfFile;
+    private int _videoTransformRevision;
+    private bool _videoTransformLoopRunning;
 
     static MpvVideoView()
     {
@@ -88,6 +107,12 @@ public sealed class MpvVideoView : OpenGlControlBase
             static (view, _) => view.StartPauseChange());
         VolumeProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartVolumeChange());
+        SourceVideoSizeProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.StartVideoTransformChange());
+        CanvasSizeProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.StartVideoTransformChange());
+        CanvasTransformProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.StartVideoTransformChange());
         AudioTracksProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartAudioMixChange());
     }
@@ -99,6 +124,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             Interval = TimeSpan.FromMilliseconds(50),
         };
         _positionTimer.Tick += OnPositionTimerTick;
+        SizeChanged += (_, _) => StartVideoTransformChange();
     }
 
     public string? SourcePath
@@ -123,6 +149,24 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => GetValue(VolumeProperty);
         set => SetValue(VolumeProperty, value);
+    }
+
+    public DomainPixelSize SourceVideoSize
+    {
+        get => GetValue(SourceVideoSizeProperty);
+        set => SetValue(SourceVideoSizeProperty, value);
+    }
+
+    public DomainPixelSize CanvasSize
+    {
+        get => GetValue(CanvasSizeProperty);
+        set => SetValue(CanvasSizeProperty, value);
+    }
+
+    public ClipCanvasTransform CanvasTransform
+    {
+        get => GetValue(CanvasTransformProperty);
+        set => SetValue(CanvasTransformProperty, value);
     }
 
     public IReadOnlyList<PreviewAudioTrack> AudioTracks
@@ -371,6 +415,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             PlaybackStatus = "Loading live preview…";
             var engine = await _engineTask!.WaitAsync(cancellationToken);
             await engine.LoadAsync(sourcePath, cancellationToken);
+            await engine.SetVideoTransformAsync(CalculatePreviewVideoTransform(SourceVideoSize, CanvasSize, CanvasTransform, Bounds.Size), cancellationToken);
             await engine.SeekAsync(Position, cancellationToken);
             await engine.SetVolumeAsync(Volume, cancellationToken);
             string? audioWarning = null;
@@ -528,6 +573,78 @@ public sealed class MpvVideoView : OpenGlControlBase
         {
             SetFailure($"Live preview volume failed: {exception.Message}");
         }
+    }
+
+    private void StartVideoTransformChange()
+    {
+        _videoTransformRevision++;
+        if (_mediaLoaded && _engine is not null && !_shutdownStarted && !_videoTransformLoopRunning)
+        {
+            _ = ApplyVideoTransformLoopAsync();
+        }
+    }
+
+    private async Task ApplyVideoTransformLoopAsync()
+    {
+        _videoTransformLoopRunning = true;
+        try
+        {
+            while (_mediaLoaded && _engine is not null && !_shutdownStarted)
+            {
+                var handledRevision = _videoTransformRevision;
+                var transform = CalculatePreviewVideoTransform(
+                    SourceVideoSize,
+                    CanvasSize,
+                    CanvasTransform,
+                    Bounds.Size);
+                await _engine.SetVideoTransformAsync(transform, _lifetimeCancellation.Token);
+                if (handledRevision == _videoTransformRevision)
+                {
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            SetFailure($"Live preview transform failed: {exception.Message}");
+        }
+        finally
+        {
+            _videoTransformLoopRunning = false;
+        }
+    }
+
+    internal static PreviewVideoTransform CalculatePreviewVideoTransform(
+        DomainPixelSize sourceSize,
+        DomainPixelSize canvasSize,
+        ClipCanvasTransform canvasTransform,
+        Size viewportSize)
+    {
+        var viewportWidth = Math.Max(1, viewportSize.Width);
+        var viewportHeight = Math.Max(1, viewportSize.Height);
+        var radians = canvasTransform.RotationDegrees * Math.PI / 180;
+        var cosine = Math.Abs(Math.Cos(radians));
+        var sine = Math.Abs(Math.Sin(radians));
+        var rotatedWidth = (sourceSize.Width * cosine) + (sourceSize.Height * sine);
+        var rotatedHeight = (sourceSize.Width * sine) + (sourceSize.Height * cosine);
+        var baseFitScale = Math.Min(
+            viewportWidth / rotatedWidth,
+            viewportHeight / rotatedHeight);
+        var canvasDisplayScale = Math.Min(
+            viewportWidth / canvasSize.Width,
+            viewportHeight / canvasSize.Height);
+        var desiredPixelScale = canvasTransform.Scale * canvasDisplayScale;
+        var zoomFactor = Math.Clamp(desiredPixelScale / baseFitScale, 0.01, 100);
+        var displayedWidth = Math.Max(1, rotatedWidth * desiredPixelScale);
+        var displayedHeight = Math.Max(1, rotatedHeight * desiredPixelScale);
+        return new PreviewVideoTransform(
+            zoomFactor,
+            canvasTransform.OffsetX * canvasDisplayScale / displayedWidth,
+            canvasTransform.OffsetY * canvasDisplayScale / displayedHeight,
+            canvasTransform.RotationDegrees);
     }
 
     private void StartAudioMixChange()

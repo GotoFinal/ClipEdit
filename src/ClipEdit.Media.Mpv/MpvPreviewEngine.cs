@@ -109,6 +109,11 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     public Task SetVolumeAsync(double volume, CancellationToken cancellationToken) =>
         InvokeAsync(client => client.SetVolume(volume), cancellationToken);
 
+    public Task SetVideoTransformAsync(
+        PreviewVideoTransform transform,
+        CancellationToken cancellationToken) =>
+        InvokeAsync(client => client.SetVideoTransform(transform), cancellationToken);
+
     public Task SetAudioTracksAsync(
         IReadOnlyList<PreviewAudioTrack> audioTracks,
         CancellationToken cancellationToken)

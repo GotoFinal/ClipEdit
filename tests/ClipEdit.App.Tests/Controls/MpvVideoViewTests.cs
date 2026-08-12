@@ -1,5 +1,8 @@
+using Avalonia;
 using ClipEdit.App.Controls;
+using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
+using DomainPixelSize = ClipEdit.Domain.Geometry.PixelSize;
 
 namespace ClipEdit.App.Tests.Controls;
 
@@ -39,5 +42,35 @@ public sealed class MpvVideoViewTests
 
         Assert.Equal(PlaybackRangeAction.End, decision.Action);
         Assert.Null(decision.Target);
+    }
+
+    [Fact]
+    public void Identity_canvas_transform_preserves_libmpv_fit()
+    {
+        var transform = MpvVideoView.CalculatePreviewVideoTransform(
+            new DomainPixelSize(1_920, 1_080),
+            new DomainPixelSize(1_920, 1_080),
+            ClipCanvasTransform.Identity,
+            new Size(960, 540));
+
+        Assert.Equal(1, transform.ZoomFactor, 6);
+        Assert.Equal(0, transform.PanX);
+        Assert.Equal(0, transform.PanY);
+        Assert.Equal(0, transform.RotationDegrees);
+    }
+
+    [Fact]
+    public void Canvas_offsets_and_rotation_lower_to_zoom_pan_and_rotation()
+    {
+        var transform = MpvVideoView.CalculatePreviewVideoTransform(
+            new DomainPixelSize(1_920, 1_080),
+            new DomainPixelSize(1_080, 1_080),
+            new ClipCanvasTransform(100, -50, 1, 90),
+            new Size(960, 540));
+
+        Assert.Equal(16d / 9d, transform.ZoomFactor, 6);
+        Assert.Equal(50d / 540d, transform.PanX, 6);
+        Assert.Equal(-25d / 960d, transform.PanY, 6);
+        Assert.Equal(90, transform.RotationDegrees);
     }
 }

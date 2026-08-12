@@ -12,6 +12,7 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
 {
     private SequenceClip _model;
     private CropRegion _sourceWindow;
+    private ClipCanvasTransform _canvasTransform;
     private MediaTime _timelineStart;
     private IReadOnlyList<TimelineThumbnailFrame> _timelineThumbnails = [];
     private bool _isTimelineLoading;
@@ -19,7 +20,8 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     public VideoClipViewModel(
         MediaItemViewModel source,
         SequenceClip model,
-        CropRegion sourceWindow)
+        CropRegion sourceWindow,
+        ClipCanvasTransform? canvasTransform = null)
     {
         Source = source ?? throw new ArgumentNullException(nameof(source));
         if (model.SourceId != source.Id)
@@ -34,11 +36,10 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
 
         _model = model;
         _sourceWindow = sourceWindow;
+        _canvasTransform = canvasTransform ?? ClipCanvasTransform.Identity;
     }
 
     public MediaItemViewModel Source { get; }
-
-    public event EventHandler? SourceWindowResized;
 
     public SequenceClip Model
     {
@@ -72,7 +73,6 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
                 throw new ArgumentException("The source window must use this clip's source size.", nameof(value));
             }
 
-            var wasResized = value.Width != _sourceWindow.Width || value.Height != _sourceWindow.Height;
             if (!SetProperty(ref _sourceWindow, value))
             {
                 return;
@@ -83,10 +83,6 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(CropWidth));
             OnPropertyChanged(nameof(CropHeight));
             OnPropertyChanged(nameof(CropSizeText));
-            if (wasResized)
-            {
-                SourceWindowResized?.Invoke(this, EventArgs.Empty);
-            }
         }
     }
 
@@ -115,6 +111,60 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     }
 
     public string CropSizeText => $"{SourceWindow.Width} × {SourceWindow.Height}";
+
+    public ClipCanvasTransform CanvasTransform
+    {
+        get => _canvasTransform;
+        set
+        {
+            if (!SetProperty(ref _canvasTransform, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CanvasOffsetX));
+            OnPropertyChanged(nameof(CanvasOffsetY));
+            OnPropertyChanged(nameof(CanvasScalePercent));
+            OnPropertyChanged(nameof(CanvasRotationDegrees));
+            OnPropertyChanged(nameof(CanvasTransformText));
+        }
+    }
+
+    public double CanvasOffsetX
+    {
+        get => CanvasTransform.OffsetX;
+        set => TrySetCanvasTransform(value, CanvasTransform.OffsetY, CanvasTransform.Scale, CanvasTransform.RotationDegrees);
+    }
+
+    public double CanvasOffsetY
+    {
+        get => CanvasTransform.OffsetY;
+        set => TrySetCanvasTransform(CanvasTransform.OffsetX, value, CanvasTransform.Scale, CanvasTransform.RotationDegrees);
+    }
+
+    public double CanvasScalePercent
+    {
+        get => CanvasTransform.Scale * 100;
+        set => TrySetCanvasTransform(
+            CanvasTransform.OffsetX,
+            CanvasTransform.OffsetY,
+            value / 100,
+            CanvasTransform.RotationDegrees);
+    }
+
+    public int CanvasRotationDegrees
+    {
+        get => CanvasTransform.RotationDegrees;
+        set => TrySetCanvasTransform(
+            CanvasTransform.OffsetX,
+            CanvasTransform.OffsetY,
+            CanvasTransform.Scale,
+            value);
+    }
+
+    public string CanvasTransformText =>
+        $"X {CanvasTransform.OffsetX:0.#} · Y {CanvasTransform.OffsetY:0.#} · " +
+        $"{CanvasTransform.Scale * 100:0.#}% · {CanvasTransform.RotationDegrees}°";
 
     public MediaTime SourceStart => Model.SourceRange.Start;
 
@@ -216,7 +266,7 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     }
 
     public VideoClipViewModel CreateSibling(SequenceClip model) =>
-        new(Source, model, SourceWindow);
+        new(Source, model, SourceWindow, CanvasTransform);
 
     public void SetTimelineThumbnails(IReadOnlyList<TimelineThumbnailFrame> thumbnails) =>
         TimelineThumbnails = thumbnails ?? throw new ArgumentNullException(nameof(thumbnails));
@@ -233,6 +283,21 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         try
         {
             SourceWindow = new CropRegion(VideoSize, x, y, width, height);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+        }
+    }
+
+    private void TrySetCanvasTransform(
+        double offsetX,
+        double offsetY,
+        double scale,
+        int rotationDegrees)
+    {
+        try
+        {
+            CanvasTransform = new ClipCanvasTransform(offsetX, offsetY, scale, rotationDegrees);
         }
         catch (ArgumentOutOfRangeException)
         {

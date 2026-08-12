@@ -86,6 +86,20 @@
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <ToggleButton
+              Padding="9,5"
+              Classes="secondary"
+              Click="UseCropTool_Click"
+              Content="Crop frame"
+              IsChecked="{Binding IsCropToolActive, Mode=OneWay}"
+              ToolTip.Tip="Edit the one shared output crop" />
+          <ToggleButton
+              Padding="9,5"
+              Classes="secondary"
+              Click="UseTransformTool_Click"
+              Content="Position clip"
+              IsChecked="{Binding IsTransformToolActive, Mode=OneWay}"
+              ToolTip.Tip="Move, zoom, or rotate the selected clip under the crop" />
           <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="CROP" />
           <ComboBox Width="132" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
             <ComboBox.ItemTemplate>
@@ -300,20 +314,35 @@
                       x:Name="LivePreview"
                       Margin="5"
                       AudioTracks="{Binding PreviewAudioTracks}"
+                      CanvasSize="{Binding CanvasSize}"
+                      CanvasTransform="{Binding SelectedVideoClip.CanvasTransform}"
                       HasCuts="{Binding SelectedVideoClip.IsTrimmed}"
                       IsPaused="True"
                       PlaybackRanges="{Binding SelectedVideoClip.PlaybackRanges}"
                       Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
+                      SourceVideoSize="{Binding SelectedVideoClip.VideoSize}"
                       SourcePath="{Binding SelectedMedia.SourcePath}" />
+
+                  <controls:ClipTransformCanvas
+                      Margin="5"
+                      AutomationProperties.Name="Selected clip canvas transform"
+                      CanvasSize="{Binding CanvasSize}"
+                      IsActive="{Binding IsTransformToolActive}"
+                      IsHitTestVisible="{Binding IsTransformToolActive}"
+                      SourceSize="{Binding SelectedVideoClip.VideoSize}"
+                      Transform="{Binding SelectedVideoClip.CanvasTransform, Mode=TwoWay}"
+                      ToolTip.Tip="Drag to move · wheel zooms · Shift+wheel rotates"
+                      ZIndex="9" />
 
                   <controls:CropCanvas
                       Margin="5"
                       AutomationProperties.Name="Video crop selection"
-                      Crop="{Binding SelectedVideoClip.SourceWindow, Mode=TwoWay}"
+                      Crop="{Binding CanvasCrop, Mode=TwoWay}"
                       IsOverlayOnly="True"
                       IsAspectRatioLocked="{Binding IsCropAspectLocked}"
+                      IsHitTestVisible="{Binding IsCropToolActive}"
                       ZIndex="10"
-                      SourceSize="{Binding SelectedMedia.VideoSize}"
+                      SourceSize="{Binding CanvasSize}"
                       ToolTip.Tip="Drag inside the crop to move it; drag a handle to resize" />
 
                   <StackPanel
@@ -544,17 +573,17 @@
               <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="5">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CROP" />
                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="X" />
-                <TextBox Grid.Column="2" Width="54" Text="{Binding SelectedVideoClip.CropX, Mode=TwoWay}" />
+                <TextBox Grid.Column="2" Width="54" Text="{Binding CanvasCropX, Mode=TwoWay}" />
                 <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Y" />
-                <TextBox Grid.Column="4" Width="54" Text="{Binding SelectedVideoClip.CropY, Mode=TwoWay}" />
+                <TextBox Grid.Column="4" Width="54" Text="{Binding CanvasCropY, Mode=TwoWay}" />
                 <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="W" />
-                <TextBox Grid.Column="6" Width="60" Text="{Binding SelectedVideoClip.CropWidth, Mode=TwoWay}" />
+                <TextBox Grid.Column="6" Width="60" Text="{Binding CanvasCropWidth, Mode=TwoWay}" />
                 <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="H" />
-                <TextBox Grid.Column="8" Width="60" Text="{Binding SelectedVideoClip.CropHeight, Mode=TwoWay}" />
+                <TextBox Grid.Column="8" Width="60" Text="{Binding CanvasCropHeight, Mode=TwoWay}" />
                 <Button Grid.Column="9" Classes="secondary" Click="ResetCrop_Click" Content="Reset crop" />
                 <StackPanel Grid.Column="10" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="EXPORT" />
-                  <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding SelectedVideoClip.CropSizeText}" />
+                  <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding CanvasCropSizeText}" />
                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="AUDIO" />
                   <TextBlock VerticalAlignment="Center" Text="{Binding AudioSummaryText}" />
                   <Button
@@ -563,6 +592,36 @@
                       Content="{Binding AudioMixerButtonText}"
                       IsVisible="{Binding HasAudioTracks}" />
                 </StackPanel>
+              </Grid>
+
+              <Grid
+                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,64,Auto,58,Auto,Auto,*"
+                  ColumnSpacing="5"
+                  IsVisible="{Binding HasReadyMedia}">
+                <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CLIP" />
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="X" />
+                <TextBox Grid.Column="2" Text="{Binding SelectedVideoClip.CanvasOffsetX, Mode=TwoWay}" />
+                <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Y" />
+                <TextBox Grid.Column="4" Text="{Binding SelectedVideoClip.CanvasOffsetY, Mode=TwoWay}" />
+                <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="ZOOM %" />
+                <TextBox Grid.Column="6" Text="{Binding SelectedVideoClip.CanvasScalePercent, Mode=TwoWay}" />
+                <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="ROTATE °" />
+                <TextBox Grid.Column="8" Text="{Binding SelectedVideoClip.CanvasRotationDegrees, Mode=TwoWay}" />
+                <Button
+                    Grid.Column="9"
+                    Padding="9,5"
+                    Classes="secondary"
+                    Click="FillClipCanvas_Click"
+                    Content="Fill"
+                    ToolTip.Tip="Center and fill the canvas" />
+                <Button
+                    Grid.Column="10"
+                    Padding="9,5"
+                    Classes="secondary"
+                    Click="FitClipCanvas_Click"
+                    Content="Fit"
+                    ToolTip.Tip="Center and show the whole clip" />
+                <TextBlock Grid.Column="11" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
               </Grid>
 
               <Border

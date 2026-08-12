@@ -555,7 +555,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 return "The timeline selection contains no video";
             }
 
-            var outputSize = slices[0].Clip.SourceWindow.ExportSize;
+            var outputSize = CanvasCrop.ExportSize;
             if (SelectedExportPreset.RequiresEvenDimensions &&
                 (((outputSize.Width & 1) != 0) || ((outputSize.Height & 1) != 0)))
             {
@@ -576,7 +576,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 return SelectedExportPreset.DisplayName;
             }
 
-            var outputSize = slices[0].Clip.SourceWindow.ExportSize;
+            var outputSize = CanvasCrop.ExportSize;
             var duration = slices.Aggregate(
                 MediaTime.Zero,
                 static (total, slice) => total + slice.SourceRange.Duration);
@@ -655,13 +655,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public string CropSizeText
     {
-        get
-        {
-            var video = SelectedMedia?.Media?.Probe.VideoStreams.FirstOrDefault();
-            return video is null
-                ? "No video selected"
-                : $"{video.OrientedSize.Width} × {video.OrientedSize.Height}";
-        }
+        get => VideoClips.Count == 0 ? "No video selected" : CanvasCropSizeText;
     }
 
     public string AudioSummaryText
@@ -814,7 +808,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     slice.Clip.SourcePath,
                     video.Index,
                     slice.SourceRange,
-                    slice.Clip.SourceWindow,
+                    CanvasSize,
+                    CanvasCrop,
+                    slice.Clip.CanvasTransform,
                     embeddedAudio);
             }).ToImmutableArray();
             var externalAudio = AudioTracks
@@ -831,7 +827,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 : MediaTime.Zero;
             var plan = new ExportPlan(
                 videoSegments,
-                slices[0].Clip.SourceWindow.ExportSize,
+                CanvasCrop.ExportSize,
                 destinationPath,
                 SelectedExportPreset,
                 replaceExistingDestination,
@@ -1051,7 +1047,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         var placements = VideoClips
             .GroupBy(clip => clip.Source.Id)
-            .ToDictionary(group => group.Key, group => group.First().SourceWindow);
+            .ToDictionary(group => group.Key, group => group.First().CanvasTransform);
         var replacements = new List<VideoClipViewModel>(videoSources.Length);
         foreach (var source in videoSources)
         {
@@ -1065,7 +1061,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             replacements.Add(new VideoClipViewModel(
                 source,
                 new SequenceClip(Guid.NewGuid(), source.Id, fullRange, fullRange),
-                placements.GetValueOrDefault(source.Id, source.Crop)));
+                source.Crop,
+                placements.GetValueOrDefault(source.Id, ClipCanvasTransform.Fill(source.VideoSize, CanvasSize))));
         }
 
         ReplaceVideoClips(replacements, replacements.FirstOrDefault()?.Id);
@@ -1120,31 +1117,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool ResetSelectedClipPlacement()
     {
-        if (SelectedVideoClip is not { } clip)
-        {
-            return false;
-        }
-
-        _isApplyingCropPreset = true;
-        try
-        {
-            clip.SourceWindow = SelectedCropAspectPreset switch
-            {
-                { IsCustom: false, IsFullFrame: false } preset =>
-                    CropRegion.FullFrame(clip.VideoSize).ResizeToAspectRatio(
-                        preset.WidthUnits,
-                        preset.HeightUnits),
-                _ => CropRegion.FullFrame(clip.VideoSize),
-            };
-        }
-        finally
-        {
-            _isApplyingCropPreset = false;
-        }
-
-        StatusText = $"Centered {clip.DisplayName} under the shared crop frame";
-        MarkProjectDirty();
-        return true;
+        return ResetSelectedClipToFill();
     }
 
     private bool ApplySelectedCropPreset()
@@ -1157,21 +1130,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _isApplyingCropPreset = true;
         try
         {
-            foreach (var clip in VideoClips)
-            {
-                clip.SourceWindow = SelectedCropAspectPreset.IsFullFrame
-                    ? CropRegion.FullFrame(clip.VideoSize)
-                    : clip.SourceWindow.ResizeToAspectRatio(
-                        SelectedCropAspectPreset.WidthUnits,
-                        SelectedCropAspectPreset.HeightUnits);
-            }
+            CanvasCrop = SelectedCropAspectPreset.IsFullFrame
+                ? CropRegion.FullFrame(CanvasSize)
+                : CanvasCrop.ResizeToAspectRatio(
+                    SelectedCropAspectPreset.WidthUnits,
+                    SelectedCropAspectPreset.HeightUnits);
         }
         finally
         {
             _isApplyingCropPreset = false;
         }
 
-        StatusText = $"Applied {SelectedCropAspectPreset.DisplayName} to the shared crop frame; each clip keeps its own position underneath";
+        StatusText = $"Applied {SelectedCropAspectPreset.DisplayName} to the one shared crop frame";
         MarkProjectDirty();
         RaiseExportStateChanged();
         return true;
@@ -1298,6 +1268,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             SelectedExportPreset = BuiltInExportPresets.Mp4Compatible;
             _selectedCropAspectPreset = BuiltInCropAspectPresets.Custom;
             _isCropAspectLocked = false;
+            ResetProjectCanvasState();
             OnPropertyChanged(nameof(SelectedCropAspectPreset));
             OnPropertyChanged(nameof(IsCropAspectLocked));
             IsProjectDirty = false;
@@ -1553,7 +1524,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             SelectedExportPreset.Id,
             mediaDocuments,
             VideoClips.Select(CreateVideoClipDocument).ToArray(),
-            new ProjectCropSettingsDocument(SelectedCropAspectPreset.Id, IsCropAspectLocked));
+            new ProjectCropSettingsDocument(SelectedCropAspectPreset.Id, IsCropAspectLocked),
+            new ProjectCanvasDocument(
+                CanvasSize.Width,
+                CanvasSize.Height,
+                CanvasCrop.X,
+                CanvasCrop.Y,
+                CanvasCrop.Width,
+                CanvasCrop.Height));
     }
 
     public void Dispose()
@@ -1666,6 +1644,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _sequenceSelectionEnd = MediaTime.Zero;
         _sequenceTimelineZoom = 1;
         _sequenceTimelineViewportStart = 0;
+        ResetProjectCanvasState();
     }
 
     private static string BuildAudioStreamText(AudioStreamInfo audio)
@@ -1768,7 +1747,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             Math.Abs(_sequenceSelectionEnd.TotalSeconds - previousDuration) < 0.001;
         var fullRange = new MediaRange(MediaTime.Zero, duration.Value);
         var model = new SequenceClip(Guid.NewGuid(), mediaItem.Id, fullRange, fullRange);
-        var clip = new VideoClipViewModel(mediaItem, model, mediaItem.Crop);
+        if (VideoClips.Count == 0)
+        {
+            InitializeCanvas(mediaItem.VideoSize, CropRegion.FullFrame(mediaItem.VideoSize));
+        }
+
+        var clip = new VideoClipViewModel(
+            mediaItem,
+            model,
+            mediaItem.Crop,
+            ClipCanvasTransform.Fill(mediaItem.VideoSize, CanvasSize));
         AttachVideoClip(clip);
         VideoClips.Add(clip);
         UpdateSequenceLayout(resetSelectionIfEmpty: false);
@@ -1787,69 +1775,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private void AttachVideoClip(VideoClipViewModel clip)
     {
         clip.PropertyChanged += OnVideoClipPropertyChanged;
-        clip.SourceWindowResized += OnVideoClipSourceWindowResized;
     }
 
     private void DetachVideoClip(VideoClipViewModel clip)
     {
         clip.PropertyChanged -= OnVideoClipPropertyChanged;
-        clip.SourceWindowResized -= OnVideoClipSourceWindowResized;
-    }
-
-    private void OnVideoClipSourceWindowResized(object? sender, EventArgs eventArgs)
-    {
-        _ = eventArgs;
-        if (_isApplyingCropPreset || sender is not VideoClipViewModel resizedClip)
-        {
-            return;
-        }
-
-        _isApplyingCropPreset = true;
-        try
-        {
-            var resized = resizedClip.SourceWindow;
-            var maximum = CropRegion.FullFrame(resized.SourceSize)
-                .ResizeToAspectRatio(resized.Width, resized.Height);
-            var scale = Math.Min(
-                resized.Width / (double)maximum.Width,
-                resized.Height / (double)maximum.Height);
-            foreach (var clip in VideoClips.Where(clip => !ReferenceEquals(clip, resizedClip)))
-            {
-                var otherMaximum = CropRegion.FullFrame(clip.VideoSize)
-                    .ResizeToAspectRatio(resized.Width, resized.Height);
-                var width = Math.Clamp(
-                    checked((int)Math.Round(otherMaximum.Width * scale)),
-                    1,
-                    clip.VideoSize.Width);
-                var height = Math.Clamp(
-                    checked((int)Math.Round(otherMaximum.Height * scale)),
-                    1,
-                    clip.VideoSize.Height);
-                var centerX = clip.SourceWindow.X + (clip.SourceWindow.Width / 2d);
-                var centerY = clip.SourceWindow.Y + (clip.SourceWindow.Height / 2d);
-                var x = Math.Clamp(
-                    checked((int)Math.Round(centerX - (width / 2d))),
-                    0,
-                    clip.VideoSize.Width - width);
-                var y = Math.Clamp(
-                    checked((int)Math.Round(centerY - (height / 2d))),
-                    0,
-                    clip.VideoSize.Height - height);
-                clip.SourceWindow = new CropRegion(clip.VideoSize, x, y, width, height);
-            }
-        }
-        finally
-        {
-            _isApplyingCropPreset = false;
-        }
-
-        if (!SelectedCropAspectPreset.IsCustom)
-        {
-            _selectedCropAspectPreset = BuiltInCropAspectPresets.Custom;
-            OnPropertyChanged(nameof(SelectedCropAspectPreset));
-        }
-
-        StatusText = "Crop resized manually; preset changed to Custom";
     }
 
     private void OnVideoClipPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -1866,7 +1796,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             MarkProjectDirty();
         }
 
-        if (eventArgs.PropertyName == nameof(VideoClipViewModel.SourceWindow))
+        if (eventArgs.PropertyName is nameof(VideoClipViewModel.SourceWindow) or
+            nameof(VideoClipViewModel.CanvasTransform))
         {
             MarkProjectDirty();
             RaiseExportStateChanged();
@@ -2335,6 +2266,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var source = clip.Model.SourceRange;
         var available = clip.Model.AvailableRange;
         var window = clip.SourceWindow;
+        var transform = clip.CanvasTransform;
         return new ProjectVideoClipDocument(
             clip.Id,
             clip.Source.Id,
@@ -2349,7 +2281,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             window.X,
             window.Y,
             window.Width,
-            window.Height);
+            window.Height,
+            transform.OffsetX,
+            transform.OffsetY,
+            transform.Scale,
+            transform.RotationDegrees);
     }
 
     private void RestoreVideoSequence(ProjectDocument document, ICollection<string> warnings)
@@ -2358,6 +2294,39 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (document.SchemaVersion >= 2 && document.VideoClips is not null)
         {
             var mediaById = MediaItems.ToDictionary(item => item.Id);
+            if (document.SchemaVersion >= 3 && document.Canvas is { } savedCanvas)
+            {
+                var canvasSize = new PixelSize(savedCanvas.Width, savedCanvas.Height);
+                InitializeCanvas(
+                    canvasSize,
+                    new CropRegion(
+                        canvasSize,
+                        savedCanvas.CropX,
+                        savedCanvas.CropY,
+                        savedCanvas.CropWidth,
+                        savedCanvas.CropHeight));
+            }
+            else
+            {
+                var firstSavedClip = document.VideoClips.FirstOrDefault(saved =>
+                    mediaById.TryGetValue(saved.SourceMediaId, out var source) && source.HasVideo);
+                if (firstSavedClip is not null &&
+                    mediaById.TryGetValue(firstSavedClip.SourceMediaId, out var firstSource))
+                {
+                    var legacyCrop = new CropRegion(
+                        firstSource.VideoSize,
+                        firstSavedClip.SourceWindowX,
+                        firstSavedClip.SourceWindowY,
+                        firstSavedClip.SourceWindowWidth,
+                        firstSavedClip.SourceWindowHeight);
+                    InitializeCanvas(firstSource.VideoSize, legacyCrop);
+                }
+                else
+                {
+                    ResetProjectCanvasState();
+                }
+            }
+
             foreach (var savedClip in document.VideoClips)
             {
                 if (!mediaById.TryGetValue(savedClip.SourceMediaId, out var source) || !source.HasVideo)
@@ -2383,7 +2352,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         savedClip.SourceWindowY,
                         savedClip.SourceWindowWidth,
                         savedClip.SourceWindowHeight);
-                    replacements.Add(new VideoClipViewModel(source, model, window));
+                    var transform = document.SchemaVersion >= 3
+                        ? new ClipCanvasTransform(
+                            savedClip.CanvasOffsetX,
+                            savedClip.CanvasOffsetY,
+                            savedClip.CanvasScale,
+                            savedClip.CanvasRotationDegrees)
+                        : CreateLegacyCanvasTransform(source.VideoSize, CanvasSize, CanvasCrop, window);
+                    replacements.Add(new VideoClipViewModel(source, model, window, transform));
                 }
                 catch (ArgumentException exception)
                 {
@@ -2398,6 +2374,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         else
         {
+            var firstSource = MediaItems.FirstOrDefault(item => item.HasVideo);
+            if (firstSource is not null)
+            {
+                InitializeCanvas(firstSource.VideoSize, firstSource.Crop);
+            }
+            else
+            {
+                ResetProjectCanvasState();
+            }
+
             foreach (var source in MediaItems.Where(item => item.HasVideo))
             {
                 var duration = source.Edit?.SourceDuration ?? source.Media?.Probe.Duration;
@@ -2412,7 +2398,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     replacements.Add(new VideoClipViewModel(
                         source,
                         new SequenceClip(Guid.NewGuid(), source.Id, range, available),
-                        source.Crop));
+                        source.Crop,
+                        CreateLegacyCanvasTransform(source.VideoSize, CanvasSize, CanvasCrop, source.Crop)));
                 }
             }
 

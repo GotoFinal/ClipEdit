@@ -22,11 +22,10 @@ public sealed partial class MainWindowViewModel
             return false;
         }
 
-        var clip = slices[0].Clip;
-        var crop = clip.SourceWindow;
+        var crop = CanvasCrop;
         var x = Math.Clamp(crop.X, 0, crop.SourceSize.Width - compatibleSize.Width);
         var y = Math.Clamp(crop.Y, 0, crop.SourceSize.Height - compatibleSize.Height);
-        clip.SourceWindow = new CropRegion(
+        CanvasCrop = new CropRegion(
             crop.SourceSize,
             x,
             y,
@@ -51,7 +50,7 @@ public sealed partial class MainWindowViewModel
             return false;
         }
 
-        var crop = slices[0].Clip.SourceWindow;
+        var crop = CanvasCrop;
         if ((crop.Width & 1) == 0 && (crop.Height & 1) == 0)
         {
             return false;

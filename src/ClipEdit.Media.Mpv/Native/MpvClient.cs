@@ -140,6 +140,16 @@ internal sealed class MpvClient : IDisposable
         SetProperty("volume", (volume * 100).ToString("R", CultureInfo.InvariantCulture));
     }
 
+    public void SetVideoTransform(PreviewVideoTransform transform)
+    {
+        SetProperty(
+            "video-zoom",
+            Math.Log2(transform.ZoomFactor).ToString("R", CultureInfo.InvariantCulture));
+        SetProperty("video-pan-x", transform.PanX.ToString("R", CultureInfo.InvariantCulture));
+        SetProperty("video-pan-y", transform.PanY.ToString("R", CultureInfo.InvariantCulture));
+        SetProperty("video-rotate", transform.RotationDegrees.ToString(CultureInfo.InvariantCulture));
+    }
+
     public void SetAudioTracks(
         IReadOnlyList<PreviewAudioTrack> audioTracks,
         CancellationToken cancellationToken)
