@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using Avalonia.Media.Imaging;
 using ClipEdit.Application.Media;
 using ClipEdit.Domain.Geometry;
-using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
 
@@ -56,10 +56,25 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         get => _selectedMedia;
         set
         {
+            if (ReferenceEquals(_selectedMedia, value))
+            {
+                return;
+            }
+
+            if (_selectedMedia is not null)
+            {
+                _selectedMedia.PropertyChanged -= OnSelectedMediaPropertyChanged;
+            }
+
             if (SetProperty(ref _selectedMedia, value))
             {
+                if (value is not null)
+                {
+                    value.PropertyChanged += OnSelectedMediaPropertyChanged;
+                }
+
                 RaiseWorkspaceStateChanged();
-                StartPreviewRefresh(value);
+                StartPreviewRefresh(value, debounce: false, clearExisting: true);
             }
         }
     }
@@ -238,6 +253,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        if (SelectedMedia is not null)
+        {
+            SelectedMedia.PropertyChanged -= OnSelectedMediaPropertyChanged;
+        }
+
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
         _previewCancellation = null;
@@ -268,19 +288,38 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         return $"{language} · {audio.CodecName.ToUpperInvariant()} · {layout}";
     }
 
-    private void StartPreviewRefresh(MediaItemViewModel? mediaItem)
+    private void OnSelectedMediaPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        if (eventArgs.PropertyName == nameof(MediaItemViewModel.Playhead))
+        {
+            StartPreviewRefresh((MediaItemViewModel?)sender, debounce: true, clearExisting: false);
+        }
+    }
+
+    private void StartPreviewRefresh(
+        MediaItemViewModel? mediaItem,
+        bool debounce,
+        bool clearExisting)
     {
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
-        _previewCancellation = new CancellationTokenSource();
-        _ = RefreshPreviewAsync(mediaItem, _previewCancellation.Token);
+        var request = new CancellationTokenSource();
+        _previewCancellation = request;
+        _ = RefreshPreviewAsync(mediaItem, request, debounce, clearExisting);
     }
 
     private async Task RefreshPreviewAsync(
         MediaItemViewModel? mediaItem,
-        CancellationToken cancellationToken)
+        CancellationTokenSource request,
+        bool debounce,
+        bool clearExisting)
     {
-        PreviewImage = null;
+        var cancellationToken = request.Token;
+        if (clearExisting)
+        {
+            PreviewImage = null;
+        }
+
         PreviewErrorText = null;
 
         var video = mediaItem?.Media?.Probe.VideoStreams.FirstOrDefault();
@@ -289,21 +328,23 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        IsPreviewLoading = true;
         try
         {
-            var duration = mediaItem!.Media!.Probe.Duration;
-            var timestamp = duration is null
-                ? MediaTime.Zero
-                : Min(new MediaTime(1, 1), duration.Value / 10);
+            if (debounce)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(140), cancellationToken);
+            }
+
+            IsPreviewLoading = true;
             var decodedFrame = await _frameDecoder.DecodeAsync(
-                mediaItem.SourcePath,
+                mediaItem!.SourcePath,
                 video.Index,
-                timestamp,
+                mediaItem.Playhead,
                 new PixelSize(1_280, 720),
                 cancellationToken);
 
             await using var stream = new MemoryStream(decodedFrame.EncodedImage.ToArray(), writable: false);
+            cancellationToken.ThrowIfCancellationRequested();
             PreviewImage = new Bitmap(stream);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -320,9 +361,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
         finally
         {
-            IsPreviewLoading = false;
+            if (ReferenceEquals(_previewCancellation, request))
+            {
+                IsPreviewLoading = false;
+            }
         }
     }
-
-    private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;
 }

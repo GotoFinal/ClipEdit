@@ -65,6 +65,34 @@ public sealed class MainWindowViewModelTests
         Assert.True(viewModel.ShowQuickWorkspace);
     }
 
+    [Fact]
+    public async Task Selected_source_can_remove_an_exact_quantized_range_and_reset_it()
+    {
+        var sourcePath = Path.Combine(Path.GetTempPath(), "cut.mkv");
+        var viewModel = new MainWindowViewModel(new StubProbe());
+
+        await viewModel.ImportFilesAsync([sourcePath]);
+        var media = viewModel.SelectedMedia!;
+        media.PlayheadSeconds = 10.1234;
+        media.MarkSelectionStart();
+        media.PlayheadSeconds = 20.5678;
+        media.MarkSelectionEnd();
+
+        Assert.True(media.RemoveSelection());
+        Assert.Equal(new MediaTime(49_555, 1_000), media.Edit!.OutputDuration);
+        Assert.Equal<MediaRange>(
+            [
+                new MediaRange(MediaTime.Zero, new MediaTime(10_123, 1_000)),
+                new MediaRange(new MediaTime(20_568, 1_000), new MediaTime(60, 1)),
+            ],
+            media.KeptRanges);
+
+        media.ResetCuts();
+
+        Assert.True(media.Edit.IsUnedited);
+        Assert.Equal(new MediaTime(60, 1), media.SelectionEnd);
+    }
+
     private sealed class StubProbe(string? failingPath = null) : IMediaProbe
     {
         public Task<MediaProbeResult> ProbeAsync(

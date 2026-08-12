@@ -206,7 +206,7 @@
             RowSpacing="14"
             IsVisible="{Binding ShowQuickWorkspace}">
           <Border Classes="panel" Padding="18">
-            <Grid RowDefinitions="*,Auto" RowSpacing="12">
+            <Grid RowDefinitions="*,Auto,Auto" RowSpacing="10">
               <Border Background="#0B0D12" CornerRadius="8">
                 <Grid>
                   <controls:CropCanvas
@@ -268,12 +268,20 @@
                 </Grid>
               </Border>
 
-              <Grid Grid.Row="1" ColumnDefinitions="*,Auto,*">
-                <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="00:00.000" />
+              <Slider
+                  Grid.Row="1"
+                  AutomationProperties.Name="Source playhead"
+                  IsEnabled="{Binding SelectedMedia.HasEditableDuration}"
+                  Maximum="{Binding SelectedMedia.SourceDurationSeconds}"
+                  Minimum="0"
+                  Value="{Binding SelectedMedia.PlayheadSeconds, Mode=TwoWay}" />
+
+              <Grid Grid.Row="2" ColumnDefinitions="*,Auto,*">
+                <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="{Binding SelectedMedia.PlayheadText}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                  <Button Classes="secondary" Content="│◀" IsEnabled="False" />
-                  <Button Classes="primary" Content="▶" IsEnabled="False" />
-                  <Button Classes="secondary" Content="▶│" IsEnabled="False" />
+                  <Button Classes="secondary" Click="GoToStart_Click" Content="│◀" />
+                  <Button Classes="primary" Content="▶" IsEnabled="False" ToolTip.Tip="Playback engine not connected yet" />
+                  <Button Classes="secondary" Click="GoToEnd_Click" Content="▶│" />
                 </StackPanel>
                 <TextBlock
                     Grid.Column="2"
@@ -304,15 +312,38 @@
                   IsVisible="{Binding ShowRangeStrip}">
                 <Grid Margin="8" ColumnDefinitions="90,*">
                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="SOURCE RANGE" />
-                  <Border Grid.Column="1" Margin="8,4" Background="#5B45BE" CornerRadius="5">
-                    <TextBlock
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        FontSize="11"
-                        Text="Full source selected" />
-                  </Border>
+                  <controls:SourceRangeCanvas
+                      Grid.Column="1"
+                      Margin="8,4"
+                      AutomationProperties.Name="Kept source ranges and cut selection"
+                      Duration="{Binding SelectedMedia.SourceDurationSeconds}"
+                      KeptRanges="{Binding SelectedMedia.KeptRanges}"
+                      Playhead="{Binding SelectedMedia.PlayheadSeconds, Mode=TwoWay}"
+                      SelectionEnd="{Binding SelectedMedia.SelectionEndSeconds, Mode=TwoWay}"
+                      SelectionStart="{Binding SelectedMedia.SelectionStartSeconds, Mode=TwoWay}" />
                 </Grid>
               </Border>
+
+              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="8" IsVisible="{Binding ShowRangeStrip}">
+                <Button Classes="secondary" Click="MarkIn_Click" Content="Mark in" />
+                <Button Grid.Column="1" Classes="secondary" Click="MarkOut_Click" Content="Mark out" />
+                <Button
+                    Grid.Column="2"
+                    Classes="primary"
+                    Click="RemoveSelection_Click"
+                    Content="Remove selected range"
+                    IsEnabled="{Binding SelectedMedia.CanRemoveSelection}" />
+                <Button
+                    Grid.Column="3"
+                    Classes="secondary"
+                    Click="ResetCuts_Click"
+                    Content="Reset cuts"
+                    IsEnabled="{Binding SelectedMedia.IsEdited}" />
+                <StackPanel Grid.Column="5" HorizontalAlignment="Right" Spacing="1">
+                  <TextBlock HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="{Binding SelectedMedia.SelectionRangeText}" />
+                  <TextBlock HorizontalAlignment="Right" FontSize="11" FontWeight="SemiBold" Text="{Binding SelectedMedia.OutputDurationText}" />
+                </StackPanel>
+              </Grid>
 
               <Grid ColumnDefinitions="80,*" IsVisible="{Binding ShowTimeline}">
                 <Border Padding="8" Background="#20242D" CornerRadius="6,0,0,6">

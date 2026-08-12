@@ -83,6 +83,54 @@ public sealed partial class MainWindow : Window
         await ImportPathsAsync(paths);
     }
 
+    private void GoToStart_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel?.SelectedMedia is { } media)
+        {
+            media.PlayheadSeconds = 0;
+        }
+    }
+
+    private void GoToEnd_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel?.SelectedMedia is { } media)
+        {
+            media.PlayheadSeconds = media.SourceDurationSeconds;
+        }
+    }
+
+    private void MarkIn_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.MarkSelectionStart();
+    }
+
+    private void MarkOut_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.MarkSelectionEnd();
+    }
+
+    private void RemoveSelection_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.RemoveSelection();
+    }
+
+    private void ResetCuts_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.ResetCuts();
+    }
+
     private void OnClosed(object? sender, EventArgs eventArgs)
     {
         _ = sender;

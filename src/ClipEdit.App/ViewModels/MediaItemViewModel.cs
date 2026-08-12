@@ -1,5 +1,8 @@
+using System.Collections.Immutable;
 using ClipEdit.Application.Media;
+using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Geometry;
+using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Probe;
 
 namespace ClipEdit.App.ViewModels;
@@ -11,6 +14,11 @@ public sealed class MediaItemViewModel : ViewModelBase
     private string? _errorText;
     private bool _isProbing;
     private CropRegion _crop;
+    private SourceEdit? _edit;
+    private MediaTime _timelineQuantum = new(1, 1_000);
+    private MediaTime _playhead;
+    private MediaTime _selectionStart;
+    private MediaTime _selectionEnd;
 
     public MediaItemViewModel(string sourcePath)
     {
@@ -109,6 +117,101 @@ public sealed class MediaItemViewModel : ViewModelBase
 
     public string CropSizeText => $"{Crop.Width} × {Crop.Height}";
 
+    public SourceEdit? Edit
+    {
+        get => _edit;
+        private set
+        {
+            if (SetProperty(ref _edit, value))
+            {
+                OnPropertyChanged(nameof(KeptRanges));
+                OnPropertyChanged(nameof(IsEdited));
+                OnPropertyChanged(nameof(CanRemoveSelection));
+                OnPropertyChanged(nameof(OutputDurationText));
+            }
+        }
+    }
+
+    public ImmutableArray<MediaRange> KeptRanges =>
+        Edit?.KeptRanges ?? ImmutableArray<MediaRange>.Empty;
+
+    public bool HasEditableDuration => Edit is not null;
+
+    public bool IsEdited => Edit?.IsUnedited == false;
+
+    public double SourceDurationSeconds => Edit?.SourceDuration.TotalSeconds ?? 0;
+
+    public MediaTime Playhead
+    {
+        get => _playhead;
+        set
+        {
+            var bounded = ClampToSource(value);
+            if (SetProperty(ref _playhead, bounded))
+            {
+                OnPropertyChanged(nameof(PlayheadSeconds));
+                OnPropertyChanged(nameof(PlayheadText));
+            }
+        }
+    }
+
+    public double PlayheadSeconds
+    {
+        get => Playhead.TotalSeconds;
+        set => Playhead = QuantizeSeconds(value);
+    }
+
+    public string PlayheadText => FormatTimestamp(Playhead);
+
+    public MediaTime SelectionStart
+    {
+        get => _selectionStart;
+        private set
+        {
+            if (SetProperty(ref _selectionStart, ClampToSource(value)))
+            {
+                RaiseSelectionChanged();
+            }
+        }
+    }
+
+    public MediaTime SelectionEnd
+    {
+        get => _selectionEnd;
+        private set
+        {
+            if (SetProperty(ref _selectionEnd, ClampToSource(value)))
+            {
+                RaiseSelectionChanged();
+            }
+        }
+    }
+
+    public double SelectionStartSeconds
+    {
+        get => SelectionStart.TotalSeconds;
+        set => SelectionStart = QuantizeSeconds(value);
+    }
+
+    public double SelectionEndSeconds
+    {
+        get => SelectionEnd.TotalSeconds;
+        set => SelectionEnd = QuantizeSeconds(value);
+    }
+
+    public bool CanRemoveSelection =>
+        Edit is not null &&
+        SelectionStart < SelectionEnd &&
+        Edit.KeptRanges.Any(range =>
+            SelectionStart < range.End && SelectionEnd > range.Start);
+
+    public string SelectionRangeText =>
+        $"{FormatTimestamp(SelectionStart)} – {FormatTimestamp(SelectionEnd)}";
+
+    public string OutputDurationText => Edit is null
+        ? "Unknown duration"
+        : $"Output {FormatTimestamp(Edit.OutputDuration)}";
+
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorText);
 
     public string StatusText
@@ -189,6 +292,7 @@ public sealed class MediaItemViewModel : ViewModelBase
             if (video is not null)
             {
                 Crop = CropRegion.FullFrame(video.OrientedSize);
+                InitializeEditing(video);
             }
             StatusText = "Ready";
         }
@@ -212,6 +316,39 @@ public sealed class MediaItemViewModel : ViewModelBase
             OnPropertyChanged(nameof(Summary));
             OnPropertyChanged(nameof(Detail));
         }
+    }
+
+    public void MarkSelectionStart()
+    {
+        SelectionStart = Playhead;
+    }
+
+    public void MarkSelectionEnd()
+    {
+        SelectionEnd = Playhead;
+    }
+
+    public bool RemoveSelection()
+    {
+        if (!CanRemoveSelection || Edit is null)
+        {
+            return false;
+        }
+
+        Edit = Edit.Remove(new MediaRange(SelectionStart, SelectionEnd));
+        return true;
+    }
+
+    public void ResetCuts()
+    {
+        if (Edit is null)
+        {
+            return;
+        }
+
+        Edit = Edit.Reset();
+        SelectionStart = MediaTime.Zero;
+        SelectionEnd = Edit.SourceDuration;
     }
 
     private static string FormatDuration(ClipEdit.Domain.Timeline.MediaTime? duration)
@@ -255,4 +392,71 @@ public sealed class MediaItemViewModel : ViewModelBase
             // Numeric input is allowed to be temporarily invalid while the user edits it.
         }
     }
+
+    private void InitializeEditing(VideoStreamInfo video)
+    {
+        var duration = Media?.Probe.Duration ?? video.Duration;
+        if (duration is null || duration <= MediaTime.Zero)
+        {
+            return;
+        }
+
+        if (video.TimeBase is { } timeBase && timeBase > MediaTime.Zero)
+        {
+            _timelineQuantum = timeBase;
+        }
+
+        Edit = new SourceEdit(duration.Value);
+        SelectionStart = MediaTime.Zero;
+        SelectionEnd = duration.Value;
+        Playhead = Min(new MediaTime(1, 1), duration.Value / 10);
+        OnPropertyChanged(nameof(HasEditableDuration));
+        OnPropertyChanged(nameof(SourceDurationSeconds));
+    }
+
+    private MediaTime QuantizeSeconds(double seconds)
+    {
+        if (!double.IsFinite(seconds) || Edit is null)
+        {
+            return MediaTime.Zero;
+        }
+
+        var bounded = Math.Clamp(seconds, 0, Edit.SourceDuration.TotalSeconds);
+        var ticks = checked((long)Math.Round(
+            bounded / _timelineQuantum.TotalSeconds,
+            MidpointRounding.AwayFromZero));
+        return ClampToSource(_timelineQuantum * ticks);
+    }
+
+    private MediaTime ClampToSource(MediaTime value)
+    {
+        if (value < MediaTime.Zero || Edit is null)
+        {
+            return MediaTime.Zero;
+        }
+
+        return value > Edit.SourceDuration ? Edit.SourceDuration : value;
+    }
+
+    private void RaiseSelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectionStartSeconds));
+        OnPropertyChanged(nameof(SelectionEndSeconds));
+        OnPropertyChanged(nameof(SelectionRangeText));
+        OnPropertyChanged(nameof(CanRemoveSelection));
+    }
+
+    private static string FormatTimestamp(MediaTime value)
+    {
+        var totalMilliseconds = Math.Max(0, (long)Math.Round(value.TotalSeconds * 1_000));
+        var hours = totalMilliseconds / 3_600_000;
+        var minutes = (totalMilliseconds / 60_000) % 60;
+        var seconds = (totalMilliseconds / 1_000) % 60;
+        var milliseconds = totalMilliseconds % 1_000;
+        return hours > 0
+            ? $"{hours}:{minutes:00}:{seconds:00}.{milliseconds:000}"
+            : $"{minutes:00}:{seconds:00}.{milliseconds:000}";
+    }
+
+    private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;
 }
