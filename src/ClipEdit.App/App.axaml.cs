@@ -54,38 +54,20 @@ public sealed partial class App : Avalonia.Application
 
             desktop.MainWindow = mainWindow;
 
-            var existingArguments = desktop.Args?
-                .Where(File.Exists)
-                .Select(Path.GetFullPath)
-                .ToArray() ?? [];
-            var initialProjectPath = existingArguments.FirstOrDefault(path =>
-                string.Equals(Path.GetExtension(path), ".clipedit", StringComparison.OrdinalIgnoreCase));
-            var initialMediaPaths = existingArguments
-                .Where(path => !string.Equals(
-                    Path.GetExtension(path),
-                    ".clipedit",
-                    StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-            var recoveryPath = initialProjectPath is null && initialMediaPaths.Length == 0
-                ? FindLatestRecovery(recoveryDirectory)
-                : null;
-            if (initialProjectPath is not null || recoveryPath is not null || initialMediaPaths.Length > 0)
+            var startupArguments = ClassifyStartupArguments(desktop.Args);
+            if (startupArguments.ProjectPath is not null || startupArguments.MediaPaths.Count > 0)
             {
                 mainWindow.Opened += async (_, _) =>
                 {
-                    if (initialProjectPath is not null)
+                    if (startupArguments.ProjectPath is not null)
                     {
                         await viewModel.OpenProjectAsync(
-                            initialProjectPath,
+                            startupArguments.ProjectPath,
                             discardUnsavedChanges: true);
-                    }
-                    else if (recoveryPath is not null)
-                    {
-                        await viewModel.RecoverProjectAsync(recoveryPath);
                     }
                     else
                     {
-                        await mainWindow.ImportPathsAsync(initialMediaPaths);
+                        await mainWindow.ImportPathsAsync(startupArguments.MediaPaths);
                     }
                 };
             }
@@ -94,18 +76,23 @@ public sealed partial class App : Avalonia.Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    private static string? FindLatestRecovery(string recoveryDirectory)
+    internal static StartupArguments ClassifyStartupArguments(IEnumerable<string>? arguments)
     {
-        try
-        {
-            return Directory
-                .EnumerateFiles(recoveryDirectory, "*.recovery.clipedit", SearchOption.TopDirectoryOnly)
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault();
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
+        var existingPaths = arguments?
+            .Where(File.Exists)
+            .Select(Path.GetFullPath)
+            .ToArray() ?? [];
+        var projectPath = existingPaths.FirstOrDefault(path =>
+            string.Equals(Path.GetExtension(path), ".clipedit", StringComparison.OrdinalIgnoreCase));
+        var mediaPaths = existingPaths
+            .Where(path => !string.Equals(
+                Path.GetExtension(path),
+                ".clipedit",
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        return new StartupArguments(projectPath, mediaPaths);
     }
 }
+
+internal sealed record StartupArguments(string? ProjectPath, IReadOnlyList<string> MediaPaths);
