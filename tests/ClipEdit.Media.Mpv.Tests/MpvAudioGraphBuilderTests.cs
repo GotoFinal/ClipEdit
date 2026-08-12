@@ -1,4 +1,6 @@
 using ClipEdit.Media.Mpv.Native;
+using ClipEdit.Domain.Editing;
+using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.Media.Mpv.Tests;
 
@@ -44,6 +46,23 @@ public sealed class MpvAudioGraphBuilderTests
 
         Assert.Equal(
             "[aid3]adelay=delays=1.5s:all=1,volume=-4.5dB[ao]",
+            graph);
+    }
+
+    [Fact]
+    public void Audio_edit_mutes_removed_samples_without_rippling_timeline_time()
+    {
+        var edit = new SourceEdit(new MediaTime(6, 1))
+            .Remove(new MediaRange(new MediaTime(2, 1), new MediaTime(4, 1)));
+
+        var graph = MpvAudioGraphBuilder.Build(
+        [
+            new MpvAudioGraphTrack(3, -4.5, AudioEdit: edit),
+        ]);
+
+        Assert.Equal(
+            "[aid3]aeval='if(gt(gte(t,0)*lt(t,2)+gte(t,4)*lt(t,6),0),val(ch),0)':c=same," +
+            "volume=-4.5dB[ao]",
             graph);
     }
 }

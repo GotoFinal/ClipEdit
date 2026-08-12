@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using ClipEdit.Domain.Geometry;
+using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Export;
 using ClipEdit.Media.FFmpeg.Export;
@@ -58,7 +59,9 @@ public sealed class FfmpegExportRendererLocalTests
                     externalAudioPath,
                     externalAudio.Index,
                     -12,
-                    new MediaTime(1, 2)),
+                    new MediaTime(1, 2),
+                    new SourceEdit(externalProbe.Duration!.Value).Remove(
+                        new MediaRange(new MediaTime(1, 4), new MediaTime(3, 4)))),
             ]);
 
         try

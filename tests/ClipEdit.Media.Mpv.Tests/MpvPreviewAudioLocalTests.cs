@@ -31,7 +31,8 @@ public sealed class MpvPreviewAudioLocalTests
                 streamIndex: 0,
                 gainDb: -12,
                 isMuted: false,
-                timelineOffset: new MediaTime(1, 2)),
+                timelineOffset: new MediaTime(1, 2),
+                audioEdit: CreateExternalAudioEdit()),
         ], CancellationToken.None);
         await engine.SetPausedAsync(false, CancellationToken.None);
         await Task.Delay(TimeSpan.FromMilliseconds(100));
@@ -44,8 +45,12 @@ public sealed class MpvPreviewAudioLocalTests
                 streamIndex: 0,
                 gainDb: -9,
                 isMuted: false,
-                timelineOffset: new MediaTime(1, 2)),
+                timelineOffset: new MediaTime(1, 2),
+                audioEdit: CreateExternalAudioEdit()),
         ], CancellationToken.None);
+
+        await engine.SeekAsync(new MediaTime(1, 1), CancellationToken.None);
+        await Task.Delay(TimeSpan.FromMilliseconds(75));
 
         Assert.Equal(PreviewState.Playing, engine.State);
         Assert.NotNull(await engine.GetPositionAsync(CancellationToken.None));
@@ -110,4 +115,8 @@ public sealed class MpvPreviewAudioLocalTests
         Assert.False(snapshot.IsEndOfFile);
         Assert.True(snapshot.Position >= MediaTime.Zero);
     }
+
+    private static ClipEdit.Domain.Editing.SourceEdit CreateExternalAudioEdit() =>
+        new ClipEdit.Domain.Editing.SourceEdit(new MediaTime(2, 1)).Remove(
+            new MediaRange(new MediaTime(1, 4), new MediaTime(3, 4)));
 }

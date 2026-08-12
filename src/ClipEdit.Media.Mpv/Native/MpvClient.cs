@@ -168,7 +168,8 @@ internal sealed class MpvClient : IDisposable
             return new MpvAudioGraphTrack(
                 availableTrack.MpvTrackId,
                 track.GainDb,
-                track.TimelineOffset);
+                track.TimelineOffset,
+                track.AudioEdit);
         }).ToArray();
 
         SetProperty("lavfi-complex", MpvAudioGraphBuilder.Build(graphTracks));

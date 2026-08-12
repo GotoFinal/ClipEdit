@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
 
@@ -160,6 +161,12 @@ public sealed record ExportAudioTrackPlan
         GainDb = gainDb;
     }
 
+    public ExportAudioTrackPlan(int streamIndex, double gainDb, SourceEdit audioEdit)
+        : this(streamIndex, gainDb)
+    {
+        AudioEdit = audioEdit ?? throw new ArgumentNullException(nameof(audioEdit));
+    }
+
     public ExportAudioTrackPlan(string externalSourcePath, int streamIndex, double gainDb)
         : this(externalSourcePath, streamIndex, gainDb, MediaTime.Zero)
     {
@@ -183,11 +190,24 @@ public sealed record ExportAudioTrackPlan
         TimelineOffset = timelineOffset;
     }
 
+    public ExportAudioTrackPlan(
+        string externalSourcePath,
+        int streamIndex,
+        double gainDb,
+        MediaTime timelineOffset,
+        SourceEdit audioEdit)
+        : this(externalSourcePath, streamIndex, gainDb, timelineOffset)
+    {
+        AudioEdit = audioEdit ?? throw new ArgumentNullException(nameof(audioEdit));
+    }
+
     public string? ExternalSourcePath { get; }
 
     public bool IsExternal => ExternalSourcePath is not null;
 
     public MediaTime TimelineOffset { get; }
+
+    public SourceEdit? AudioEdit { get; }
 
     public int StreamIndex { get; }
 

@@ -1,3 +1,4 @@
+using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.Media.Preview;
@@ -15,6 +16,16 @@ public sealed record PreviewAudioTrack
         StreamIndex = streamIndex;
         GainDb = gainDb;
         IsMuted = isMuted;
+    }
+
+    public PreviewAudioTrack(
+        int streamIndex,
+        double gainDb,
+        bool isMuted,
+        SourceEdit audioEdit)
+        : this(streamIndex, gainDb, isMuted)
+    {
+        AudioEdit = audioEdit ?? throw new ArgumentNullException(nameof(audioEdit));
     }
 
     public PreviewAudioTrack(
@@ -45,11 +56,25 @@ public sealed record PreviewAudioTrack
         TimelineOffset = timelineOffset;
     }
 
+    public PreviewAudioTrack(
+        string externalSourcePath,
+        int streamIndex,
+        double gainDb,
+        bool isMuted,
+        MediaTime timelineOffset,
+        SourceEdit audioEdit)
+        : this(externalSourcePath, streamIndex, gainDb, isMuted, timelineOffset)
+    {
+        AudioEdit = audioEdit ?? throw new ArgumentNullException(nameof(audioEdit));
+    }
+
     public string? ExternalSourcePath { get; }
 
     public bool IsExternal => ExternalSourcePath is not null;
 
     public MediaTime TimelineOffset { get; }
+
+    public SourceEdit? AudioEdit { get; }
 
     public int StreamIndex { get; }
 

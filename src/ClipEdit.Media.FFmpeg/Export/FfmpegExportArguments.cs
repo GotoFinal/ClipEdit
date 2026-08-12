@@ -74,6 +74,7 @@ internal static class FfmpegExportArguments
                 var inputIndex = GetAudioInputIndex(track, externalAudioSources);
                 filters.Add(
                     $"[{inputIndex}:{track.StreamIndex}]" +
+                    CreateRangeMask(track) +
                     CreateDelay(track.TimelineOffset) +
                     $"apad,asplit={rangeCount}" +
                     string.Concat(Enumerable.Range(0, rangeCount).Select(index => $"[asrc{trackIndex}_{index}]")));
@@ -98,7 +99,7 @@ internal static class FfmpegExportArguments
                     ? $"{inputIndex}:{track.StreamIndex}"
                     : $"asrc{trackIndex}_{index}";
                 var inputPreparation = rangeCount == 1
-                    ? CreateDelay(track.TimelineOffset) + "apad,"
+                    ? CreateRangeMask(track) + CreateDelay(track.TimelineOffset) + "apad,"
                     : string.Empty;
                 filters.Add(
                     $"[{audioInput}]{inputPreparation}atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
@@ -248,5 +249,25 @@ internal static class FfmpegExportArguments
         return timelineOffset == MediaTime.Zero
             ? string.Empty
             : $"adelay=delays={FormatTime(timelineOffset)}s:all=1,";
+    }
+
+    private static string CreateRangeMask(ExportAudioTrackPlan track)
+    {
+        var audioEdit = track.AudioEdit;
+        if (audioEdit is null || audioEdit.IsUnedited)
+        {
+            return string.Empty;
+        }
+
+        if (audioEdit.IsEmpty)
+        {
+            return "aeval='0':c=same,";
+        }
+
+        var keptExpression = string.Join(
+            '+',
+            audioEdit.KeptRanges.Select(range =>
+                $"gte(t,{FormatTime(range.Start)})*lt(t,{FormatTime(range.End)})"));
+        return $"aeval='if(gt({keptExpression},0),val(ch),0)':c=same,";
     }
 }

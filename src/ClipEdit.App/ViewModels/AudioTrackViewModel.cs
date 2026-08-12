@@ -171,7 +171,7 @@ public sealed class AudioTrackViewModel : ViewModelBase
         _selectionStart < _selectionEnd &&
         Edit.KeptRanges.Any(range => _selectionStart < range.End && _selectionEnd > range.Start);
 
-    public string OutputDurationText => $"Kept {FormatTimestamp(Edit.OutputDuration)}";
+    public string OutputDurationText => $"Audible {FormatTimestamp(Edit.OutputDuration)}";
 
     public bool RemoveSelection()
     {

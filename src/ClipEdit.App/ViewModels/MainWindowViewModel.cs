@@ -281,11 +281,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 return "Multi-video export will be enabled with the sequence timeline";
             }
 
-            if (AudioTracks.Any(track => track.HasRangeEdits))
-            {
-                return "Independent audio cuts need a ripple-versus-silence choice before export";
-            }
-
             if (SelectedMedia.Edit is null || SelectedMedia.Edit.IsEmpty)
             {
                 return "Keep at least one source range before exporting";
@@ -358,9 +353,14 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                     track.SourcePath,
                     track.StreamIndex,
                     track.GainDb,
-                    track.IsMuted,
-                    track.TimelineOffset)
-                : new PreviewAudioTrack(track.StreamIndex, track.GainDb, track.IsMuted))
+                    track.IsMuted || track.Edit.IsEmpty,
+                    track.TimelineOffset,
+                    track.Edit)
+                : new PreviewAudioTrack(
+                    track.StreamIndex,
+                    track.GainDb,
+                    track.IsMuted || track.Edit.IsEmpty,
+                    track.Edit))
             .ToArray();
 
     public string AudioMixerButtonText => ShowAudioMixer ? "Hide mixer" : "Mixer";
@@ -511,6 +511,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 AudioTracks
                     .Where(track =>
                         !track.IsMuted &&
+                        !track.Edit.IsEmpty &&
                         (track.IsExternal ||
                          PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath)))
                     .Select(track => track.IsExternal
@@ -518,8 +519,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                             track.SourcePath,
                             track.StreamIndex,
                             track.GainDb,
-                            track.TimelineOffset)
-                        : new ExportAudioTrackPlan(track.StreamIndex, track.GainDb))
+                            track.TimelineOffset,
+                            track.Edit)
+                        : new ExportAudioTrackPlan(
+                            track.StreamIndex,
+                            track.GainDb,
+                            track.Edit))
                     .ToImmutableArray());
             IsExporting = true;
             ExportProgress = 0;

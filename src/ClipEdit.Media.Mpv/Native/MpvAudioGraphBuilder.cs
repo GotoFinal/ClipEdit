@@ -1,4 +1,5 @@
 using System.Globalization;
+using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.Media.Mpv.Native;
@@ -22,6 +23,7 @@ internal static class MpvAudioGraphBuilder
         {
             var track = tracks[0];
             return $"[aid{track.MpvTrackId}]" +
+                   CreateRangeMask(track.AudioEdit) +
                    CreateDelay(track.TimelineOffset) +
                    $"volume={FormatGain(track.GainDb)}dB[ao]";
         }
@@ -29,6 +31,7 @@ internal static class MpvAudioGraphBuilder
         var filters = tracks
             .Select((track, index) =>
                 $"[aid{track.MpvTrackId}]" +
+                CreateRangeMask(track.AudioEdit) +
                 CreateDelay(track.TimelineOffset) +
                 "aresample=48000," +
                 "aformat=sample_fmts=fltp:channel_layouts=stereo," +
@@ -62,9 +65,32 @@ internal static class MpvAudioGraphBuilder
             ? string.Empty
             : $"adelay=delays={timelineOffset.TotalSeconds.ToString("0.###############", CultureInfo.InvariantCulture)}s:all=1,";
     }
+
+    private static string CreateRangeMask(SourceEdit? audioEdit)
+    {
+        if (audioEdit is null || audioEdit.IsUnedited)
+        {
+            return string.Empty;
+        }
+
+        if (audioEdit.IsEmpty)
+        {
+            return "aeval='0':c=same,";
+        }
+
+        var keptExpression = string.Join(
+            '+',
+            audioEdit.KeptRanges.Select(range =>
+                $"gte(t,{FormatTime(range.Start)})*lt(t,{FormatTime(range.End)})"));
+        return $"aeval='if(gt({keptExpression},0),val(ch),0)':c=same,";
+    }
+
+    private static string FormatTime(MediaTime value) =>
+        value.TotalSeconds.ToString("0.###############", CultureInfo.InvariantCulture);
 }
 
 internal readonly record struct MpvAudioGraphTrack(
     long MpvTrackId,
     double GainDb,
-    MediaTime TimelineOffset = default);
+    MediaTime TimelineOffset = default,
+    SourceEdit? AudioEdit = null);

@@ -170,6 +170,30 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Independent_audio_cut_leaves_silence_and_does_not_block_export()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
+        var audioTrack = Assert.Single(viewModel.AudioTracks);
+        audioTrack.SelectionStartSeconds = 2;
+        audioTrack.SelectionEndSeconds = 4;
+
+        Assert.True(audioTrack.RemoveSelection());
+        Assert.True(viewModel.CanExport);
+        var previewTrack = Assert.Single(viewModel.PreviewAudioTracks);
+        Assert.Equal(new MediaTime(58, 1), previewTrack.AudioEdit!.OutputDuration);
+
+        await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "audio-cut.mp4"),
+            replaceExistingDestination: false);
+
+        var exportedTrack = Assert.Single(renderer.Plan!.AudioTracks);
+        Assert.Equal<MediaRange>(audioTrack.KeptRanges, exportedTrack.AudioEdit!.KeptRanges);
+        Assert.Equal(new MediaTime(60, 1), exportedTrack.AudioEdit.SourceDuration);
+    }
+
+    [Fact]
     public async Task Export_is_disabled_with_an_actionable_reason_for_odd_dimensions()
     {
         var viewModel = new MainWindowViewModel(

@@ -495,7 +495,7 @@
                               </Grid>
                               <controls:SourceRangeCanvas
                                   Grid.Row="1"
-                                  AutomationProperties.Name="Audio kept ranges and cut selection"
+                                  AutomationProperties.Name="Audio audible ranges and silence selection"
                                   Duration="{Binding DurationSeconds}"
                                   KeptRanges="{Binding KeptRanges}"
                                   Playhead="{Binding PlayheadSeconds, Mode=TwoWay}"
@@ -505,7 +505,7 @@
                                 <Button
                                     Classes="secondary"
                                     Click="RemoveAudioSelection_Click"
-                                    Content="Remove selected audio"
+                                    Content="Silence selected range"
                                     IsEnabled="{Binding CanRemoveSelection}" />
                                 <Button Grid.Column="1" Classes="secondary" Click="ResetAudioTrack_Click" Content="Reset" IsEnabled="{Binding IsEdited}" />
                                 <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding OutputDurationText}" />
