@@ -12,3 +12,4 @@ TestResults/
 artifacts/
 .clipedit-cache/
 *.partial
+/test-media/local/
