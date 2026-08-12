@@ -4,9 +4,11 @@ public sealed record ProjectDocument(
     int SchemaVersion,
     Guid ProjectId,
     string? ExportPresetId,
-    IReadOnlyList<ProjectMediaDocument> Media)
+    IReadOnlyList<ProjectMediaDocument> Media,
+    IReadOnlyList<ProjectVideoClipDocument>? VideoClips = null,
+    ProjectCropSettingsDocument? CropSettings = null)
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 }
 
 public sealed record ProjectMediaDocument(
@@ -21,7 +23,28 @@ public sealed record ProjectMediaDocument(
     long SourceDurationNumerator,
     int SourceDurationDenominator,
     IReadOnlyList<ProjectRangeDocument> KeptRanges,
-    IReadOnlyList<ProjectAudioTrackDocument>? AudioTracks = null);
+    IReadOnlyList<ProjectAudioTrackDocument>? AudioTracks = null,
+    Guid MediaId = default);
+
+public sealed record ProjectVideoClipDocument(
+    Guid ClipId,
+    Guid SourceMediaId,
+    long SourceStartNumerator,
+    int SourceStartDenominator,
+    long SourceEndNumerator,
+    int SourceEndDenominator,
+    long AvailableStartNumerator,
+    int AvailableStartDenominator,
+    long AvailableEndNumerator,
+    int AvailableEndDenominator,
+    int SourceWindowX,
+    int SourceWindowY,
+    int SourceWindowWidth,
+    int SourceWindowHeight);
+
+public sealed record ProjectCropSettingsDocument(
+    string PresetId,
+    bool IsAspectLocked);
 
 public sealed record ProjectRangeDocument(
     long StartNumerator,

@@ -195,9 +195,9 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        if (ViewModel?.SelectedMedia is { } media)
+        if (ViewModel is { } viewModel)
         {
-            media.PlayheadSeconds = 0;
+            viewModel.SequencePlayheadSeconds = 0;
         }
     }
 
@@ -230,9 +230,9 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        if (ViewModel?.SelectedMedia is { } media)
+        if (ViewModel is { } viewModel)
         {
-            media.PlayheadSeconds = media.SourceDurationSeconds;
+            viewModel.SequencePlayheadSeconds = viewModel.SequenceDurationSeconds;
         }
     }
 
@@ -240,42 +240,42 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.MarkSelectionStart();
+        ViewModel?.MarkSequenceSelectionStart();
     }
 
     private void MarkOut_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.MarkSelectionEnd();
+        ViewModel?.MarkSequenceSelectionEnd();
     }
 
     private void RemoveSelection_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.RemoveSelection();
+        ViewModel?.RemoveSequenceSelection();
     }
 
     private void KeepSelectionOnly_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.KeepSelectionOnly();
+        ViewModel?.KeepSequenceSelectionOnly();
     }
 
     private void ResetCuts_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.ResetCuts();
+        ViewModel?.ResetSequenceCuts();
     }
 
     private void ResetCrop_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.ResetCrop();
+        ViewModel?.ResetSelectedClipPlacement();
     }
 
     private void ApplyCropPreset_Click(object? sender, RoutedEventArgs eventArgs)
@@ -355,21 +355,63 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.ZoomTimeline(0.5);
+        ViewModel?.ZoomSequenceTimeline(0.5);
     }
 
     private void TimelineZoomIn_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.ZoomTimeline(2);
+        ViewModel?.ZoomSequenceTimeline(2);
     }
 
     private void TimelineFit_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.SelectedMedia?.FitTimeline();
+        ViewModel?.FitSequenceTimeline();
+    }
+
+    private void SplitClip_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SplitSelectedVideoClip();
+    }
+
+    private void DeleteSelectedClip_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.DeleteSelectedVideoClip();
+    }
+
+    private void SequenceTimeline_DeleteRequested(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.DeleteSelectedVideoClip();
+    }
+
+    private void SequenceTimeline_SplitRequested(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SplitSelectedVideoClip();
+    }
+
+    private void SequenceTimeline_MoveLeftRequested(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.MoveSelectedVideoLeft();
+    }
+
+    private void SequenceTimeline_MoveRightRequested(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.MoveSelectedVideoRight();
     }
 
     private async void RemoveSelectedMedia_Click(object? sender, RoutedEventArgs eventArgs)
@@ -384,6 +426,26 @@ public sealed partial class MainWindow : Window
         var confirmation = new ConfirmActionDialog(
             "Remove media from project?",
             $"Remove {selected.DisplayName} and its edits from this project? The source file will stay untouched.",
+            "Remove from project");
+        if (await confirmation.ShowDialog<bool>(this))
+        {
+            viewModel.RemoveSelectedMedia();
+        }
+    }
+
+    private async void ProjectMedia_KeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        _ = sender;
+        if (eventArgs.Key != Key.Delete ||
+            ViewModel is not { CanRemoveSelectedMedia: true, SelectedMedia: { } selected } viewModel)
+        {
+            return;
+        }
+
+        eventArgs.Handled = true;
+        var confirmation = new ConfirmActionDialog(
+            "Remove media from project?",
+            $"Remove {selected.DisplayName}, every timeline instance, and its edits from this project? The source file will stay untouched.",
             "Remove from project");
         if (await confirmation.ShowDialog<bool>(this))
         {

@@ -88,6 +88,7 @@ public sealed class JsonProjectStoreTests
             var store = new JsonProjectStore();
             await store.SaveAsync(path, CreateDocument());
             var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            root["schemaVersion"] = 1;
             var audioTrack = root["media"]![0]!["audioTracks"]![0]!.AsObject();
             audioTrack.Remove("timelineOffsetNumerator");
             audioTrack.Remove("timelineOffsetDenominator");
@@ -108,6 +109,8 @@ public sealed class JsonProjectStoreTests
     private static ProjectDocument CreateDocument()
     {
         var sourcePath = Path.Combine(Path.GetTempPath(), "source with spaces.mkv");
+        var mediaId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var clipId = Guid.Parse("33333333-3333-3333-3333-333333333333");
         return new ProjectDocument(
             ProjectDocument.CurrentSchemaVersion,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -138,7 +141,26 @@ public sealed class JsonProjectStoreTests
                             [new ProjectRangeDocument(0, 1, 60_001, 1_000)],
                             13,
                             4),
-                    ]),
-            ]);
+                    ],
+                    mediaId),
+            ],
+            [
+                new ProjectVideoClipDocument(
+                    clipId,
+                    mediaId,
+                    10_001,
+                    1_000,
+                    20_001,
+                    1_000,
+                    0,
+                    1,
+                    60_001,
+                    1_000,
+                    420,
+                    0,
+                    1_080,
+                    1_080),
+            ],
+            new ProjectCropSettingsDocument("1-1", true));
     }
 }

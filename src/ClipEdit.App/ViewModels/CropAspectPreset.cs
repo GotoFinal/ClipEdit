@@ -5,13 +5,17 @@ public sealed record CropAspectPreset(
     string DisplayName,
     int WidthUnits,
     int HeightUnits,
-    bool IsFullFrame = false)
+    bool IsFullFrame = false,
+    bool IsCustom = false)
 {
     public string RatioText => IsFullFrame ? "Source" : $"{WidthUnits}:{HeightUnits}";
 }
 
 public static class BuiltInCropAspectPresets
 {
+    public static CropAspectPreset Custom { get; } =
+        new("custom", "Custom", 0, 0, IsCustom: true);
+
     public static CropAspectPreset Source { get; } =
         new("source", "Source · full frame", 1, 1, IsFullFrame: true);
 
@@ -44,6 +48,7 @@ public static class BuiltInCropAspectPresets
 
     public static IReadOnlyList<CropAspectPreset> All { get; } =
     [
+        Custom,
         Source,
         Landscape169,
         Portrait916,

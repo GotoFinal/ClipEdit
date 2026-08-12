@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ClipEdit.Application.Projects;
 using ClipEdit.Domain.Editing;
+using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.Persistence.Json;
@@ -12,6 +13,7 @@ public sealed class JsonProjectStore : IProjectStore
     private const int MaximumMediaItems = 10_000;
     private const int MaximumRangesPerMedia = 100_000;
     private const int MaximumAudioTracksPerMedia = 1_000;
+    private const int MaximumVideoClips = 100_000;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -184,7 +186,7 @@ public sealed class JsonProjectStore : IProjectStore
             throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "The project document is empty.");
         }
 
-        if (document.SchemaVersion != ProjectDocument.CurrentSchemaVersion)
+        if (document.SchemaVersion is < 1 or > ProjectDocument.CurrentSchemaVersion)
         {
             throw new ProjectStoreException(
                 ProjectStoreFailure.UnsupportedVersion,
@@ -206,7 +208,67 @@ public sealed class JsonProjectStore : IProjectStore
             ValidateMedia(media);
         }
 
+        if (document.SchemaVersion >= 2)
+        {
+            ValidateSequence(document);
+        }
+
         return document;
+    }
+
+    private static void ValidateSequence(ProjectDocument document)
+    {
+        if (document.VideoClips is null ||
+            document.VideoClips.Count > MaximumVideoClips ||
+            document.CropSettings is null ||
+            string.IsNullOrWhiteSpace(document.CropSettings.PresetId) ||
+            document.Media.Any(media => media.MediaId == Guid.Empty) ||
+            document.Media.Select(media => media.MediaId).Distinct().Count() != document.Media.Count)
+        {
+            throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "The saved sequence metadata is invalid.");
+        }
+
+        var mediaById = document.Media.ToDictionary(media => media.MediaId);
+        var clipIds = new HashSet<Guid>();
+        foreach (var clip in document.VideoClips)
+        {
+            if (clip is null ||
+                clip.ClipId == Guid.Empty ||
+                !clipIds.Add(clip.ClipId) ||
+                !mediaById.TryGetValue(clip.SourceMediaId, out var media) ||
+                clip.SourceStartDenominator <= 0 ||
+                clip.SourceEndDenominator <= 0 ||
+                clip.AvailableStartDenominator <= 0 ||
+                clip.AvailableEndDenominator <= 0)
+            {
+                throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "A saved video clip is invalid.");
+            }
+
+            try
+            {
+                var sourceRange = new MediaRange(
+                    new MediaTime(clip.SourceStartNumerator, clip.SourceStartDenominator),
+                    new MediaTime(clip.SourceEndNumerator, clip.SourceEndDenominator));
+                var availableRange = new MediaRange(
+                    new MediaTime(clip.AvailableStartNumerator, clip.AvailableStartDenominator),
+                    new MediaTime(clip.AvailableEndNumerator, clip.AvailableEndDenominator));
+                _ = new SequenceClip(clip.ClipId, clip.SourceMediaId, sourceRange, availableRange);
+                _ = new CropRegion(
+                    new PixelSize(media.SourceWidth, media.SourceHeight),
+                    clip.SourceWindowX,
+                    clip.SourceWindowY,
+                    clip.SourceWindowWidth,
+                    clip.SourceWindowHeight);
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or OverflowException or DivideByZeroException)
+            {
+                throw new ProjectStoreException(
+                    ProjectStoreFailure.InvalidDocument,
+                    "A saved video clip range or placement is invalid.",
+                    exception);
+            }
+        }
     }
 
     private static void ValidateMedia(ProjectMediaDocument? media)

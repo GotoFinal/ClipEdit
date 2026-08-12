@@ -25,9 +25,12 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     private bool _isTimelineLoading;
     private string? _timelineErrorText;
 
-    public MediaItemViewModel(string sourcePath)
+    public MediaItemViewModel(string sourcePath, Guid? id = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        Id = id is { } requestedId && requestedId != Guid.Empty
+            ? requestedId
+            : Guid.NewGuid();
         SourcePath = sourcePath;
         DisplayName = Path.GetFileName(sourcePath);
         if (string.IsNullOrWhiteSpace(DisplayName))
@@ -35,6 +38,8 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
             DisplayName = sourcePath;
         }
     }
+
+    public Guid Id { get; }
 
     public string SourcePath { get; }
 

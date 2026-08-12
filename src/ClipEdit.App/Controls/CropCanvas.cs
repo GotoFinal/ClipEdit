@@ -25,6 +25,12 @@ public sealed class CropCanvas : Control
     public static readonly StyledProperty<bool> IsOverlayOnlyProperty =
         AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsOverlayOnly));
 
+    public static readonly StyledProperty<bool> IsAspectRatioLockedProperty =
+        AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsAspectRatioLocked));
+
+    public static readonly StyledProperty<bool> IsSharedFrameProperty =
+        AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsSharedFrame), true);
+
     private const double HandleRadius = 6;
     private const double HitRadius = 12;
     private static readonly IBrush OutsideBrush = new ImmutableSolidColorBrush(0xAA000000);
@@ -38,7 +44,13 @@ public sealed class CropCanvas : Control
 
     static CropCanvas()
     {
-        AffectsRender<CropCanvas>(SourceProperty, SourceSizeProperty, CropProperty, IsOverlayOnlyProperty);
+        AffectsRender<CropCanvas>(
+            SourceProperty,
+            SourceSizeProperty,
+            CropProperty,
+            IsOverlayOnlyProperty,
+            IsAspectRatioLockedProperty,
+            IsSharedFrameProperty);
     }
 
     public CropCanvas()
@@ -71,6 +83,18 @@ public sealed class CropCanvas : Control
         set => SetValue(IsOverlayOnlyProperty, value);
     }
 
+    public bool IsAspectRatioLocked
+    {
+        get => GetValue(IsAspectRatioLockedProperty);
+        set => SetValue(IsAspectRatioLockedProperty, value);
+    }
+
+    public bool IsSharedFrame
+    {
+        get => GetValue(IsSharedFrameProperty);
+        set => SetValue(IsSharedFrameProperty, value);
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -93,7 +117,11 @@ public sealed class CropCanvas : Control
             return;
         }
 
-        var cropRect = SourceToView(Crop, viewport);
+        var cropRect = GetCropViewport(Crop, viewport);
+        if (IsSharedFrame && Source is not null)
+        {
+            DrawPositionedSource(context, cropRect);
+        }
         DrawOutsideMask(context, viewport, cropRect);
         DrawRuleOfThirds(context, cropRect);
         context.DrawRectangle(null, CropPen, cropRect);
@@ -122,15 +150,15 @@ public sealed class CropCanvas : Control
         Focus();
         var viewport = GetImageViewport();
         var pointer = eventArgs.GetPosition(this);
-        var cropRect = SourceToView(Crop, viewport);
+        var cropRect = GetCropViewport(Crop, viewport);
         _dragMode = GetDragMode(pointer, cropRect);
         if (_dragMode == CropDragMode.None)
         {
             return;
         }
 
-        _dragStartSource = ViewToSource(pointer, viewport);
         _dragStartCrop = Crop;
+        _dragStartSource = ViewToSource(pointer, viewport);
         eventArgs.Pointer.Capture(this);
         eventArgs.Handled = true;
     }
@@ -146,7 +174,15 @@ public sealed class CropCanvas : Control
         var currentSource = ViewToSource(eventArgs.GetPosition(this), GetImageViewport());
         var deltaX = checked((int)Math.Round(currentSource.X - _dragStartSource.X));
         var deltaY = checked((int)Math.Round(currentSource.Y - _dragStartSource.Y));
-        SetCurrentValue(CropProperty, ApplyDrag(_dragStartCrop, _dragMode, deltaX, deltaY));
+        var preserveAspect = IsAspectRatioLocked ||
+                             eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) ||
+                             eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control);
+        SetCurrentValue(CropProperty, ApplyDrag(
+            _dragStartCrop,
+            _dragMode,
+            deltaX,
+            deltaY,
+            preserveAspect));
         eventArgs.Handled = true;
     }
 
@@ -194,6 +230,16 @@ public sealed class CropCanvas : Control
         int deltaX,
         int deltaY)
     {
+        return ApplyDrag(start, mode, deltaX, deltaY, preserveAspectRatio: false);
+    }
+
+    internal static CropRegion ApplyDrag(
+        CropRegion start,
+        CropDragMode mode,
+        int deltaX,
+        int deltaY,
+        bool preserveAspectRatio)
+    {
         if (mode == CropDragMode.Move)
         {
             return start.MoveClamped(start.X + deltaX, start.Y + deltaY);
@@ -224,7 +270,10 @@ public sealed class CropCanvas : Control
             bottom = Math.Clamp(start.Bottom + deltaY, start.Y + 1, start.SourceSize.Height);
         }
 
-        return CropRegion.FromEdges(start.SourceSize, left, top, right, bottom);
+        var freeResize = CropRegion.FromEdges(start.SourceSize, left, top, right, bottom);
+        return preserveAspectRatio
+            ? ApplyAspectLockedResize(start, freeResize, mode)
+            : freeResize;
     }
 
     private Rect GetImageViewport()
@@ -240,10 +289,21 @@ public sealed class CropCanvas : Control
         return new Rect((Bounds.Width - width) / 2, (Bounds.Height - height) / 2, width, height);
     }
 
-    private Rect SourceToView(CropRegion crop, Rect viewport)
+    private Rect GetCropViewport(CropRegion crop, Rect viewport)
     {
         var scaleX = viewport.Width / SourceSize.Width;
         var scaleY = viewport.Height / SourceSize.Height;
+        if (IsSharedFrame)
+        {
+            var width = crop.Width * scaleX;
+            var height = crop.Height * scaleY;
+            return new Rect(
+                viewport.Center.X - (width / 2),
+                viewport.Center.Y - (height / 2),
+                width,
+                height);
+        }
+
         return new Rect(
             viewport.X + (crop.X * scaleX),
             viewport.Y + (crop.Y * scaleY),
@@ -253,9 +313,85 @@ public sealed class CropCanvas : Control
 
     private Point ViewToSource(Point point, Rect viewport)
     {
+        if (IsSharedFrame)
+        {
+            var cropViewport = GetCropViewport(_dragStartCrop, viewport);
+            return new Point(
+                _dragStartCrop.X + ((point.X - cropViewport.X) * _dragStartCrop.Width / cropViewport.Width),
+                _dragStartCrop.Y + ((point.Y - cropViewport.Y) * _dragStartCrop.Height / cropViewport.Height));
+        }
+
         return new Point(
             (point.X - viewport.X) * SourceSize.Width / viewport.Width,
             (point.Y - viewport.Y) * SourceSize.Height / viewport.Height);
+    }
+
+    private void DrawPositionedSource(DrawingContext context, Rect cropViewport)
+    {
+        if (Source is null || cropViewport.Width <= 0 || cropViewport.Height <= 0)
+        {
+            return;
+        }
+
+        using var clip = context.PushClip(cropViewport);
+        var scaleX = Source.PixelSize.Width / (double)SourceSize.Width;
+        var scaleY = Source.PixelSize.Height / (double)SourceSize.Height;
+        context.DrawImage(
+            Source,
+            new Rect(
+                Crop.X * scaleX,
+                Crop.Y * scaleY,
+                Crop.Width * scaleX,
+                Crop.Height * scaleY),
+            cropViewport);
+    }
+
+    private static CropRegion ApplyAspectLockedResize(
+        CropRegion start,
+        CropRegion freeResize,
+        CropDragMode mode)
+    {
+        var aspect = start.Width / (double)start.Height;
+        var horizontalChange = Math.Abs(freeResize.Width - start.Width) / (double)start.Width;
+        var verticalChange = Math.Abs(freeResize.Height - start.Height) / (double)start.Height;
+        var desiredWidth = horizontalChange >= verticalChange
+            ? freeResize.Width
+            : freeResize.Height * aspect;
+
+        var centerX = start.X + (start.Width / 2d);
+        var centerY = start.Y + (start.Height / 2d);
+        var maxWidth = mode.HasFlag(CropDragMode.Left)
+            ? start.Right
+            : mode.HasFlag(CropDragMode.Right)
+                ? start.SourceSize.Width - start.X
+                : 2 * Math.Min(centerX, start.SourceSize.Width - centerX);
+        var maxHeight = mode.HasFlag(CropDragMode.Top)
+            ? start.Bottom
+            : mode.HasFlag(CropDragMode.Bottom)
+                ? start.SourceSize.Height - start.Y
+                : 2 * Math.Min(centerY, start.SourceSize.Height - centerY);
+        var boundedWidth = Math.Clamp(desiredWidth, 1, Math.Min(maxWidth, maxHeight * aspect));
+        var width = Math.Max(1, checked((int)Math.Round(boundedWidth)));
+        var height = Math.Max(1, checked((int)Math.Round(width / aspect)));
+        if (height > maxHeight)
+        {
+            height = Math.Max(1, checked((int)Math.Floor(maxHeight)));
+            width = Math.Max(1, checked((int)Math.Round(height * aspect)));
+        }
+
+        var x = mode.HasFlag(CropDragMode.Left)
+            ? start.Right - width
+            : mode.HasFlag(CropDragMode.Right)
+                ? start.X
+                : checked((int)Math.Round(centerX - (width / 2d)));
+        var y = mode.HasFlag(CropDragMode.Top)
+            ? start.Bottom - height
+            : mode.HasFlag(CropDragMode.Bottom)
+                ? start.Y
+                : checked((int)Math.Round(centerY - (height / 2d)));
+        x = Math.Clamp(x, 0, start.SourceSize.Width - width);
+        y = Math.Clamp(y, 0, start.SourceSize.Height - height);
+        return new CropRegion(start.SourceSize, x, y, width, height);
     }
 
     private static void DrawOutsideMask(DrawingContext context, Rect viewport, Rect crop)

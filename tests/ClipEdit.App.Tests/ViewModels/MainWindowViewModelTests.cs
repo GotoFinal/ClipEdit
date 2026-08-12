@@ -29,8 +29,8 @@ public sealed class MainWindowViewModelTests
         await viewModel.ImportFilesAsync([firstVideo]);
 
         Assert.True(viewModel.ShowQuickWorkspace);
-        Assert.True(viewModel.ShowRangeStrip);
-        Assert.False(viewModel.ShowTimeline);
+        Assert.False(viewModel.ShowRangeStrip);
+        Assert.True(viewModel.ShowTimeline);
         Assert.False(viewModel.ShowAudioMixer);
         Assert.Equal(new PixelSize(1_920, 1_080), viewModel.SelectedMedia!.Crop.ExportSize);
 
@@ -168,25 +168,27 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
-    public async Task Crop_preset_is_a_one_shot_resize_and_does_not_lock_free_handles()
+    public async Task Crop_preset_auto_applies_and_manual_resize_returns_to_custom()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
         await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "crop-preset.mkv")]);
-        var media = viewModel.SelectedMedia!;
+        var clip = viewModel.SelectedVideoClip!;
         viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Square;
 
-        Assert.True(viewModel.ApplyCropPresetToSelected());
-        Assert.Equal(new CropRegion(media.VideoSize, 420, 0, 1_080, 1_080), media.Crop);
+        Assert.Equal(new CropRegion(clip.VideoSize, 420, 0, 1_080, 1_080), clip.SourceWindow);
+        Assert.Same(BuiltInCropAspectPresets.Square, viewModel.SelectedCropAspectPreset);
+        Assert.False(viewModel.IsCropAspectLocked);
 
-        media.Crop = CropRegion.FromEdges(
-            media.VideoSize,
-            media.Crop.X,
-            media.Crop.Y,
-            media.Crop.Right + 120,
-            media.Crop.Bottom);
+        clip.SourceWindow = CropRegion.FromEdges(
+            clip.VideoSize,
+            clip.SourceWindow.X,
+            clip.SourceWindow.Y,
+            clip.SourceWindow.Right + 120,
+            clip.SourceWindow.Bottom);
 
-        Assert.Equal(1_200, media.Crop.Width);
-        Assert.Equal(1_080, media.Crop.Height);
+        Assert.Equal(1_200, clip.SourceWindow.Width);
+        Assert.Equal(1_080, clip.SourceWindow.Height);
+        Assert.Same(BuiltInCropAspectPresets.Custom, viewModel.SelectedCropAspectPreset);
         Assert.True(viewModel.IsProjectDirty);
     }
 
@@ -199,17 +201,22 @@ public sealed class MainWindowViewModelTests
             Path.Combine(Path.GetTempPath(), "crop-first.mkv"),
             Path.Combine(Path.GetTempPath(), "crop-second.mkv"),
         ]);
-        var videos = viewModel.VideoItems.ToArray();
+        var clips = viewModel.VideoClips.ToArray();
         viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Portrait916;
 
-        Assert.True(viewModel.ApplyCropPresetToAllVideos());
-        Assert.All(videos, video => Assert.Equal(new PixelSize(603, 1_072), video.Crop.ExportSize));
+        Assert.All(clips, clip => Assert.Equal(new PixelSize(603, 1_072), clip.SourceWindow.ExportSize));
 
-        videos[0].Crop = videos[0].Crop.MoveClamped(0, 0);
+        clips[0].SourceWindow = clips[0].SourceWindow.MoveClamped(0, 0);
 
-        Assert.Equal(0, videos[0].Crop.X);
-        Assert.Equal(659, videos[1].Crop.X);
-        Assert.Equal(new PixelSize(603, 1_072), videos[1].Crop.ExportSize);
+        Assert.Equal(0, clips[0].SourceWindow.X);
+        Assert.Equal(659, clips[1].SourceWindow.X);
+        Assert.Equal(new PixelSize(603, 1_072), clips[1].SourceWindow.ExportSize);
+
+        clips[0].SourceWindow = new CropRegion(clips[0].VideoSize, 50, 100, 500, 800);
+
+        Assert.Same(BuiltInCropAspectPresets.Custom, viewModel.SelectedCropAspectPreset);
+        Assert.Equal(new PixelSize(500, 800), clips[1].SourceWindow.ExportSize);
+        Assert.NotEqual(clips[0].SourceWindow.X, clips[1].SourceWindow.X);
     }
 
     [Fact]
@@ -221,10 +228,10 @@ public sealed class MainWindowViewModelTests
         var thirdPath = Path.Combine(Path.GetTempPath(), "sequence-third.mkv");
         var viewModel = new MainWindowViewModel(new StubProbe());
         await viewModel.ImportFilesAsync([firstPath, musicPath, secondPath, thirdPath]);
-        var videos = viewModel.VideoItems.ToArray();
-        videos[1].ApplyCropPreset(BuiltInCropAspectPresets.Square);
-        videos[1].Crop = videos[1].Crop.MoveClamped(100, 0);
-        viewModel.SelectedMedia = videos[1];
+        viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Square;
+        var clips = viewModel.VideoClips.ToArray();
+        clips[1].SourceWindow = clips[1].SourceWindow.MoveClamped(100, 0);
+        viewModel.SelectedVideoClip = clips[1];
 
         Assert.True(viewModel.CanMoveSelectedVideoLeft);
         Assert.True(viewModel.CanMoveSelectedVideoRight);
@@ -232,19 +239,18 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(
             [secondPath, firstPath, thirdPath],
-            viewModel.VideoItems.Select(video => video.SourcePath));
-        Assert.Same(videos[1], viewModel.SelectedMedia);
-        Assert.Equal(new CropRegion(videos[1].VideoSize, 100, 0, 1_080, 1_080), videos[1].Crop);
+            viewModel.VideoClips.Select(clip => clip.SourcePath));
+        Assert.Same(clips[1], viewModel.SelectedVideoClip);
+        Assert.Equal(new CropRegion(clips[1].VideoSize, 100, 0, 1_080, 1_080), clips[1].SourceWindow);
         Assert.Equal(
             [secondPath, firstPath, thirdPath],
-            viewModel.CreateProjectDocument().Media
-                .Where(media => Path.GetExtension(media.SourcePath) != ".flac")
-                .Select(media => media.SourcePath));
+            viewModel.CreateProjectDocument().VideoClips!
+                .Select(document => viewModel.MediaItems.Single(media => media.Id == document.SourceMediaId).SourcePath));
 
-        Assert.True(viewModel.ReorderVideoClip(videos[1], videos[2], insertAfterTarget: true));
+        Assert.True(viewModel.ReorderVideoClip(clips[1], clips[2], insertAfterTarget: true));
         Assert.Equal(
             [firstPath, thirdPath, secondPath],
-            viewModel.VideoItems.Select(video => video.SourcePath));
+            viewModel.VideoClips.Select(clip => clip.SourcePath));
     }
 
     [Fact]
@@ -260,22 +266,24 @@ public sealed class MainWindowViewModelTests
             {
                 await original.ImportFilesAsync([firstPath, secondPath]);
                 original.SelectedCropAspectPreset = BuiltInCropAspectPresets.Square;
-                Assert.True(original.ApplyCropPresetToAllVideos());
-                var videos = original.VideoItems.ToArray();
-                videos[0].Crop = videos[0].Crop.MoveClamped(0, 0);
-                videos[1].Crop = videos[1].Crop.MoveClamped(800, 0);
-                original.SelectedMedia = videos[1];
+                var clips = original.VideoClips.ToArray();
+                clips[0].SourceWindow = clips[0].SourceWindow.MoveClamped(0, 0);
+                clips[1].SourceWindow = clips[1].SourceWindow.MoveClamped(800, 0);
+                original.SelectedVideoClip = clips[1];
+                original.IsCropAspectLocked = true;
                 Assert.True(original.MoveSelectedVideoLeft());
                 Assert.True(await original.SaveProjectAsync(projectPath));
             }
 
             using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
             Assert.True(await restored.OpenProjectAsync(projectPath));
-            var restoredVideos = restored.VideoItems.ToArray();
-            Assert.Equal([secondPath, firstPath], restoredVideos.Select(video => video.SourcePath));
-            Assert.Equal(800, restoredVideos[0].Crop.X);
-            Assert.Equal(0, restoredVideos[1].Crop.X);
-            Assert.All(restoredVideos, video => Assert.Equal(new PixelSize(1_080, 1_080), video.Crop.ExportSize));
+            var restoredClips = restored.VideoClips.ToArray();
+            Assert.Equal([secondPath, firstPath], restoredClips.Select(clip => clip.SourcePath));
+            Assert.Equal(800, restoredClips[0].SourceWindow.X);
+            Assert.Equal(0, restoredClips[1].SourceWindow.X);
+            Assert.All(restoredClips, clip => Assert.Equal(new PixelSize(1_080, 1_080), clip.SourceWindow.ExportSize));
+            Assert.Same(BuiltInCropAspectPresets.Square, restored.SelectedCropAspectPreset);
+            Assert.True(restored.IsCropAspectLocked);
         }
         finally
         {
@@ -298,6 +306,71 @@ public sealed class MainWindowViewModelTests
             new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
             Assert.Single(media.KeptRanges));
         Assert.Equal(new MediaTime(7, 1), media.Edit!.OutputDuration);
+    }
+
+    [Fact]
+    public async Task Removing_a_sequence_range_splits_the_clip_and_ripples_the_gap_closed()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "sequence-remove.mkv")]);
+        viewModel.SequenceSelectionStartSeconds = 10;
+        viewModel.SequenceSelectionEndSeconds = 20;
+
+        Assert.True(viewModel.RemoveSequenceSelection());
+
+        Assert.Equal(2, viewModel.VideoClips.Count);
+        Assert.Equal(
+            [
+                new MediaRange(MediaTime.Zero, new MediaTime(10, 1)),
+                new MediaRange(new MediaTime(20, 1), new MediaTime(60, 1)),
+            ],
+            viewModel.VideoClips.Select(clip => clip.Model.SourceRange));
+        Assert.Equal(50, viewModel.SequenceDurationSeconds);
+        Assert.Equal(viewModel.SequenceSelectionStartSeconds, viewModel.SequenceSelectionEndSeconds);
+        Assert.All(viewModel.VideoClips, clip =>
+            Assert.Equal(new MediaRange(MediaTime.Zero, new MediaTime(60, 1)), clip.Model.AvailableRange));
+    }
+
+    [Fact]
+    public async Task Keep_only_hides_outer_sections_and_trim_edges_can_restore_them()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "sequence-keep.mkv")]);
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 12;
+
+        Assert.True(viewModel.KeepSequenceSelectionOnly());
+
+        var clip = Assert.Single(viewModel.VideoClips);
+        Assert.Equal(new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)), clip.Model.SourceRange);
+        Assert.True(clip.HasHeadHandle);
+        Assert.True(clip.HasTailHandle);
+
+        clip.SourceStartSeconds = 3;
+
+        Assert.Equal(3.003, clip.SourceStart.TotalSeconds, precision: 3);
+        Assert.Equal(new MediaTime(12, 1), clip.SourceEnd);
+        Assert.Equal(8.997, viewModel.SequenceDurationSeconds, precision: 3);
+    }
+
+    [Fact]
+    public async Task Split_and_delete_operate_on_the_selected_timeline_clip_not_the_source_asset()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "sequence-split.mkv")]);
+        viewModel.SequencePlayheadSeconds = 30;
+
+        Assert.True(viewModel.SplitSelectedVideoClip());
+        Assert.Equal(2, viewModel.VideoClips.Count);
+        Assert.Single(viewModel.MediaItems);
+        Assert.Equal(new MediaTime(30, 1), viewModel.VideoClips[0].SourceEnd);
+        Assert.Equal(new MediaTime(30, 1), viewModel.VideoClips[1].SourceStart);
+
+        Assert.True(viewModel.DeleteSelectedVideoClip());
+
+        Assert.Single(viewModel.VideoClips);
+        Assert.Single(viewModel.MediaItems);
+        Assert.Equal(new MediaRange(MediaTime.Zero, new MediaTime(30, 1)), viewModel.VideoClips[0].Model.SourceRange);
     }
 
     [Fact]

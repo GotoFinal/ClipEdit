@@ -104,4 +104,23 @@ public sealed class CropCanvasTests
         Assert.Equal(59, result.X);
         Assert.Equal(1, result.Width);
     }
+
+    [Fact]
+    public void Locked_corner_resize_preserves_ratio_and_the_opposite_corner()
+    {
+        var start = new CropRegion(new PixelSize(1_920, 1_080), 320, 180, 1_280, 720);
+
+        var result = CropCanvas.ApplyDrag(
+            start,
+            CropDragMode.Right | CropDragMode.Bottom,
+            -320,
+            -10,
+            preserveAspectRatio: true);
+
+        Assert.Equal(start.X, result.X);
+        Assert.Equal(start.Y, result.Y);
+        Assert.Equal(16 / 9d, result.Width / (double)result.Height, precision: 2);
+        Assert.True(result.Width < start.Width);
+        Assert.True(result.Height < start.Height);
+    }
 }
