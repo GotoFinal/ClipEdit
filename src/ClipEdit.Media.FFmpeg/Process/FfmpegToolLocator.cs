@@ -2,6 +2,8 @@ namespace ClipEdit.Media.FFmpeg.Process;
 
 public static class FfmpegToolLocator
 {
+    private const string WindowsFfmpegVersion = "9.0.1";
+
     public static string? FindFfmpeg(string? explicitPath = null)
     {
         return Find(
@@ -31,6 +33,26 @@ public static class FfmpegToolLocator
             Path.Combine(AppContext.BaseDirectory, "tools", "ffmpeg", executableName),
         };
 
+        if (OperatingSystem.IsWindows())
+        {
+            var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
+            if (repositoryRoot is not null)
+            {
+                candidates.Add(
+                    Path.Combine(
+                        repositoryRoot,
+                        "packages",
+                        "native",
+                        "ffmpeg",
+                        "win-x64",
+                        WindowsFfmpegVersion,
+                        "runtime",
+                        $"ffmpeg-{WindowsFfmpegVersion}-full_build",
+                        "bin",
+                        executableName));
+            }
+        }
+
         var pathVariable = Environment.GetEnvironmentVariable("PATH");
         if (!string.IsNullOrWhiteSpace(pathVariable))
         {
@@ -46,6 +68,20 @@ public static class FfmpegToolLocator
             if (resolved is not null)
             {
                 return resolved;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FindRepositoryRoot(string startPath)
+    {
+        var directory = new DirectoryInfo(startPath);
+        for (var depth = 0; directory is not null && depth < 10; depth++, directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "ClipEdit.sln")))
+            {
+                return directory.FullName;
             }
         }
 
