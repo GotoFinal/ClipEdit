@@ -13,6 +13,7 @@ internal sealed class MpvClient : IDisposable
     private const int PropertyUnavailableError = -10;
     private const int DoubleFormat = 5;
     private const int Int64Format = 4;
+    private const int FlagFormat = 3;
     private readonly MpvNativeLibrary _native;
     private nint _handle;
 
@@ -102,6 +103,11 @@ internal sealed class MpvClient : IDisposable
         {
             Marshal.FreeCoTaskMem(valuePointer);
         }
+    }
+
+    public PreviewPlaybackSnapshot GetPlaybackSnapshot()
+    {
+        return new PreviewPlaybackSnapshot(GetPosition(), GetFlagProperty("eof-reached"));
     }
 
     public void SetPaused(bool isPaused) => SetProperty("pause", isPaused ? "yes" : "no");
@@ -241,6 +247,27 @@ internal sealed class MpvClient : IDisposable
         {
             Check(_native.GetProperty(_handle, nativeName.Pointer, Int64Format, valuePointer), $"read '{name}'");
             return Marshal.ReadInt64(valuePointer);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(valuePointer);
+        }
+    }
+
+    private bool GetFlagProperty(string name)
+    {
+        using var nativeName = new Utf8String(name);
+        var valuePointer = Marshal.AllocCoTaskMem(sizeof(int));
+        try
+        {
+            var result = _native.GetProperty(_handle, nativeName.Pointer, FlagFormat, valuePointer);
+            if (result == PropertyUnavailableError)
+            {
+                return false;
+            }
+
+            Check(result, $"read '{name}'");
+            return Marshal.ReadInt32(valuePointer) != 0;
         }
         finally
         {

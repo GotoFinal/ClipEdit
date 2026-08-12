@@ -59,6 +59,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private bool _shutdownStarted;
     private bool _positionPollInProgress;
     private bool _updatingPositionFromPlayback;
+    private bool _isEndOfFile;
 
     static MpvVideoView()
     {
@@ -131,16 +132,31 @@ public sealed class MpvVideoView : OpenGlControlBase
         private set => SetAndRaise(PlayButtonTextProperty, ref _playButtonText, value);
     }
 
-    public Task TogglePlaybackAsync(CancellationToken cancellationToken = default)
+    public async Task TogglePlaybackAsync(CancellationToken cancellationToken = default)
     {
         if (!IsPlaybackAvailable)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        if (IsPaused && _isEndOfFile && _engine is not null)
+        {
+            _updatingPositionFromPlayback = true;
+            try
+            {
+                SetCurrentValue(PositionProperty, MediaTime.Zero);
+            }
+            finally
+            {
+                _updatingPositionFromPlayback = false;
+            }
+
+            await _engine.SeekAsync(MediaTime.Zero, cancellationToken);
+            _isEndOfFile = false;
+        }
+
         SetCurrentValue(IsPausedProperty, !IsPaused);
-        return Task.CompletedTask;
     }
 
     public async Task ShutdownAsync()
@@ -262,6 +278,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         var sourcePath = SourcePath;
         _mediaLoaded = false;
+        _isEndOfFile = false;
         IsPlaybackAvailable = false;
         if (string.IsNullOrWhiteSpace(sourcePath))
         {
@@ -313,6 +330,8 @@ public sealed class MpvVideoView : OpenGlControlBase
         {
             return;
         }
+
+        _isEndOfFile = false;
 
         _seekCancellation?.Cancel();
         _seekCancellation?.Dispose();
@@ -444,18 +463,26 @@ public sealed class MpvVideoView : OpenGlControlBase
         _positionPollInProgress = true;
         try
         {
-            var position = await _engine.GetPositionAsync(_lifetimeCancellation.Token);
-            if (position is not null)
+            var snapshot = await _engine.GetPlaybackSnapshotAsync(_lifetimeCancellation.Token);
+            if (snapshot.Position is not null)
             {
                 _updatingPositionFromPlayback = true;
                 try
                 {
-                    SetCurrentValue(PositionProperty, position.Value);
+                    SetCurrentValue(PositionProperty, snapshot.Position.Value);
                 }
                 finally
                 {
                     _updatingPositionFromPlayback = false;
                 }
+            }
+
+            if (snapshot.IsEndOfFile)
+            {
+                _isEndOfFile = true;
+                _positionTimer.Stop();
+                SetCurrentValue(IsPausedProperty, true);
+                PlaybackStatus = "Playback ended; press Play to restart";
             }
         }
         catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)

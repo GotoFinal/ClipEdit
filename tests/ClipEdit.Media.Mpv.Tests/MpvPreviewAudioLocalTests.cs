@@ -1,3 +1,4 @@
+using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Preview;
 
 namespace ClipEdit.Media.Mpv.Tests;
@@ -44,5 +45,23 @@ public sealed class MpvPreviewAudioLocalTests
 
         Assert.Equal(PreviewState.Playing, engine.State);
         Assert.NotNull(await engine.GetPositionAsync(CancellationToken.None));
+
+        await engine.SeekAsync(new MediaTime(39, 10), CancellationToken.None);
+        PreviewPlaybackSnapshot snapshot = default;
+        for (var attempt = 0; attempt < 30 && !snapshot.IsEndOfFile; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+            snapshot = await engine.GetPlaybackSnapshotAsync(CancellationToken.None);
+        }
+
+        Assert.True(snapshot.IsEndOfFile);
+
+        await engine.SeekAsync(MediaTime.Zero, CancellationToken.None);
+        await engine.SetPausedAsync(false, CancellationToken.None);
+        await Task.Delay(TimeSpan.FromMilliseconds(75));
+        snapshot = await engine.GetPlaybackSnapshotAsync(CancellationToken.None);
+
+        Assert.False(snapshot.IsEndOfFile);
+        Assert.True(snapshot.Position >= MediaTime.Zero);
     }
 }

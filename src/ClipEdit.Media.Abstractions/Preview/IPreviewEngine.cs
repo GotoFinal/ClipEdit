@@ -12,6 +12,8 @@ public interface IPreviewEngine : IAsyncDisposable
 
     Task<MediaTime?> GetPositionAsync(CancellationToken cancellationToken);
 
+    Task<PreviewPlaybackSnapshot> GetPlaybackSnapshotAsync(CancellationToken cancellationToken);
+
     Task SetPausedAsync(bool isPaused, CancellationToken cancellationToken);
 
     Task SetVolumeAsync(double volume, CancellationToken cancellationToken);

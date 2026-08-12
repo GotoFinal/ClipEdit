@@ -77,6 +77,15 @@ public sealed class MpvPreviewEngine : IPreviewEngine
         return position;
     }
 
+    public async Task<PreviewPlaybackSnapshot> GetPlaybackSnapshotAsync(
+        CancellationToken cancellationToken)
+    {
+        var snapshot = default(PreviewPlaybackSnapshot);
+        await InvokeAsync(client => snapshot = client.GetPlaybackSnapshot(), cancellationToken)
+            .ConfigureAwait(false);
+        return snapshot;
+    }
+
     public Task SetPausedAsync(bool isPaused, CancellationToken cancellationToken) =>
         InvokeAsync(
             client =>
