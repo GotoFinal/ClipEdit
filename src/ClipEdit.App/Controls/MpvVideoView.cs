@@ -636,15 +636,24 @@ public sealed class MpvVideoView : OpenGlControlBase
         var canvasDisplayScale = Math.Min(
             viewportWidth / canvasSize.Width,
             viewportHeight / canvasSize.Height);
-        var desiredPixelScale = canvasTransform.Scale * canvasDisplayScale;
+        var uniformScale = Math.Sqrt(canvasTransform.ScaleX * canvasTransform.ScaleY);
+        var desiredPixelScale = uniformScale * canvasDisplayScale;
         var zoomFactor = Math.Clamp(desiredPixelScale / baseFitScale, 0.01, 100);
-        var displayedWidth = Math.Max(1, rotatedWidth * desiredPixelScale);
-        var displayedHeight = Math.Max(1, rotatedHeight * desiredPixelScale);
+        var scaledSourceWidth = sourceSize.Width * canvasTransform.ScaleX;
+        var scaledSourceHeight = sourceSize.Height * canvasTransform.ScaleY;
+        var displayedWidth = Math.Max(
+            1,
+            ((scaledSourceWidth * cosine) + (scaledSourceHeight * sine)) * canvasDisplayScale);
+        var displayedHeight = Math.Max(
+            1,
+            ((scaledSourceWidth * sine) + (scaledSourceHeight * cosine)) * canvasDisplayScale);
         return new PreviewVideoTransform(
             zoomFactor,
             canvasTransform.OffsetX * canvasDisplayScale / displayedWidth,
             canvasTransform.OffsetY * canvasDisplayScale / displayedHeight,
-            canvasTransform.RotationDegrees);
+            canvasTransform.RotationDegrees,
+            canvasTransform.ScaleX / uniformScale,
+            canvasTransform.ScaleY / uniformScale);
     }
 
     private void StartAudioMixChange()

@@ -259,8 +259,14 @@ public sealed class JsonProjectStore : IProjectStore
                     clip.SourceWindowY,
                     clip.SourceWindowWidth,
                     clip.SourceWindowHeight);
+                var scaleX = document.SchemaVersion >= 4
+                    ? clip.CanvasScaleX ?? throw new ArgumentException("The horizontal canvas scale is missing.")
+                    : clip.CanvasScale;
+                var scaleY = document.SchemaVersion >= 4
+                    ? clip.CanvasScaleY ?? throw new ArgumentException("The vertical canvas scale is missing.")
+                    : clip.CanvasScale;
                 _ = new ClipCanvasTransform(
-                    clip.CanvasOffsetX, clip.CanvasOffsetY, clip.CanvasScale, clip.CanvasRotationDegrees);
+                    clip.CanvasOffsetX, clip.CanvasOffsetY, scaleX, scaleY, clip.CanvasRotationDegrees);
             }
             catch (Exception exception) when (
                 exception is ArgumentException or OverflowException or DivideByZeroException)

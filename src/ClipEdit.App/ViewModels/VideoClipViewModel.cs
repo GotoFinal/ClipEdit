@@ -125,6 +125,8 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(CanvasOffsetX));
             OnPropertyChanged(nameof(CanvasOffsetY));
             OnPropertyChanged(nameof(CanvasScalePercent));
+            OnPropertyChanged(nameof(CanvasScaleXPercent));
+            OnPropertyChanged(nameof(CanvasScaleYPercent));
             OnPropertyChanged(nameof(CanvasRotationDegrees));
             OnPropertyChanged(nameof(CanvasTransformText));
         }
@@ -133,13 +135,23 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     public double CanvasOffsetX
     {
         get => CanvasTransform.OffsetX;
-        set => TrySetCanvasTransform(value, CanvasTransform.OffsetY, CanvasTransform.Scale, CanvasTransform.RotationDegrees);
+        set => TrySetCanvasTransform(
+            value,
+            CanvasTransform.OffsetY,
+            CanvasTransform.ScaleX,
+            CanvasTransform.ScaleY,
+            CanvasTransform.RotationDegrees);
     }
 
     public double CanvasOffsetY
     {
         get => CanvasTransform.OffsetY;
-        set => TrySetCanvasTransform(CanvasTransform.OffsetX, value, CanvasTransform.Scale, CanvasTransform.RotationDegrees);
+        set => TrySetCanvasTransform(
+            CanvasTransform.OffsetX,
+            value,
+            CanvasTransform.ScaleX,
+            CanvasTransform.ScaleY,
+            CanvasTransform.RotationDegrees);
     }
 
     public double CanvasScalePercent
@@ -148,6 +160,29 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         set => TrySetCanvasTransform(
             CanvasTransform.OffsetX,
             CanvasTransform.OffsetY,
+            value / 100,
+            value / 100,
+            CanvasTransform.RotationDegrees);
+    }
+
+    public double CanvasScaleXPercent
+    {
+        get => CanvasTransform.ScaleX * 100;
+        set => TrySetCanvasTransform(
+            CanvasTransform.OffsetX,
+            CanvasTransform.OffsetY,
+            value / 100,
+            CanvasTransform.ScaleY,
+            CanvasTransform.RotationDegrees);
+    }
+
+    public double CanvasScaleYPercent
+    {
+        get => CanvasTransform.ScaleY * 100;
+        set => TrySetCanvasTransform(
+            CanvasTransform.OffsetX,
+            CanvasTransform.OffsetY,
+            CanvasTransform.ScaleX,
             value / 100,
             CanvasTransform.RotationDegrees);
     }
@@ -158,13 +193,17 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         set => TrySetCanvasTransform(
             CanvasTransform.OffsetX,
             CanvasTransform.OffsetY,
-            CanvasTransform.Scale,
+            CanvasTransform.ScaleX,
+            CanvasTransform.ScaleY,
             value);
     }
 
     public string CanvasTransformText =>
         $"X {CanvasTransform.OffsetX:0.#} · Y {CanvasTransform.OffsetY:0.#} · " +
-        $"{CanvasTransform.Scale * 100:0.#}% · {CanvasTransform.RotationDegrees}°";
+        (CanvasTransform.HasUniformScale
+            ? $"{CanvasTransform.ScaleX * 100:0.#}%"
+            : $"W {CanvasTransform.ScaleX * 100:0.#}% · H {CanvasTransform.ScaleY * 100:0.#}%") +
+        $" · {CanvasTransform.RotationDegrees}°";
 
     public MediaTime SourceStart => Model.SourceRange.Start;
 
@@ -292,12 +331,13 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     private void TrySetCanvasTransform(
         double offsetX,
         double offsetY,
-        double scale,
+        double scaleX,
+        double scaleY,
         int rotationDegrees)
     {
         try
         {
-            CanvasTransform = new ClipCanvasTransform(offsetX, offsetY, scale, rotationDegrees);
+            CanvasTransform = new ClipCanvasTransform(offsetX, offsetY, scaleX, scaleY, rotationDegrees);
         }
         catch (ArgumentOutOfRangeException)
         {

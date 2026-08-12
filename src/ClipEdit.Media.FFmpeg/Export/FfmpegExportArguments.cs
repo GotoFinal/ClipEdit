@@ -106,8 +106,8 @@ internal static class FfmpegExportArguments
                     $"drawbox=c=black:t=fill[vseg{segmentIndex}base]");
                 filters.Add(
                     $"[vseg{segmentIndex}contentin]" +
-                    $"scale=round(iw*{FormatScalar(transform.Scale)}):" +
-                    $"round(ih*{FormatScalar(transform.Scale)}):flags=lanczos" +
+                    $"scale=round(iw*{FormatScalar(transform.ScaleX)}):" +
+                    $"round(ih*{FormatScalar(transform.ScaleY)}):flags=lanczos" +
                     $"{rotation}[vseg{segmentIndex}content]");
                 filters.Add(
                     $"[vseg{segmentIndex}base][vseg{segmentIndex}content]" +

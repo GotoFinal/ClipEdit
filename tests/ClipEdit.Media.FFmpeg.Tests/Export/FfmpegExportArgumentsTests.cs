@@ -176,7 +176,7 @@ public sealed class FfmpegExportArgumentsTests
                     new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
                     canvasSize,
                     canvasCrop,
-                    new ClipCanvasTransform(120.5, -40, 1.25, 15)),
+                    new ClipCanvasTransform(120.5, -40, 1.25, 0.75, 15)),
             ],
             canvasCrop.ExportSize,
             "C:\\canvas.mp4",
@@ -188,7 +188,7 @@ public sealed class FfmpegExportArgumentsTests
             "setpts=PTS-STARTPTS,split=2[vseg0basein][vseg0contentin]",
             graph);
         Assert.Contains(
-            "scale=round(iw*1.25):round(ih*1.25):flags=lanczos," +
+            "scale=round(iw*1.25):round(ih*0.75):flags=lanczos," +
             "format=rgba,rotate=15*PI/180:ow=rotw(iw):oh=roth(ih):c=black@0",
             graph);
         Assert.Contains(

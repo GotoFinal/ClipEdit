@@ -9,7 +9,7 @@ public sealed record ProjectDocument(
     ProjectCropSettingsDocument? CropSettings = null,
     ProjectCanvasDocument? Canvas = null)
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 }
 
 public sealed record ProjectMediaDocument(
@@ -45,7 +45,9 @@ public sealed record ProjectVideoClipDocument(
     double CanvasOffsetX = 0,
     double CanvasOffsetY = 0,
     double CanvasScale = 1,
-    int CanvasRotationDegrees = 0);
+    int CanvasRotationDegrees = 0,
+    double? CanvasScaleX = null,
+    double? CanvasScaleY = null);
 
 public sealed record ProjectCropSettingsDocument(
     string PresetId,

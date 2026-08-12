@@ -43,7 +43,9 @@ public readonly record struct PreviewVideoTransform
         double zoomFactor,
         double panX,
         double panY,
-        int rotationDegrees)
+        int rotationDegrees,
+        double scaleX = 1,
+        double scaleY = 1)
     {
         if (!double.IsFinite(zoomFactor) || zoomFactor is < 0.01 or > 100)
         {
@@ -54,15 +56,27 @@ public readonly record struct PreviewVideoTransform
         {
             throw new ArgumentOutOfRangeException(nameof(panX));
         }
+        if (!IsValidScale(scaleX) || !IsValidScale(scaleY))
+        {
+            throw new ArgumentOutOfRangeException(nameof(scaleX));
+        }
+
 
         ZoomFactor = zoomFactor;
         PanX = panX;
         PanY = panY;
         RotationDegrees = ((rotationDegrees % 360) + 360) % 360;
+        ScaleX = scaleX;
+        ScaleY = scaleY;
     }
 
     public double ZoomFactor { get; }
     public double PanX { get; }
     public double PanY { get; }
     public int RotationDegrees { get; }
+    public double ScaleX { get; }
+    public double ScaleY { get; }
+
+    private static bool IsValidScale(double scale) =>
+        double.IsFinite(scale) && scale is >= 0.01 and <= 100;
 }

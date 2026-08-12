@@ -145,6 +145,8 @@ internal sealed class MpvClient : IDisposable
         SetProperty(
             "video-zoom",
             Math.Log2(transform.ZoomFactor).ToString("R", CultureInfo.InvariantCulture));
+        SetProperty("video-scale-x", transform.ScaleX.ToString("R", CultureInfo.InvariantCulture));
+        SetProperty("video-scale-y", transform.ScaleY.ToString("R", CultureInfo.InvariantCulture));
         SetProperty("video-pan-x", transform.PanX.ToString("R", CultureInfo.InvariantCulture));
         SetProperty("video-pan-y", transform.PanY.ToString("R", CultureInfo.InvariantCulture));
         SetProperty("video-rotate", transform.RotationDegrees.ToString(CultureInfo.InvariantCulture));

@@ -12,6 +12,16 @@ public readonly record struct ClipCanvasTransform
         double offsetY,
         double scale,
         int rotationDegrees)
+        : this(offsetX, offsetY, scale, scale, rotationDegrees)
+    {
+    }
+
+    public ClipCanvasTransform(
+        double offsetX,
+        double offsetY,
+        double scaleX,
+        double scaleY,
+        int rotationDegrees)
     {
         if (!double.IsFinite(offsetX) || !double.IsFinite(offsetY) ||
             Math.Abs(offsetX) > 1_000_000_000 || Math.Abs(offsetY) > 1_000_000_000)
@@ -19,14 +29,17 @@ public readonly record struct ClipCanvasTransform
             throw new ArgumentOutOfRangeException(nameof(offsetX), "Canvas offsets must be finite and bounded.");
         }
 
-        if (!double.IsFinite(scale) || scale is < 0.01 or > 100)
+        if (!IsValidScale(scaleX) || !IsValidScale(scaleY))
         {
-            throw new ArgumentOutOfRangeException(nameof(scale), "Canvas scale must be between 0.01 and 100.");
+            throw new ArgumentOutOfRangeException(
+                nameof(scaleX),
+                "Canvas scale on each axis must be between 0.01 and 100.");
         }
 
         OffsetX = offsetX;
         OffsetY = offsetY;
-        Scale = scale;
+        ScaleX = scaleX;
+        ScaleY = scaleY;
         RotationDegrees = ((rotationDegrees % 360) + 360) % 360;
     }
 
@@ -34,7 +47,13 @@ public readonly record struct ClipCanvasTransform
 
     public double OffsetY { get; }
 
-    public double Scale { get; }
+    public double ScaleX { get; }
+
+    public double ScaleY { get; }
+
+    public double Scale => ScaleX;
+
+    public bool HasUniformScale => Math.Abs(ScaleX - ScaleY) < 0.000_001;
 
     public int RotationDegrees { get; }
 
@@ -59,11 +78,17 @@ public readonly record struct ClipCanvasTransform
             0);
 
     public ClipCanvasTransform MoveTo(double offsetX, double offsetY) =>
-        new(offsetX, offsetY, Scale, RotationDegrees);
+        new(offsetX, offsetY, ScaleX, ScaleY, RotationDegrees);
 
     public ClipCanvasTransform Resize(double scale) =>
-        new(OffsetX, OffsetY, scale, RotationDegrees);
+        new(OffsetX, OffsetY, scale, scale, RotationDegrees);
+
+    public ClipCanvasTransform Resize(double scaleX, double scaleY) =>
+        new(OffsetX, OffsetY, scaleX, scaleY, RotationDegrees);
 
     public ClipCanvasTransform Rotate(int rotationDegrees) =>
-        new(OffsetX, OffsetY, Scale, rotationDegrees);
+        new(OffsetX, OffsetY, ScaleX, ScaleY, rotationDegrees);
+
+    private static bool IsValidScale(double scale) =>
+        double.IsFinite(scale) && scale is >= 0.01 and <= 100;
 }

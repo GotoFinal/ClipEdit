@@ -203,14 +203,16 @@ public sealed class MainWindowViewModelTests
         var clips = viewModel.VideoClips.ToArray();
         viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Portrait916;
 
-        Assert.Equal(new PixelSize(603, 1_072), viewModel.CanvasCrop.ExportSize);
+        Assert.Equal(new PixelSize(594, 1_056), viewModel.CanvasCrop.ExportSize);
+        Assert.Equal(0, viewModel.CanvasCrop.Width % 2);
+        Assert.Equal(9 * viewModel.CanvasCrop.Height, 16 * viewModel.CanvasCrop.Width);
         Assert.All(clips, clip => Assert.Equal(CropRegion.FullFrame(clip.VideoSize), clip.SourceWindow));
 
         clips[0].CanvasOffsetX = 240;
 
         Assert.Equal(240, clips[0].CanvasTransform.OffsetX);
         Assert.Equal(0, clips[1].CanvasTransform.OffsetX);
-        Assert.Equal(new PixelSize(603, 1_072), viewModel.CanvasCrop.ExportSize);
+        Assert.Equal(new PixelSize(594, 1_056), viewModel.CanvasCrop.ExportSize);
 
         viewModel.CanvasCrop = new CropRegion(viewModel.CanvasSize, 50, 100, 500, 800);
 
@@ -270,7 +272,8 @@ public sealed class MainWindowViewModelTests
                 var clips = original.VideoClips.ToArray();
                 clips[0].CanvasOffsetX = -100;
                 clips[1].CanvasOffsetX = 800;
-                clips[1].CanvasScalePercent = 125;
+                clips[1].CanvasScaleXPercent = 125;
+                clips[1].CanvasScaleYPercent = 75;
                 clips[1].CanvasRotationDegrees = 15;
                 original.SelectedVideoClip = clips[1];
                 original.IsCropAspectLocked = true;
@@ -283,7 +286,8 @@ public sealed class MainWindowViewModelTests
             var restoredClips = restored.VideoClips.ToArray();
             Assert.Equal([secondPath, firstPath], restoredClips.Select(clip => clip.SourcePath));
             Assert.Equal(800, restoredClips[0].CanvasTransform.OffsetX);
-            Assert.Equal(1.25, restoredClips[0].CanvasTransform.Scale);
+            Assert.Equal(1.25, restoredClips[0].CanvasTransform.ScaleX);
+            Assert.Equal(0.75, restoredClips[0].CanvasTransform.ScaleY);
             Assert.Equal(15, restoredClips[0].CanvasTransform.RotationDegrees);
             Assert.Equal(-100, restoredClips[1].CanvasTransform.OffsetX);
             Assert.Equal(new PixelSize(1_080, 1_080), restored.CanvasCrop.ExportSize);

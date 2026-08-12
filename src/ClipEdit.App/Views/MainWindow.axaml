@@ -99,7 +99,7 @@
               Click="UseTransformTool_Click"
               Content="Position clip"
               IsChecked="{Binding IsTransformToolActive, Mode=OneWay}"
-              ToolTip.Tip="Move, zoom, or rotate the selected clip under the crop" />
+              ToolTip.Tip="Move, resize, or rotate the selected clip under the crop" />
           <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="CROP" />
           <ComboBox Width="132" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
             <ComboBox.ItemTemplate>
@@ -331,7 +331,7 @@
                       IsHitTestVisible="{Binding IsTransformToolActive}"
                       SourceSize="{Binding SelectedVideoClip.VideoSize}"
                       Transform="{Binding SelectedVideoClip.CanvasTransform, Mode=TwoWay}"
-                      ToolTip.Tip="Drag to move · wheel zooms · Shift+wheel rotates"
+                      ToolTip.Tip="Drag clip to move · drag cyan handles to resize · Ctrl stretches · drag amber point to rotate"
                       ZIndex="9" />
 
                   <controls:CropCanvas
@@ -596,7 +596,7 @@
               </Grid>
 
               <Grid
-                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,64,Auto,58,Auto,Auto,*"
+                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,Auto,*"
                   ColumnSpacing="5"
                   IsVisible="{Binding HasReadyMedia}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CLIP" />
@@ -604,25 +604,27 @@
                 <TextBox Grid.Column="2" Text="{Binding SelectedVideoClip.CanvasOffsetX, Mode=TwoWay}" />
                 <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Y" />
                 <TextBox Grid.Column="4" Text="{Binding SelectedVideoClip.CanvasOffsetY, Mode=TwoWay}" />
-                <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="ZOOM %" />
-                <TextBox Grid.Column="6" Text="{Binding SelectedVideoClip.CanvasScalePercent, Mode=TwoWay}" />
-                <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="ROTATE °" />
-                <TextBox Grid.Column="8" Text="{Binding SelectedVideoClip.CanvasRotationDegrees, Mode=TwoWay}" />
+                <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="W %" />
+                <TextBox Grid.Column="6" Text="{Binding SelectedVideoClip.CanvasScaleXPercent, Mode=TwoWay}" />
+                <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="H %" />
+                <TextBox Grid.Column="8" Text="{Binding SelectedVideoClip.CanvasScaleYPercent, Mode=TwoWay}" />
+                <TextBlock Grid.Column="9" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="ROTATE °" />
+                <TextBox Grid.Column="10" Text="{Binding SelectedVideoClip.CanvasRotationDegrees, Mode=TwoWay}" />
                 <Button
-                    Grid.Column="9"
+                    Grid.Column="11"
                     Padding="9,5"
                     Classes="secondary"
                     Click="FillClipCanvas_Click"
                     Content="Fill"
                     ToolTip.Tip="Center and fill the canvas" />
                 <Button
-                    Grid.Column="10"
+                    Grid.Column="12"
                     Padding="9,5"
                     Classes="secondary"
                     Click="FitClipCanvas_Click"
                     Content="Fit"
                     ToolTip.Tip="Center and show the whole clip" />
-                <TextBlock Grid.Column="11" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
+                <TextBlock Grid.Column="13" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
               </Grid>
 
               <Border

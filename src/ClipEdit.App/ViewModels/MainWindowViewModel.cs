@@ -1136,7 +1136,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 : CanvasCrop.ResizeToAspectRatio(
                     SelectedCropAspectPreset.WidthUnits,
                     SelectedCropAspectPreset.HeightUnits);
-            CanvasCrop = SnapCropSizeCentered(proposedCrop);
+            CanvasCrop = SnapCropPresetSizeCentered(proposedCrop, SelectedCropAspectPreset);
         }
         finally
         {
@@ -2287,7 +2287,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             transform.OffsetX,
             transform.OffsetY,
             transform.Scale,
-            transform.RotationDegrees);
+            transform.RotationDegrees,
+            transform.ScaleX,
+            transform.ScaleY);
     }
 
     private void RestoreVideoSequence(ProjectDocument document, ICollection<string> warnings)
@@ -2358,7 +2360,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         ? new ClipCanvasTransform(
                             savedClip.CanvasOffsetX,
                             savedClip.CanvasOffsetY,
-                            savedClip.CanvasScale,
+                            document.SchemaVersion >= 4
+                                ? savedClip.CanvasScaleX ?? savedClip.CanvasScale
+                                : savedClip.CanvasScale,
+                            document.SchemaVersion >= 4
+                                ? savedClip.CanvasScaleY ?? savedClip.CanvasScale
+                                : savedClip.CanvasScale,
                             savedClip.CanvasRotationDegrees)
                         : CreateLegacyCanvasTransform(source.VideoSize, CanvasSize, CanvasCrop, window);
                     replacements.Add(new VideoClipViewModel(source, model, window, transform));

@@ -52,6 +52,8 @@ public sealed class MpvVideoViewTests
             new DomainPixelSize(1_920, 1_080),
             ClipCanvasTransform.Identity,
             new Size(960, 540));
+        Assert.Equal(1, transform.ScaleX);
+        Assert.Equal(1, transform.ScaleY);
 
         Assert.Equal(1, transform.ZoomFactor, 6);
         Assert.Equal(0, transform.PanX);
@@ -73,4 +75,21 @@ public sealed class MpvVideoViewTests
         Assert.Equal(-25d / 960d, transform.PanY, 6);
         Assert.Equal(90, transform.RotationDegrees);
     }
+
+    [Fact]
+    public void Non_uniform_canvas_scale_lowers_to_independent_mpv_display_scales()
+    {
+        var transform = MpvVideoView.CalculatePreviewVideoTransform(
+            new DomainPixelSize(1_920, 1_080),
+            new DomainPixelSize(1_920, 1_080),
+            new ClipCanvasTransform(0, 0, 2, 0.5, 0),
+            new Size(960, 540));
+
+        Assert.Equal(1, transform.ZoomFactor, 6);
+        Assert.Equal(2, transform.ScaleX, 6);
+        Assert.Equal(0.5, transform.ScaleY, 6);
+        Assert.Equal(0, transform.PanX);
+        Assert.Equal(0, transform.PanY);
+    }
+
 }

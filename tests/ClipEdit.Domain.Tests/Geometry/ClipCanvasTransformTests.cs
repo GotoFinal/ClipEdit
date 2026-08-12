@@ -25,6 +25,19 @@ public sealed class ClipCanvasTransformTests
 
         Assert.Equal(expected, transform.RotationDegrees);
     }
+    [Fact]
+    public void Non_uniform_scale_is_stored_without_changing_rotation_or_offset()
+    {
+        var transform = new ClipCanvasTransform(12, -8, 1.5, 0.75, 15);
+
+        Assert.Equal(1.5, transform.ScaleX);
+        Assert.Equal(0.75, transform.ScaleY);
+        Assert.False(transform.HasUniformScale);
+        Assert.Equal(12, transform.OffsetX);
+        Assert.Equal(-8, transform.OffsetY);
+        Assert.Equal(15, transform.RotationDegrees);
+    }
+
 
     [Theory]
     [InlineData(0)]

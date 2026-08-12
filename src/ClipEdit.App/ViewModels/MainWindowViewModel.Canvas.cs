@@ -209,6 +209,34 @@ public sealed partial class MainWindowViewModel
     {
         var width = SnapDimensionDown(crop.Width, crop.SourceSize.Width, CropSizeStep);
         var height = SnapDimensionDown(crop.Height, crop.SourceSize.Height, CropSizeStep);
+        return CenterCropWithSize(crop, width, height);
+    }
+
+    private CropRegion SnapCropPresetSizeCentered(CropRegion crop, CropAspectPreset preset)
+    {
+        if (preset.IsCustom || preset.IsFullFrame || CropSizeStep <= 1)
+        {
+            return SnapCropSizeCentered(crop);
+        }
+
+        var divisor = GreatestCommonDivisor(preset.WidthUnits, preset.HeightUnits);
+        var unitWidth = preset.WidthUnits / divisor;
+        var unitHeight = preset.HeightUnits / divisor;
+        var scale = Math.Min(crop.Width / unitWidth, crop.Height / unitHeight);
+        var scaleStep = LeastCommonMultiple(
+            CropSizeStep / GreatestCommonDivisor(CropSizeStep, unitWidth),
+            CropSizeStep / GreatestCommonDivisor(CropSizeStep, unitHeight));
+        scale -= scale % scaleStep;
+        if (scale <= 0)
+        {
+            return SnapCropSizeCentered(crop);
+        }
+
+        return CenterCropWithSize(crop, unitWidth * scale, unitHeight * scale);
+    }
+
+    private static CropRegion CenterCropWithSize(CropRegion crop, int width, int height)
+    {
         var centerX = crop.X + (crop.Width / 2d);
         var centerY = crop.Y + (crop.Height / 2d);
         var x = Math.Clamp(
@@ -231,6 +259,21 @@ public sealed partial class MainWindowViewModel
 
         var maximumValid = maximum - (maximum % step);
         return Math.Clamp(value - (value % step), step, maximumValid);
+    }
+
+    private static int GreatestCommonDivisor(int left, int right)
+    {
+        while (right != 0)
+        {
+            (left, right) = (right, left % right);
+        }
+
+        return Math.Abs(left);
+    }
+
+    private static int LeastCommonMultiple(int left, int right)
+    {
+        return checked(left / GreatestCommonDivisor(left, right) * right);
     }
     private void RaiseCanvasCropChanged()
     {
