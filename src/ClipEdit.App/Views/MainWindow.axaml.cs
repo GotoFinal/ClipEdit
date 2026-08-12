@@ -184,6 +184,13 @@ public sealed partial class MainWindow : Window
         ViewModel?.ResetCanvasInteractionSettings();
     }
 
+    private void UseAutoTool_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.UseAutoTool();
+    }
+
     private async void OnDrop(object? sender, DragEventArgs eventArgs)
     {
         _ = sender;

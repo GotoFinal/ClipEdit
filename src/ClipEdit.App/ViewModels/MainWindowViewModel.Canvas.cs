@@ -112,9 +112,14 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(IsCropToolActive));
                 OnPropertyChanged(nameof(IsTransformToolActive));
-                StatusText = value == CanvasInteractionTool.Crop
-                    ? "Crop tool: drag the shared frame or its handles"
-                    : "Clip tool: drag the selected clip; wheel zooms; Shift+wheel rotates";
+                OnPropertyChanged(nameof(IsAutoToolActive));
+                OnPropertyChanged(nameof(IsClipTransformOverlayActive));
+                StatusText = value switch
+                {
+                    CanvasInteractionTool.Crop => "Crop tool: drag the shared frame or its handles",
+                    CanvasInteractionTool.Transform => "Clip tool: drag the selected clip; wheel zooms; Shift+wheel rotates",
+                    _ => "Auto tool: crop inside the frame; Ctrl drags the clip; clip handles stay active",
+                };
             }
         }
     }
@@ -123,9 +128,15 @@ public sealed partial class MainWindowViewModel
 
     public bool IsTransformToolActive => CanvasTool == CanvasInteractionTool.Transform;
 
+    public bool IsAutoToolActive => CanvasTool == CanvasInteractionTool.Auto;
+
+    public bool IsClipTransformOverlayActive => IsTransformToolActive || IsAutoToolActive;
+
     public void UseCropTool() => CanvasTool = CanvasInteractionTool.Crop;
 
     public void UseTransformTool() => CanvasTool = CanvasInteractionTool.Transform;
+
+    public void UseAutoTool() => CanvasTool = CanvasInteractionTool.Auto;
 
     public bool ResetCanvasCrop()
     {
@@ -195,6 +206,8 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(CanvasTool));
         OnPropertyChanged(nameof(IsCropToolActive));
         OnPropertyChanged(nameof(IsTransformToolActive));
+        OnPropertyChanged(nameof(IsAutoToolActive));
+        OnPropertyChanged(nameof(IsClipTransformOverlayActive));
     }
 
     private void TrySetCanvasCrop(int x, int y, int width, int height)
@@ -338,4 +351,5 @@ public enum CanvasInteractionTool
 {
     Crop,
     Transform,
+    Auto,
 }

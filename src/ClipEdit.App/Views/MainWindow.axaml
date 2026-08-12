@@ -100,6 +100,13 @@
               Content="Position clip"
               IsChecked="{Binding IsTransformToolActive, Mode=OneWay}"
               ToolTip.Tip="Move, resize, or rotate the selected clip under the crop" />
+          <ToggleButton
+              Padding="9,5"
+              Classes="secondary"
+              Click="UseAutoTool_Click"
+              Content="Auto"
+              IsChecked="{Binding IsAutoToolActive, Mode=OneWay}"
+              ToolTip.Tip="Crop inside the frame; Ctrl drags the clip; clip handles always work" />
           <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="CROP" />
           <ComboBox Width="132" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
             <ComboBox.ItemTemplate>
@@ -362,14 +369,14 @@
                       Margin="5"
                       AutomationProperties.Name="Selected clip canvas transform"
                       CanvasSize="{Binding CanvasSize}"
-                      IsActive="{Binding IsTransformToolActive}"
+                      IsActive="{Binding IsClipTransformOverlayActive}"
                       IsHitTestVisible="{Binding IsTransformToolActive}"
                       SourceSize="{Binding SelectedVideoClip.VideoSize}"
                       WheelRotationDegrees="{Binding ClipWheelRotationDegrees}"
                       WheelZoomPercent="{Binding ClipWheelZoomPercent}"
                       Transform="{Binding SelectedVideoClip.CanvasTransform, Mode=TwoWay}"
                       ToolTip.Tip="Drag clip to move · drag cyan handles to resize · Ctrl stretches · drag amber point to rotate"
-                      ZIndex="9" />
+                      ZIndex="11" />
 
                   <controls:CropCanvas
                       Margin="5"
@@ -382,6 +389,21 @@
                       ZIndex="10"
                       SourceSize="{Binding CanvasSize}"
                       ToolTip.Tip="Drag inside the crop to move it; drag a handle to resize" />
+
+                  <controls:AutoCanvas
+                      Margin="5"
+                      AutomationProperties.Name="Automatic crop and clip canvas interaction"
+                      CanvasSize="{Binding CanvasSize}"
+                      Crop="{Binding CanvasCrop, Mode=TwoWay}"
+                      CropSizeStep="{Binding CropSizeStep}"
+                      IsCropAspectRatioLocked="{Binding IsCropAspectLocked}"
+                      IsHitTestVisible="{Binding IsAutoToolActive}"
+                      IsVisible="{Binding IsAutoToolActive}"
+                      SourceSize="{Binding SelectedVideoClip.VideoSize}"
+                      Transform="{Binding SelectedVideoClip.CanvasTransform, Mode=TwoWay}"
+                      WheelRotationDegrees="{Binding ClipWheelRotationDegrees}"
+                      WheelZoomPercent="{Binding ClipWheelZoomPercent}"
+                      ZIndex="12" />
 
                   <StackPanel
                       HorizontalAlignment="Center"

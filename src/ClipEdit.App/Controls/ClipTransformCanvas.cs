@@ -341,7 +341,7 @@ public sealed class ClipTransformCanvas : Control
             viewport.X + (point.X * viewport.Width / CanvasSize.Width),
             viewport.Y + (point.Y * viewport.Height / CanvasSize.Height));
 
-    private static IReadOnlyList<Point> GetTransformedCorners(
+    internal static IReadOnlyList<Point> GetTransformedCorners(
         DomainPixelSize sourceSize,
         DomainPixelSize canvasSize,
         ClipCanvasTransform transform)
@@ -487,7 +487,7 @@ public sealed class ClipTransformCanvas : Control
             top.Y - (directionY * inset / length));
     }
 
-    private static Point GetTransformCenter(DomainPixelSize canvasSize, ClipCanvasTransform transform) =>
+    internal static Point GetTransformCenter(DomainPixelSize canvasSize, ClipCanvasTransform transform) =>
         new((canvasSize.Width / 2d) + transform.OffsetX, (canvasSize.Height / 2d) + transform.OffsetY);
 
     private static Point Midpoint(Point left, Point right) =>
