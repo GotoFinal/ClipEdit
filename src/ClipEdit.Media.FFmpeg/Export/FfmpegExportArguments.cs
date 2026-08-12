@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Export;
 
@@ -30,7 +29,7 @@ internal static class FfmpegExportArguments
             "[vout]",
         };
 
-        if (plan.AudioStreamIndex is not null)
+        if (!plan.AudioTracks.IsEmpty)
         {
             arguments.Add("-map");
             arguments.Add("[aout]");
@@ -55,16 +54,19 @@ internal static class FfmpegExportArguments
 
     internal static string CreateFilterGraph(ExportPlan plan)
     {
-        var graph = new StringBuilder();
+        var filters = new List<string>();
         var rangeCount = plan.SourceRanges.Length;
-        var hasAudio = plan.AudioStreamIndex is not null;
 
         if (rangeCount > 1)
         {
-            AppendSplit(graph, $"0:{plan.VideoStreamIndex}", "split", "vsrc", rangeCount);
-            if (hasAudio)
+            filters.Add(CreateSplit($"0:{plan.VideoStreamIndex}", "split", "vsrc", rangeCount));
+            for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
             {
-                AppendSplit(graph, $"0:{plan.AudioStreamIndex!.Value}", "asplit", "asrc", rangeCount);
+                filters.Add(CreateSplit(
+                    $"0:{plan.AudioTracks[trackIndex].StreamIndex}",
+                    "asplit",
+                    $"asrc{trackIndex}_",
+                    rangeCount));
             }
         }
 
@@ -73,66 +75,65 @@ internal static class FfmpegExportArguments
             var range = plan.SourceRanges[index];
             var videoInput = rangeCount == 1 ? $"0:{plan.VideoStreamIndex}" : $"vsrc{index}";
             var videoOutput = rangeCount == 1 ? "vout" : $"vseg{index}";
-            graph.Append('[').Append(videoInput).Append(']')
-                .Append("trim=start=").Append(FormatTime(range.Start))
-                .Append(":end=").Append(FormatTime(range.End))
-                .Append(",setpts=PTS-STARTPTS")
-                .Append(",crop=").Append(plan.Crop.Width)
-                .Append(':').Append(plan.Crop.Height)
-                .Append(':').Append(plan.Crop.X)
-                .Append(':').Append(plan.Crop.Y)
-                .Append(",setsar=1")
-                .Append('[').Append(videoOutput).Append("]; ");
+            filters.Add(
+                $"[{videoInput}]trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                $"setpts=PTS-STARTPTS,crop={plan.Crop.Width}:{plan.Crop.Height}:{plan.Crop.X}:{plan.Crop.Y}," +
+                $"setsar=1[{videoOutput}]");
 
-            if (hasAudio)
+            for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
             {
-                var audioInput = rangeCount == 1 ? $"0:{plan.AudioStreamIndex!.Value}" : $"asrc{index}";
-                var audioOutput = rangeCount == 1 ? "aout" : $"aseg{index}";
-                graph.Append('[').Append(audioInput).Append(']')
-                    .Append("atrim=start=").Append(FormatTime(range.Start))
-                    .Append(":end=").Append(FormatTime(range.End))
-                    .Append(",asetpts=PTS-STARTPTS")
-                    .Append('[').Append(audioOutput).Append("]; ");
+                var streamIndex = plan.AudioTracks[trackIndex].StreamIndex;
+                var audioInput = rangeCount == 1 ? $"0:{streamIndex}" : $"asrc{trackIndex}_{index}";
+                filters.Add(
+                    $"[{audioInput}]atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                    $"asetpts=PTS-STARTPTS[aseg{trackIndex}_{index}]");
             }
         }
 
         if (rangeCount > 1)
         {
-            for (var index = 0; index < rangeCount; index++)
+            filters.Add(
+                string.Concat(Enumerable.Range(0, rangeCount).Select(index => $"[vseg{index}]")) +
+                $"concat=n={rangeCount}:v=1:a=0[vout]");
+        }
+
+        for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
+        {
+            var trackInput = $"aseg{trackIndex}_0";
+            if (rangeCount > 1)
             {
-                graph.Append("[vseg").Append(index).Append(']');
-                if (hasAudio)
-                {
-                    graph.Append("[aseg").Append(index).Append(']');
-                }
+                trackInput = $"atrack{trackIndex}";
+                filters.Add(
+                    string.Concat(Enumerable.Range(0, rangeCount).Select(index => $"[aseg{trackIndex}_{index}]")) +
+                    $"concat=n={rangeCount}:v=0:a=1[{trackInput}]");
             }
 
-            graph.Append("concat=n=").Append(rangeCount)
-                .Append(hasAudio ? ":v=1:a=1[vout][aout]" : ":v=1:a=0[vout]");
-        }
-        else
-        {
-            graph.Length -= 2;
+            var mixedInput = plan.AudioTracks.Length == 1 ? "aout" : $"amixin{trackIndex}";
+            var conform = plan.AudioTracks.Length == 1
+                ? string.Empty
+                : "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,";
+            filters.Add(
+                $"[{trackInput}]{conform}volume={FormatGain(plan.AudioTracks[trackIndex].GainDb)}dB[{mixedInput}]");
         }
 
-        return graph.ToString();
+        if (plan.AudioTracks.Length > 1)
+        {
+            filters.Add(
+                string.Concat(Enumerable.Range(0, plan.AudioTracks.Length).Select(index => $"[amixin{index}]")) +
+                $"amix=inputs={plan.AudioTracks.Length}:duration=longest:normalize=0,alimiter=limit=0.95[aout]");
+        }
+
+        return string.Join(';', filters);
     }
 
-    private static void AppendSplit(
-        StringBuilder graph,
+    private static string CreateSplit(
         string input,
         string filter,
         string outputPrefix,
         int count)
     {
-        graph.Append('[').Append(input).Append(']')
-            .Append(filter).Append('=').Append(count);
-        for (var index = 0; index < count; index++)
-        {
-            graph.Append('[').Append(outputPrefix).Append(index).Append(']');
-        }
-
-        graph.Append("; ");
+        return $"[{input}]{filter}={count}" +
+               string.Concat(Enumerable.Range(0, count).Select(index => $"[{outputPrefix}{index}]"));
     }
 
     private static IEnumerable<string> CreatePresetArguments(ExportPlan plan)
@@ -150,7 +151,7 @@ internal static class FfmpegExportArguments
             _ => throw new ExportPlanException($"Unsupported video codec family: {plan.Preset.VideoCodec}."),
         };
 
-        if (plan.AudioStreamIndex is not null)
+        if (!plan.AudioTracks.IsEmpty)
         {
             arguments.AddRange(plan.Preset.AudioCodec switch
             {
@@ -179,5 +180,10 @@ internal static class FfmpegExportArguments
     private static string FormatTime(MediaTime value)
     {
         return value.TotalSeconds.ToString("0.###############", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatGain(double gainDb)
+    {
+        return gainDb.ToString("0.###", CultureInfo.InvariantCulture);
     }
 }

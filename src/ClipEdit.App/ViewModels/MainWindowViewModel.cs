@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 using System.ComponentModel;
 using Avalonia.Media.Imaging;
 using ClipEdit.Application.Export;
@@ -284,14 +285,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 return "External-audio mixing must be configured before export";
             }
 
-            if (AudioTracks.Count > 1)
+            if (AudioTracks.Any(track => track.HasRangeEdits))
             {
-                return "Multiple audio-track mixing is not connected to export yet";
-            }
-
-            if (AudioTracks.Any(track => track.IsEdited))
-            {
-                return "Audio cut/gain decisions are saved, but export parity is not connected yet";
+                return "Independent audio cuts need a ripple-versus-silence choice before export";
             }
 
             if (SelectedMedia.Edit is null || SelectedMedia.Edit.IsEmpty)
@@ -499,7 +495,14 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 SelectedMedia.Crop,
                 SelectedExportPreset,
                 destinationPath,
-                replaceExistingDestination);
+                replaceExistingDestination,
+                AudioTracks
+                    .Where(track =>
+                        !track.IsExternal &&
+                        !track.IsMuted &&
+                        PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath))
+                    .Select(track => new ExportAudioTrackPlan(track.StreamIndex, track.GainDb))
+                    .ToImmutableArray());
             IsExporting = true;
             ExportProgress = 0;
             ExportPhaseText = "Preparing";

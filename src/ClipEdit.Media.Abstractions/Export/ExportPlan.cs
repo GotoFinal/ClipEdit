@@ -22,7 +22,8 @@ public sealed record ExportPlan
         CropRegion crop,
         ImmutableArray<MediaRange> sourceRanges,
         ExportPreset preset,
-        bool replaceExistingDestination = false)
+        bool replaceExistingDestination = false,
+        ImmutableArray<ExportAudioTrackPlan> audioTracks = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
@@ -59,7 +60,16 @@ public sealed record ExportPlan
         SourcePath = Path.GetFullPath(sourcePath);
         DestinationPath = Path.GetFullPath(destinationPath);
         VideoStreamIndex = videoStreamIndex;
-        AudioStreamIndex = audioStreamIndex;
+        AudioTracks = audioTracks.IsDefault
+            ? audioStreamIndex is null
+                ? []
+                : [new ExportAudioTrackPlan(audioStreamIndex.Value, 0)]
+            : audioTracks;
+        if (AudioTracks.Any(track => track is null) ||
+            AudioTracks.Select(track => track.StreamIndex).Distinct().Count() != AudioTracks.Length)
+        {
+            throw new ArgumentException("Export audio tracks must be non-null and use distinct stream indices.", nameof(audioTracks));
+        }
         Crop = crop;
         SourceRanges = sourceRanges;
         Preset = preset;
@@ -72,7 +82,9 @@ public sealed record ExportPlan
 
     public int VideoStreamIndex { get; }
 
-    public int? AudioStreamIndex { get; }
+    public ImmutableArray<ExportAudioTrackPlan> AudioTracks { get; }
+
+    public int? AudioStreamIndex => AudioTracks.Length == 1 ? AudioTracks[0].StreamIndex : null;
 
     public CropRegion Crop { get; }
 
@@ -108,6 +120,25 @@ public sealed record ExportPlan
             previousEnd = range.End;
         }
     }
+}
+
+public sealed record ExportAudioTrackPlan
+{
+    public ExportAudioTrackPlan(int streamIndex, double gainDb)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(streamIndex);
+        if (!double.IsFinite(gainDb) || gainDb is < -60 or > 12)
+        {
+            throw new ArgumentOutOfRangeException(nameof(gainDb));
+        }
+
+        StreamIndex = streamIndex;
+        GainDb = gainDb;
+    }
+
+    public int StreamIndex { get; }
+
+    public double GainDb { get; }
 }
 
 public sealed class ExportPlanException(string message) : Exception(message);

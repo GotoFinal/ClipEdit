@@ -56,6 +56,7 @@ public sealed class AudioTrackViewModel : ViewModelBase
             {
                 OnPropertyChanged(nameof(KeptRanges));
                 OnPropertyChanged(nameof(IsEdited));
+                OnPropertyChanged(nameof(HasRangeEdits));
                 OnPropertyChanged(nameof(CanRemoveSelection));
                 OnPropertyChanged(nameof(OutputDurationText));
             }
@@ -65,6 +66,8 @@ public sealed class AudioTrackViewModel : ViewModelBase
     public ImmutableArray<MediaRange> KeptRanges => Edit.KeptRanges;
 
     public bool IsEdited => !Edit.IsUnedited || IsMuted || GainDb != 0;
+
+    public bool HasRangeEdits => !Edit.IsUnedited;
 
     public double DurationSeconds => Edit.SourceDuration.TotalSeconds;
 

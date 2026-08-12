@@ -24,11 +24,42 @@ public sealed class FfmpegExportArgumentsTests
         var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
 
         Assert.Contains("[0:0]split=2[vsrc0][vsrc1]", graph);
-        Assert.Contains("[0:2]asplit=2[asrc0][asrc1]", graph);
+        Assert.Contains("[0:2]asplit=2[asrc0_0][asrc0_1]", graph);
         Assert.Contains("trim=start=0:end=1.5,setpts=PTS-STARTPTS,crop=1080:1080:420:0,setsar=1[vseg0]", graph);
-        Assert.Contains("[vseg0][aseg0][vseg1][aseg1]concat=n=2:v=1:a=1[vout][aout]", graph);
+        Assert.Contains("[vseg0][vseg1]concat=n=2:v=1:a=0[vout]", graph);
+        Assert.Contains("[aseg0_0][aseg0_1]concat=n=2:v=0:a=1[atrack0]", graph);
+        Assert.Contains("[atrack0]volume=0dB[aout]", graph);
         Assert.Contains("libx264", arguments);
         Assert.Contains("+faststart", arguments);
+    }
+
+    [Fact]
+    public void Multiple_embedded_tracks_are_conformed_gained_mixed_and_limited()
+    {
+        var basePlan = CreatePlan(
+            "C:\\source.mkv",
+            "C:\\clip.mp4",
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            audioTracks:
+            [
+                new ExportAudioTrackPlan(1, -6),
+                new ExportAudioTrackPlan(2, 3.5),
+            ]);
+
+        var graph = FfmpegExportArguments.CreateFilterGraph(plan);
+
+        Assert.Contains("[aseg0_0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=-6dB[amixin0]", graph);
+        Assert.Contains("[aseg1_0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=3.5dB[amixin1]", graph);
+        Assert.Contains("[amixin0][amixin1]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[aout]", graph);
     }
 
     [Fact]

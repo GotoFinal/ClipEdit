@@ -2,6 +2,7 @@ using ClipEdit.Application.Media;
 using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Media.Export;
+using System.Collections.Immutable;
 
 namespace ClipEdit.Application.Export;
 
@@ -13,7 +14,8 @@ public sealed class SingleSourceExportPlanner
         CropRegion crop,
         ExportPreset preset,
         string destinationPath,
-        bool replaceExistingDestination = false)
+        bool replaceExistingDestination = false,
+        ImmutableArray<ExportAudioTrackPlan> audioTracks = default)
     {
         ArgumentNullException.ThrowIfNull(media);
         ArgumentNullException.ThrowIfNull(edit);
@@ -39,6 +41,7 @@ public sealed class SingleSourceExportPlanner
             crop,
             edit.KeptRanges,
             preset,
-            replaceExistingDestination);
+            replaceExistingDestination,
+            audioTracks);
     }
 }

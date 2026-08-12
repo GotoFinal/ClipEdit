@@ -109,6 +109,7 @@ public sealed class MainWindowViewModelTests
         media.PlayheadSeconds = 10;
         media.MarkSelectionEnd();
         media.RemoveSelection();
+        Assert.Single(viewModel.AudioTracks).GainDb = -3;
         viewModel.SelectedExportPreset = BuiltInExportPresets.WebM;
         var destination = Path.Combine(Path.GetTempPath(), "rendered clip.webm");
 
@@ -118,6 +119,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(BuiltInExportPresets.WebM, renderer.Plan!.Preset);
         Assert.Equal(media.KeptRanges, renderer.Plan.SourceRanges);
         Assert.Equal(media.Crop, renderer.Plan.Crop);
+        Assert.Equal(-3, Assert.Single(renderer.Plan.AudioTracks).GainDb);
         Assert.Equal(destination, renderer.Plan.DestinationPath);
         Assert.Equal("source-clip.webm", viewModel.GetSuggestedExportFileName());
     }
