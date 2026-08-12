@@ -5,5 +5,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ClipEdit.Domain\ClipEdit.Domain.csproj" />
+    <ProjectReference Include="..\ClipEdit.Media.Abstractions\ClipEdit.Media.Abstractions.csproj" />
   </ItemGroup>
 </Project>

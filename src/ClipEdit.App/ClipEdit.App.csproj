@@ -14,5 +14,6 @@
   <ItemGroup>
     <ProjectReference Include="..\ClipEdit.Application\ClipEdit.Application.csproj" />
     <ProjectReference Include="..\ClipEdit.Media.Abstractions\ClipEdit.Media.Abstractions.csproj" />
+    <ProjectReference Include="..\ClipEdit.Media.FFmpeg\ClipEdit.Media.FFmpeg.csproj" />
   </ItemGroup>
 </Project>
