@@ -165,7 +165,10 @@ internal sealed class MpvClient : IDisposable
                         : $"libmpv did not expose audio stream {track.StreamIndex} from the external source.");
             }
 
-            return new MpvAudioGraphTrack(availableTrack.MpvTrackId, track.GainDb);
+            return new MpvAudioGraphTrack(
+                availableTrack.MpvTrackId,
+                track.GainDb,
+                track.TimelineOffset);
         }).ToArray();
 
         SetProperty("lavfi-complex", MpvAudioGraphBuilder.Build(graphTracks));

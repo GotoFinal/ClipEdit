@@ -268,6 +268,8 @@ public sealed class JsonProjectStore : IProjectStore
                 audioTrack.GainDb is < -60 or > 12 ||
                 audioTrack.SourceDurationNumerator <= 0 ||
                 audioTrack.SourceDurationDenominator <= 0 ||
+                audioTrack.TimelineOffsetNumerator < 0 ||
+                audioTrack.TimelineOffsetDenominator <= 0 ||
                 audioTrack.KeptRanges is null ||
                 audioTrack.KeptRanges.Count > MaximumRangesPerMedia)
             {
@@ -279,6 +281,9 @@ public sealed class JsonProjectStore : IProjectStore
                 var duration = new MediaTime(
                     audioTrack.SourceDurationNumerator,
                     audioTrack.SourceDurationDenominator);
+                _ = new MediaTime(
+                    audioTrack.TimelineOffsetNumerator,
+                    audioTrack.TimelineOffsetDenominator);
                 var ranges = audioTrack.KeptRanges.Select(range => new MediaRange(
                     new MediaTime(range.StartNumerator, range.StartDenominator),
                     new MediaTime(range.EndNumerator, range.EndDenominator)));

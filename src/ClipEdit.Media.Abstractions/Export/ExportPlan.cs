@@ -161,14 +161,33 @@ public sealed record ExportAudioTrackPlan
     }
 
     public ExportAudioTrackPlan(string externalSourcePath, int streamIndex, double gainDb)
+        : this(externalSourcePath, streamIndex, gainDb, MediaTime.Zero)
+    {
+    }
+
+    public ExportAudioTrackPlan(
+        string externalSourcePath,
+        int streamIndex,
+        double gainDb,
+        MediaTime timelineOffset)
         : this(streamIndex, gainDb)
     {
+        if (timelineOffset < MediaTime.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timelineOffset),
+                "An external audio timeline offset cannot be negative.");
+        }
+
         ExternalSourcePath = ValidateExternalSourcePath(externalSourcePath);
+        TimelineOffset = timelineOffset;
     }
 
     public string? ExternalSourcePath { get; }
 
     public bool IsExternal => ExternalSourcePath is not null;
+
+    public MediaTime TimelineOffset { get; }
 
     public int StreamIndex { get; }
 

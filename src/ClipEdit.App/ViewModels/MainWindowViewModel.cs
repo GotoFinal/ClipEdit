@@ -358,7 +358,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                     track.SourcePath,
                     track.StreamIndex,
                     track.GainDb,
-                    track.IsMuted)
+                    track.IsMuted,
+                    track.TimelineOffset)
                 : new PreviewAudioTrack(track.StreamIndex, track.GainDb, track.IsMuted))
             .ToArray();
 
@@ -513,7 +514,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                         (track.IsExternal ||
                          PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath)))
                     .Select(track => track.IsExternal
-                        ? new ExportAudioTrackPlan(track.SourcePath, track.StreamIndex, track.GainDb)
+                        ? new ExportAudioTrackPlan(
+                            track.SourcePath,
+                            track.StreamIndex,
+                            track.GainDb,
+                            track.TimelineOffset)
                         : new ExportAudioTrackPlan(track.StreamIndex, track.GainDb))
                     .ToImmutableArray());
             IsExporting = true;
@@ -814,7 +819,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     {
         if (eventArgs.PropertyName is nameof(AudioTrackViewModel.Edit) or
             nameof(AudioTrackViewModel.GainDb) or
-            nameof(AudioTrackViewModel.IsMuted))
+            nameof(AudioTrackViewModel.IsMuted) or
+            nameof(AudioTrackViewModel.TimelineOffset))
         {
             MarkProjectDirty();
             RaiseExportStateChanged();
@@ -889,7 +895,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 track.IsMuted,
                 track.Edit.SourceDuration.Numerator,
                 track.Edit.SourceDuration.Denominator,
-                track.KeptRanges.Select(CreateRangeDocument).ToArray()))
+                track.KeptRanges.Select(CreateRangeDocument).ToArray(),
+                track.TimelineOffset.Numerator,
+                track.TimelineOffset.Denominator))
             .ToArray();
         document = new ProjectMediaDocument(
             item.SourcePath,
@@ -953,7 +961,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                         savedAudio.SourceDurationNumerator,
                         savedAudio.SourceDurationDenominator),
                     savedAudio.KeptRanges.Select(CreateMediaRange));
-                track.Restore(audioEdit, savedAudio.GainDb, savedAudio.IsMuted);
+                track.Restore(
+                    audioEdit,
+                    savedAudio.GainDb,
+                    savedAudio.IsMuted,
+                    new MediaTime(
+                        savedAudio.TimelineOffsetNumerator,
+                        savedAudio.TimelineOffsetDenominator));
             }
 
             return true;

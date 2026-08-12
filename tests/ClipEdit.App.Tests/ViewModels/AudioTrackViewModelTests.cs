@@ -37,6 +37,21 @@ public sealed class AudioTrackViewModelTests
         Assert.Equal(expected, track.GainDb);
     }
 
+    [Fact]
+    public void External_track_start_is_non_negative_and_sample_quantized()
+    {
+        var track = CreateTrack();
+
+        track.TimelineOffsetSeconds = 2.00001;
+
+        Assert.Equal(new MediaTime(2, 1), track.TimelineOffset);
+        Assert.True(track.IsEdited);
+
+        track.TimelineOffsetSeconds = -3;
+
+        Assert.Equal(MediaTime.Zero, track.TimelineOffset);
+    }
+
     private static AudioTrackViewModel CreateTrack()
     {
         var sourcePath = Path.GetFullPath("audio.mkv");

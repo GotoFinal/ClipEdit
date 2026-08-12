@@ -1,4 +1,5 @@
 using ClipEdit.Application.Projects;
+using System.Text.Json.Nodes;
 
 namespace ClipEdit.Persistence.Json.Tests;
 
@@ -78,6 +79,32 @@ public sealed class JsonProjectStoreTests
         }
     }
 
+    [Fact]
+    public async Task Schema_one_audio_without_placement_fields_defaults_to_timeline_zero()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
+        try
+        {
+            var store = new JsonProjectStore();
+            await store.SaveAsync(path, CreateDocument());
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            var audioTrack = root["media"]![0]!["audioTracks"]![0]!.AsObject();
+            audioTrack.Remove("timelineOffsetNumerator");
+            audioTrack.Remove("timelineOffsetDenominator");
+            await File.WriteAllTextAsync(path, root.ToJsonString());
+
+            var loaded = await store.LoadAsync(path);
+
+            var loadedTrack = Assert.Single(Assert.Single(loaded.Media).AudioTracks!);
+            Assert.Equal(0, loadedTrack.TimelineOffsetNumerator);
+            Assert.Equal(1, loadedTrack.TimelineOffsetDenominator);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static ProjectDocument CreateDocument()
     {
         var sourcePath = Path.Combine(Path.GetTempPath(), "source with spaces.mkv");
@@ -100,6 +127,17 @@ public sealed class JsonProjectStoreTests
                     [
                         new ProjectRangeDocument(0, 1, 10_001, 1_000),
                         new ProjectRangeDocument(20_001, 1_000, 60_001, 1_000),
+                    ],
+                    [
+                        new ProjectAudioTrackDocument(
+                            1,
+                            -4.5,
+                            false,
+                            60_001,
+                            1_000,
+                            [new ProjectRangeDocument(0, 1, 60_001, 1_000)],
+                            13,
+                            4),
                     ]),
             ]);
     }

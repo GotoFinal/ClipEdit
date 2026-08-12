@@ -26,7 +26,12 @@ public sealed class MpvPreviewAudioLocalTests
         await engine.SetAudioTracksAsync(
         [
             new PreviewAudioTrack(streamIndex: 1, gainDb: -3, isMuted: false),
-            new PreviewAudioTrack(externalAudioPath, streamIndex: 0, gainDb: -12, isMuted: false),
+            new PreviewAudioTrack(
+                externalAudioPath,
+                streamIndex: 0,
+                gainDb: -12,
+                isMuted: false,
+                timelineOffset: new MediaTime(1, 2)),
         ], CancellationToken.None);
         await engine.SetPausedAsync(false, CancellationToken.None);
         await Task.Delay(TimeSpan.FromMilliseconds(100));
@@ -34,7 +39,12 @@ public sealed class MpvPreviewAudioLocalTests
         await engine.SetAudioTracksAsync(
         [
             new PreviewAudioTrack(streamIndex: 1, gainDb: -6, isMuted: false),
-            new PreviewAudioTrack(externalAudioPath, streamIndex: 0, gainDb: -9, isMuted: false),
+            new PreviewAudioTrack(
+                externalAudioPath,
+                streamIndex: 0,
+                gainDb: -9,
+                isMuted: false,
+                timelineOffset: new MediaTime(1, 2)),
         ], CancellationToken.None);
 
         Assert.Equal(PreviewState.Playing, engine.State);

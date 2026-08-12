@@ -54,7 +54,11 @@ public sealed class FfmpegExportRendererLocalTests
             audioTracks:
             [
                 new ExportAudioTrackPlan(embeddedAudio.Index, -3),
-                new ExportAudioTrackPlan(externalAudioPath, externalAudio.Index, -12),
+                new ExportAudioTrackPlan(
+                    externalAudioPath,
+                    externalAudio.Index,
+                    -12,
+                    new MediaTime(1, 2)),
             ]);
 
         try

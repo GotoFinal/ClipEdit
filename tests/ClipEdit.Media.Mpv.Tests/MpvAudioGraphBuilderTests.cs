@@ -33,4 +33,17 @@ public sealed class MpvAudioGraphBuilderTests
     {
         Assert.Equal(string.Empty, MpvAudioGraphBuilder.Build([]));
     }
+
+    [Fact]
+    public void Timeline_offset_delays_all_channels_before_gain_and_mix()
+    {
+        var graph = MpvAudioGraphBuilder.Build(
+        [
+            new MpvAudioGraphTrack(3, -4.5, new ClipEdit.Domain.Timeline.MediaTime(3, 2)),
+        ]);
+
+        Assert.Equal(
+            "[aid3]adelay=delays=1.5s:all=1,volume=-4.5dB[ao]",
+            graph);
+    }
 }

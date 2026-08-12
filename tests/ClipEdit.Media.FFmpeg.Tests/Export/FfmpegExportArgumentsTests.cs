@@ -54,7 +54,7 @@ public sealed class FfmpegExportArgumentsTests
             audioTracks:
             [
                 new ExportAudioTrackPlan(1, -3),
-                new ExportAudioTrackPlan(music, 0, -9),
+                new ExportAudioTrackPlan(music, 0, -9, new MediaTime(3, 2)),
                 new ExportAudioTrackPlan(music, 1, -12),
             ]);
 
@@ -63,7 +63,7 @@ public sealed class FfmpegExportArgumentsTests
 
         Assert.Equal(1, arguments.Count(argument => argument == music));
         Assert.Contains("[0:1]apad,atrim=start=0:end=2", graph);
-        Assert.Contains("[1:0]apad,atrim=start=0:end=2", graph);
+        Assert.Contains("[1:0]adelay=delays=1.5s:all=1,apad,atrim=start=0:end=2", graph);
         Assert.Contains("[1:1]apad,atrim=start=0:end=2", graph);
         Assert.DoesNotContain(music, graph, StringComparison.Ordinal);
     }

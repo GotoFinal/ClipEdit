@@ -8,6 +8,7 @@ namespace ClipEdit.App.ViewModels;
 
 public sealed class AudioTrackViewModel : ViewModelBase
 {
+    private const double MaximumTimelineOffsetSeconds = 7 * 24 * 60 * 60;
     private readonly MediaTime _timelineQuantum;
     private SourceEdit _edit;
     private MediaTime _playhead;
@@ -15,6 +16,7 @@ public sealed class AudioTrackViewModel : ViewModelBase
     private MediaTime _selectionEnd;
     private double _gainDb;
     private bool _isMuted;
+    private MediaTime _timelineOffset;
 
     public AudioTrackViewModel(ImportedMedia media, AudioStreamInfo stream)
     {
@@ -65,7 +67,8 @@ public sealed class AudioTrackViewModel : ViewModelBase
 
     public ImmutableArray<MediaRange> KeptRanges => Edit.KeptRanges;
 
-    public bool IsEdited => !Edit.IsUnedited || IsMuted || GainDb != 0;
+    public bool IsEdited =>
+        !Edit.IsUnedited || IsMuted || GainDb != 0 || TimelineOffset != MediaTime.Zero;
 
     public bool HasRangeEdits => !Edit.IsUnedited;
 
@@ -136,6 +139,34 @@ public sealed class AudioTrackViewModel : ViewModelBase
         }
     }
 
+    public MediaTime TimelineOffset
+    {
+        get => _timelineOffset;
+        private set
+        {
+            if (SetProperty(ref _timelineOffset, value))
+            {
+                OnPropertyChanged(nameof(TimelineOffsetSeconds));
+                OnPropertyChanged(nameof(TimelineOffsetText));
+                OnPropertyChanged(nameof(IsEdited));
+            }
+        }
+    }
+
+    public double TimelineOffsetSeconds
+    {
+        get => TimelineOffset.TotalSeconds;
+        set
+        {
+            if (IsExternal)
+            {
+                TimelineOffset = QuantizeOffset(value);
+            }
+        }
+    }
+
+    public string TimelineOffsetText => $"Starts {FormatTimestamp(TimelineOffset)}";
+
     public bool CanRemoveSelection =>
         _selectionStart < _selectionEnd &&
         Edit.KeptRanges.Any(range => _selectionStart < range.End && _selectionEnd > range.Start);
@@ -160,10 +191,20 @@ public sealed class AudioTrackViewModel : ViewModelBase
         _selectionEnd = Edit.SourceDuration;
         GainDb = 0;
         IsMuted = false;
+        TimelineOffset = MediaTime.Zero;
         RaiseSelectionChanged();
     }
 
     public void Restore(SourceEdit edit, double gainDb, bool isMuted)
+    {
+        Restore(edit, gainDb, isMuted, MediaTime.Zero);
+    }
+
+    public void Restore(
+        SourceEdit edit,
+        double gainDb,
+        bool isMuted,
+        MediaTime timelineOffset)
     {
         ArgumentNullException.ThrowIfNull(edit);
         if (edit.SourceDuration != Edit.SourceDuration)
@@ -171,11 +212,17 @@ public sealed class AudioTrackViewModel : ViewModelBase
             throw new ArgumentException("The saved audio duration no longer matches the source.", nameof(edit));
         }
 
+        if (timelineOffset < MediaTime.Zero || (!IsExternal && timelineOffset != MediaTime.Zero))
+        {
+            throw new ArgumentException("The saved audio timeline offset is invalid.", nameof(timelineOffset));
+        }
+
         Edit = edit;
         _selectionStart = edit.KeptRanges.IsEmpty ? MediaTime.Zero : edit.KeptRanges[0].Start;
         _selectionEnd = edit.KeptRanges.IsEmpty ? MediaTime.Zero : edit.KeptRanges[0].End;
         GainDb = gainDb;
         IsMuted = isMuted;
+        TimelineOffset = timelineOffset;
         RaiseSelectionChanged();
     }
 
@@ -192,6 +239,20 @@ public sealed class AudioTrackViewModel : ViewModelBase
             MidpointRounding.AwayFromZero));
         var value = _timelineQuantum * ticks;
         return value > Edit.SourceDuration ? Edit.SourceDuration : value;
+    }
+
+    private MediaTime QuantizeOffset(double seconds)
+    {
+        if (!double.IsFinite(seconds))
+        {
+            return MediaTime.Zero;
+        }
+
+        var bounded = Math.Clamp(seconds, 0, MaximumTimelineOffsetSeconds);
+        var ticks = checked((long)Math.Round(
+            bounded / _timelineQuantum.TotalSeconds,
+            MidpointRounding.AwayFromZero));
+        return _timelineQuantum * ticks;
     }
 
     private void RaiseSelectionChanged()

@@ -475,7 +475,7 @@
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
-                      <TextBlock Classes="muted" FontSize="10" Text="External tracks start at 00:00" />
+                      <TextBlock Classes="muted" FontSize="10" Text="External placement uses timeline time" />
                     </StackPanel>
                     <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding AudioTrackCountText}" />
                   </Grid>
@@ -485,11 +485,13 @@
                         <DataTemplate x:DataType="vm:AudioTrackViewModel">
                           <Border Margin="0,0,0,7" Padding="9" Background="#20242D" CornerRadius="6">
                             <Grid RowDefinitions="Auto,34,Auto" RowSpacing="7">
-                              <Grid ColumnDefinitions="*,Auto,150,58" ColumnSpacing="8">
+                              <Grid ColumnDefinitions="*,Auto,72,Auto,150,58" ColumnSpacing="8">
                                 <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                                <CheckBox Grid.Column="1" VerticalAlignment="Center" Content="Mute" IsChecked="{Binding IsMuted, Mode=TwoWay}" />
-                                <Slider Grid.Column="2" Minimum="-60" Maximum="12" Value="{Binding GainDb, Mode=TwoWay}" />
-                                <TextBlock Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Text="{Binding GainText}" />
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" IsVisible="{Binding IsExternal}" Text="Start (s)" />
+                                <TextBox Grid.Column="2" IsVisible="{Binding IsExternal}" Text="{Binding TimelineOffsetSeconds, Mode=TwoWay}" />
+                                <CheckBox Grid.Column="3" VerticalAlignment="Center" Content="Mute" IsChecked="{Binding IsMuted, Mode=TwoWay}" />
+                                <Slider Grid.Column="4" Minimum="-60" Maximum="12" Value="{Binding GainDb, Mode=TwoWay}" />
+                                <TextBlock Grid.Column="5" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Text="{Binding GainText}" />
                               </Grid>
                               <controls:SourceRangeCanvas
                                   Grid.Row="1"

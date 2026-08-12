@@ -73,7 +73,9 @@ internal static class FfmpegExportArguments
                 var track = plan.AudioTracks[trackIndex];
                 var inputIndex = GetAudioInputIndex(track, externalAudioSources);
                 filters.Add(
-                    $"[{inputIndex}:{track.StreamIndex}]apad,asplit={rangeCount}" +
+                    $"[{inputIndex}:{track.StreamIndex}]" +
+                    CreateDelay(track.TimelineOffset) +
+                    $"apad,asplit={rangeCount}" +
                     string.Concat(Enumerable.Range(0, rangeCount).Select(index => $"[asrc{trackIndex}_{index}]")));
             }
         }
@@ -95,9 +97,11 @@ internal static class FfmpegExportArguments
                 var audioInput = rangeCount == 1
                     ? $"{inputIndex}:{track.StreamIndex}"
                     : $"asrc{trackIndex}_{index}";
-                var pad = rangeCount == 1 ? "apad," : string.Empty;
+                var inputPreparation = rangeCount == 1
+                    ? CreateDelay(track.TimelineOffset) + "apad,"
+                    : string.Empty;
                 filters.Add(
-                    $"[{audioInput}]{pad}atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                    $"[{audioInput}]{inputPreparation}atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
                     $"asetpts=PTS-STARTPTS[aseg{trackIndex}_{index}]");
             }
         }
@@ -232,5 +236,17 @@ internal static class FfmpegExportArguments
     private static string FormatGain(double gainDb)
     {
         return gainDb.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    private static string CreateDelay(MediaTime timelineOffset)
+    {
+        if (timelineOffset < MediaTime.Zero)
+        {
+            throw new ExportPlanException("An audio timeline offset cannot be negative.");
+        }
+
+        return timelineOffset == MediaTime.Zero
+            ? string.Empty
+            : $"adelay=delays={FormatTime(timelineOffset)}s:all=1,";
     }
 }

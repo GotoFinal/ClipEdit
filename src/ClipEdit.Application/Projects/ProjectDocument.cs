@@ -35,4 +35,6 @@ public sealed record ProjectAudioTrackDocument(
     bool IsMuted,
     long SourceDurationNumerator,
     int SourceDurationDenominator,
-    IReadOnlyList<ProjectRangeDocument> KeptRanges);
+    IReadOnlyList<ProjectRangeDocument> KeptRanges,
+    long TimelineOffsetNumerator = 0,
+    int TimelineOffsetDenominator = 1);
