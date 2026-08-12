@@ -254,6 +254,13 @@ public sealed partial class MainWindow : Window
         ViewModel?.SelectedMedia?.RemoveSelection();
     }
 
+    private void KeepSelectionOnly_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.KeepSelectionOnly();
+    }
+
     private void ResetCuts_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

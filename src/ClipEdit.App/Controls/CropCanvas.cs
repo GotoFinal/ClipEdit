@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Media.Imaging;
 using ClipEdit.Domain.Geometry;
 using DomainPixelSize = ClipEdit.Domain.Geometry.PixelSize;
@@ -26,10 +27,10 @@ public sealed class CropCanvas : Control
 
     private const double HandleRadius = 6;
     private const double HitRadius = 12;
-    private static readonly IBrush OutsideBrush = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
-    private static readonly IPen CropPen = new Pen(new SolidColorBrush(Color.Parse("#F4F5FA")), 1.5);
-    private static readonly IBrush HandleBrush = new SolidColorBrush(Color.Parse("#F4F5FA"));
-    private static readonly IPen GridPen = new Pen(new SolidColorBrush(Color.FromArgb(130, 255, 255, 255)), 1);
+    private static readonly IBrush OutsideBrush = new ImmutableSolidColorBrush(0xAA000000);
+    private static readonly IPen CropPen = new Pen(0xFFF4F5FA, 1.5).ToImmutable();
+    private static readonly IBrush HandleBrush = new ImmutableSolidColorBrush(0xFFF4F5FA);
+    private static readonly IPen GridPen = new Pen(0x82FFFFFF, 1).ToImmutable();
 
     private CropDragMode _dragMode;
     private Point _dragStartSource;
@@ -73,6 +74,9 @@ public sealed class CropCanvas : Control
     public override void Render(DrawingContext context)
     {
         base.Render(context);
+        // A transparent draw operation makes the entire custom-rendered overlay
+        // participate in Avalonia hit testing, including the crop interior.
+        context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         if (!IsOverlayOnly)
         {
             context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));

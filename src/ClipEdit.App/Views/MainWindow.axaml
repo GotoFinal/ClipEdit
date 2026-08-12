@@ -416,15 +416,18 @@
                       Grid.Column="1"
                       Margin="8,4"
                       AutomationProperties.Name="Kept source ranges and cut selection"
+                      AutomationProperties.HelpText="Drag either white selection edge for live trim preview. After selecting an edge, use Left or Right for one-frame adjustment and Shift for ten frames."
                       Duration="{Binding SelectedMedia.SourceDurationSeconds}"
                       KeptRanges="{Binding SelectedMedia.KeptRanges}"
                       Playhead="{Binding SelectedMedia.PlayheadSeconds, Mode=TwoWay}"
                       SelectionEnd="{Binding SelectedMedia.SelectionEndSeconds, Mode=TwoWay}"
-                      SelectionStart="{Binding SelectedMedia.SelectionStartSeconds, Mode=TwoWay}" />
+                      SelectionStart="{Binding SelectedMedia.SelectionStartSeconds, Mode=TwoWay}"
+                      Step="{Binding SelectedMedia.FrameStepSeconds}"
+                      ToolTip.Tip="Drag a white edge to adjust it with live preview; arrow keys nudge the active edge by one frame" />
                 </Grid>
               </Border>
 
-              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="8" IsVisible="{Binding ShowRangeStrip}">
+              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="8" IsVisible="{Binding ShowRangeStrip}">
                 <Button Classes="secondary" Click="MarkIn_Click" Content="Mark in" />
                 <Button Grid.Column="1" Classes="secondary" Click="MarkOut_Click" Content="Mark out" />
                 <Button
@@ -435,13 +438,19 @@
                     IsEnabled="{Binding SelectedMedia.CanRemoveSelection}" />
                 <Button
                     Grid.Column="3"
+                    Classes="primary"
+                    Click="KeepSelectionOnly_Click"
+                    Content="Keep selected only"
+                    IsEnabled="{Binding SelectedMedia.CanKeepSelectionOnly}" />
+                <Button
+                    Grid.Column="4"
                     Classes="secondary"
                     Click="ResetCuts_Click"
                     Content="Reset cuts"
                     IsEnabled="{Binding SelectedMedia.IsEdited}" />
-                <StackPanel Grid.Column="5" HorizontalAlignment="Right" Spacing="1">
+                <StackPanel Grid.Column="6" HorizontalAlignment="Right" Spacing="1">
                   <TextBlock HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="{Binding SelectedMedia.SelectionRangeText}" />
-                  <TextBlock HorizontalAlignment="Right" FontSize="11" FontWeight="SemiBold" Text="{Binding SelectedMedia.OutputDurationText}" />
+                  <TextBlock HorizontalAlignment="Right" FontSize="11" FontWeight="SemiBold" Text="{Binding SelectedMedia.SelectedExportDurationText}" />
                 </StackPanel>
               </Grid>
 

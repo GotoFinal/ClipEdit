@@ -2,13 +2,14 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.App.Controls;
 
 /// <summary>
-/// A lightweight source-time editor. Drag to choose a removal range; click or use
-/// the arrow keys to move the source playhead.
+/// A lightweight source-time editor. Drag an empty area to make a selection, drag
+/// either visible edge to trim it, or focus an edge and use arrows for fine adjustment.
 /// </summary>
 public sealed class SourceRangeCanvas : Control
 {
@@ -27,13 +28,23 @@ public sealed class SourceRangeCanvas : Control
     public static readonly StyledProperty<double> SelectionEndProperty =
         AvaloniaProperty.Register<SourceRangeCanvas, double>(nameof(SelectionEnd));
 
-    private static readonly IBrush TrackBrush = new SolidColorBrush(Color.Parse("#252936"));
-    private static readonly IBrush KeptBrush = new SolidColorBrush(Color.Parse("#5B45BE"));
-    private static readonly IBrush SelectionBrush = new SolidColorBrush(Color.FromArgb(65, 255, 255, 255));
-    private static readonly IPen SelectionPen = new Pen(new SolidColorBrush(Color.Parse("#D8CCFF")), 1);
-    private static readonly IPen PlayheadPen = new Pen(new SolidColorBrush(Color.Parse("#F4F5FA")), 2);
+    public static readonly StyledProperty<double> StepProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, double>(nameof(Step), 1d / 30);
+
+    private static readonly IBrush TrackBrush = new ImmutableSolidColorBrush(0xFF252936);
+    private static readonly IBrush KeptBrush = new ImmutableSolidColorBrush(0xFF5B45BE);
+    private static readonly IBrush SelectionBrush = new ImmutableSolidColorBrush(0x41FFFFFF);
+    private static readonly IPen SelectionPen = new Pen(0xFFD8CCFF, 1).ToImmutable();
+    private static readonly IPen PlayheadPen = new Pen(0xFFF4F5FA, 2).ToImmutable();
+    private static readonly IBrush EdgeHandleBrush = new ImmutableSolidColorBrush(0xFFF4F5FA);
+    private const double EdgeHitWidth = 12;
+    private const double EdgeHandleWidth = 4;
 
     private double? _dragAnchor;
+    private double _dragStart;
+    private double _dragEnd;
+    private SourceRangeDragMode _dragMode;
+    private SourceRangeDragMode _activeEdge;
 
     static SourceRangeCanvas()
     {
@@ -81,6 +92,12 @@ public sealed class SourceRangeCanvas : Control
         set => SetValue(SelectionEndProperty, value);
     }
 
+    public double Step
+    {
+        get => GetValue(StepProperty);
+        set => SetValue(StepProperty, value);
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -105,6 +122,14 @@ public sealed class SourceRangeCanvas : Control
             var selection = new Rect(selectionLeft, 1, selectionRight - selectionLeft, Math.Max(0, Bounds.Height - 2));
             context.FillRectangle(SelectionBrush, selection, 4);
             context.DrawRectangle(null, SelectionPen, selection, 4);
+            context.FillRectangle(
+                EdgeHandleBrush,
+                new Rect(selectionLeft - (EdgeHandleWidth / 2), 0, EdgeHandleWidth, Bounds.Height),
+                2);
+            context.FillRectangle(
+                EdgeHandleBrush,
+                new Rect(selectionRight - (EdgeHandleWidth / 2), 0, EdgeHandleWidth, Bounds.Height),
+                2);
         }
 
         var playheadX = TimeToX(Playhead);
@@ -120,10 +145,20 @@ public sealed class SourceRangeCanvas : Control
         }
 
         Focus();
-        _dragAnchor = XToTime(eventArgs.GetPosition(this).X);
-        SetCurrentValue(SelectionStartProperty, _dragAnchor.Value);
-        SetCurrentValue(SelectionEndProperty, _dragAnchor.Value);
-        SetCurrentValue(PlayheadProperty, _dragAnchor.Value);
+        var pointerX = eventArgs.GetPosition(this).X;
+        var normalizedStart = Math.Min(SelectionStart, SelectionEnd);
+        var normalizedEnd = Math.Max(SelectionStart, SelectionEnd);
+        _dragMode = GetDragMode(
+            pointerX,
+            TimeToX(normalizedStart),
+            TimeToX(normalizedEnd));
+        _activeEdge = _dragMode is SourceRangeDragMode.StartEdge or SourceRangeDragMode.EndEdge
+            ? _dragMode
+            : SourceRangeDragMode.None;
+        _dragAnchor = XToTime(pointerX);
+        _dragStart = normalizedStart;
+        _dragEnd = normalizedEnd;
+        ApplySelection(ApplyDrag(_dragMode, _dragAnchor.Value, _dragStart, _dragEnd, _dragAnchor.Value));
         eventArgs.Pointer.Capture(this);
         eventArgs.Handled = true;
     }
@@ -131,15 +166,15 @@ public sealed class SourceRangeCanvas : Control
     protected override void OnPointerMoved(PointerEventArgs eventArgs)
     {
         base.OnPointerMoved(eventArgs);
-        if (_dragAnchor is null || eventArgs.Pointer.Captured != this)
+        if (_dragAnchor is null ||
+            _dragMode == SourceRangeDragMode.None ||
+            eventArgs.Pointer.Captured != this)
         {
             return;
         }
 
         var current = XToTime(eventArgs.GetPosition(this).X);
-        SetCurrentValue(SelectionStartProperty, Math.Min(_dragAnchor.Value, current));
-        SetCurrentValue(SelectionEndProperty, Math.Max(_dragAnchor.Value, current));
-        SetCurrentValue(PlayheadProperty, current);
+        ApplySelection(ApplyDrag(_dragMode, _dragAnchor.Value, _dragStart, _dragEnd, current));
         eventArgs.Handled = true;
     }
 
@@ -152,13 +187,39 @@ public sealed class SourceRangeCanvas : Control
         }
 
         _dragAnchor = null;
+        _dragMode = SourceRangeDragMode.None;
         eventArgs.Handled = true;
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs eventArgs)
+    {
+        base.OnPointerCaptureLost(eventArgs);
+        _dragAnchor = null;
+        _dragMode = SourceRangeDragMode.None;
     }
 
     protected override void OnKeyDown(KeyEventArgs eventArgs)
     {
         base.OnKeyDown(eventArgs);
-        var step = eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 1d : 1d / 30;
+        var step = Math.Max(0.000001, Step) *
+                   (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 10 : 1);
+        if (_activeEdge is SourceRangeDragMode.StartEdge or SourceRangeDragMode.EndEdge &&
+            eventArgs.Key is Key.Left or Key.Right)
+        {
+            var direction = eventArgs.Key == Key.Left ? -1 : 1;
+            var current = _activeEdge == SourceRangeDragMode.StartEdge
+                ? SelectionStart
+                : SelectionEnd;
+            ApplySelection(ApplyDrag(
+                _activeEdge,
+                current,
+                Math.Min(SelectionStart, SelectionEnd),
+                Math.Max(SelectionStart, SelectionEnd),
+                current + (direction * step)));
+            eventArgs.Handled = true;
+            return;
+        }
+
         var next = eventArgs.Key switch
         {
             Key.Left => Math.Max(0, Playhead - step),
@@ -180,6 +241,51 @@ public sealed class SourceRangeCanvas : Control
         return (Math.Min(anchor, current), Math.Max(anchor, current));
     }
 
+    internal static SourceRangeDragMode GetDragMode(
+        double pointerX,
+        double selectionStartX,
+        double selectionEndX)
+    {
+        var startDistance = Math.Abs(pointerX - selectionStartX);
+        var endDistance = Math.Abs(pointerX - selectionEndX);
+        if (Math.Min(startDistance, endDistance) <= EdgeHitWidth)
+        {
+            return startDistance <= endDistance
+                ? SourceRangeDragMode.StartEdge
+                : SourceRangeDragMode.EndEdge;
+        }
+
+        return SourceRangeDragMode.NewSelection;
+    }
+
+    internal static (double Start, double End, double Playhead) ApplyDrag(
+        SourceRangeDragMode mode,
+        double anchor,
+        double selectionStart,
+        double selectionEnd,
+        double current)
+    {
+        return mode switch
+        {
+            SourceRangeDragMode.StartEdge =>
+                (Math.Min(current, selectionEnd), selectionEnd, Math.Min(current, selectionEnd)),
+            SourceRangeDragMode.EndEdge =>
+                (selectionStart, Math.Max(current, selectionStart), Math.Max(current, selectionStart)),
+            SourceRangeDragMode.NewSelection =>
+                (Math.Min(anchor, current), Math.Max(anchor, current), current),
+            _ => (selectionStart, selectionEnd, current),
+        };
+    }
+
+    private void ApplySelection((double Start, double End, double Playhead) selection)
+    {
+        var start = Math.Clamp(selection.Start, 0, Duration);
+        var end = Math.Clamp(selection.End, start, Duration);
+        SetCurrentValue(SelectionStartProperty, start);
+        SetCurrentValue(SelectionEndProperty, end);
+        SetCurrentValue(PlayheadProperty, Math.Clamp(selection.Playhead, start, end));
+    }
+
     private double TimeToX(double seconds)
     {
         return Math.Clamp(seconds / Duration, 0, 1) * Bounds.Width;
@@ -189,4 +295,12 @@ public sealed class SourceRangeCanvas : Control
     {
         return Math.Clamp(x / Math.Max(1, Bounds.Width), 0, 1) * Duration;
     }
+}
+
+internal enum SourceRangeDragMode
+{
+    None,
+    NewSelection,
+    StartEdge,
+    EndEdge,
 }

@@ -91,6 +91,34 @@ public sealed class SourceEditTests
     }
 
     [Fact]
+    public void Keep_only_intersects_the_selection_with_existing_kept_ranges()
+    {
+        var edit = new SourceEdit(new MediaTime(10, 1))
+            .Remove(new MediaRange(new MediaTime(4, 1), new MediaTime(6, 1)));
+
+        var result = edit.KeepOnly(
+            new MediaRange(new MediaTime(2, 1), new MediaTime(8, 1)));
+
+        Assert.Equal<MediaRange>(
+        [
+            new MediaRange(new MediaTime(2, 1), new MediaTime(4, 1)),
+            new MediaRange(new MediaTime(6, 1), new MediaTime(8, 1)),
+        ], result.KeptRanges);
+    }
+
+    [Fact]
+    public void Keep_only_outside_existing_content_produces_an_empty_edit()
+    {
+        var edit = new SourceEdit(new MediaTime(10, 1))
+            .Remove(new MediaRange(new MediaTime(2, 1), new MediaTime(8, 1)));
+
+        var result = edit.KeepOnly(
+            new MediaRange(new MediaTime(3, 1), new MediaTime(7, 1)));
+
+        Assert.True(result.IsEmpty);
+    }
+
+    [Fact]
     public void Negative_source_duration_is_rejected()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new SourceEdit(new MediaTime(-1, 1)));

@@ -94,6 +94,37 @@ public sealed record SourceEdit
             : new SourceEdit(SourceDuration, result);
     }
 
+    public SourceEdit KeepOnly(MediaRange selection)
+    {
+        if (selection.IsEmpty || KeptRanges.IsEmpty)
+        {
+            return new SourceEdit(SourceDuration, []);
+        }
+
+        var boundedStart = Max(MediaTime.Zero, selection.Start);
+        var boundedEnd = Min(SourceDuration, selection.End);
+        if (boundedEnd <= boundedStart)
+        {
+            return new SourceEdit(SourceDuration, []);
+        }
+
+        var kept = ImmutableArray.CreateBuilder<MediaRange>(KeptRanges.Length);
+        foreach (var range in KeptRanges)
+        {
+            var start = Max(range.Start, boundedStart);
+            var end = Min(range.End, boundedEnd);
+            if (end > start)
+            {
+                kept.Add(new MediaRange(start, end));
+            }
+        }
+
+        var result = kept.ToImmutable();
+        return result.SequenceEqual(KeptRanges)
+            ? this
+            : new SourceEdit(SourceDuration, result);
+    }
+
     public SourceEdit Reset() => new(SourceDuration);
 
     public bool Contains(MediaTime sourceTime)

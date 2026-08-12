@@ -139,6 +139,8 @@ public sealed class MainWindowViewModelTests
                 new MediaRange(new MediaTime(20_568, 1_000), new MediaTime(60, 1)),
             ],
             media.KeptRanges);
+        Assert.Equal(media.SelectionStart, media.SelectionEnd);
+        Assert.Equal(new MediaTime(20_568, 1_000), media.SelectionStart);
 
         media.ResetCuts();
 
@@ -157,6 +159,23 @@ public sealed class MainWindowViewModelTests
         media.ResetCrop();
 
         Assert.Equal(CropRegion.FullFrame(media.VideoSize), media.Crop);
+    }
+
+    [Fact]
+    public async Task Selected_source_can_keep_only_the_active_range()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "keep-only.mkv")]);
+        var media = viewModel.SelectedMedia!;
+        media.SelectionStartSeconds = 5;
+        media.SelectionEndSeconds = 12;
+
+        Assert.True(media.KeepSelectionOnly());
+
+        Assert.Equal(
+            new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
+            Assert.Single(media.KeptRanges));
+        Assert.Equal(new MediaTime(7, 1), media.Edit!.OutputDuration);
     }
 
     [Fact]
@@ -184,6 +203,27 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(-3, Assert.Single(renderer.Plan.AudioTracks).GainDb);
         Assert.Equal(destination, renderer.Plan.DestinationPath);
         Assert.Equal("source-clip.webm", viewModel.GetSuggestedExportFileName());
+    }
+
+    [Fact]
+    public async Task Export_automatically_uses_the_active_timeline_selection()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "selected-export.mkv")]);
+        var media = viewModel.SelectedMedia!;
+        media.SelectionStartSeconds = 5;
+        media.SelectionEndSeconds = 12;
+
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "selected-export.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
+            Assert.Single(renderer.Plan!.SourceRanges));
+        Assert.Equal(new MediaTime(7, 1), renderer.Plan.ExpectedDuration);
     }
 
     [Fact]

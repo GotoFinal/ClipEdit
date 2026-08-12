@@ -47,6 +47,7 @@ public sealed class MediaItemViewModel : ViewModelBase
                 OnPropertyChanged(nameof(HasAudio));
                 OnPropertyChanged(nameof(IsExternalAudio));
                 OnPropertyChanged(nameof(VideoSize));
+                OnPropertyChanged(nameof(FrameStepSeconds));
                 OnPropertyChanged(nameof(Summary));
                 OnPropertyChanged(nameof(Detail));
             }
@@ -127,7 +128,9 @@ public sealed class MediaItemViewModel : ViewModelBase
                 OnPropertyChanged(nameof(KeptRanges));
                 OnPropertyChanged(nameof(IsEdited));
                 OnPropertyChanged(nameof(CanRemoveSelection));
+                OnPropertyChanged(nameof(CanKeepSelectionOnly));
                 OnPropertyChanged(nameof(OutputDurationText));
+                OnPropertyChanged(nameof(SelectedExportDurationText));
             }
         }
     }
@@ -205,12 +208,32 @@ public sealed class MediaItemViewModel : ViewModelBase
         Edit.KeptRanges.Any(range =>
             SelectionStart < range.End && SelectionEnd > range.Start);
 
+    public bool CanKeepSelectionOnly =>
+        GetExportEdit() is { IsEmpty: false } selectedEdit &&
+        Edit is not null &&
+        !selectedEdit.KeptRanges.SequenceEqual(Edit.KeptRanges);
+
     public string SelectionRangeText =>
         $"{FormatTimestamp(SelectionStart)} – {FormatTimestamp(SelectionEnd)}";
 
     public string OutputDurationText => Edit is null
         ? "Unknown duration"
         : $"Output {FormatTimestamp(Edit.OutputDuration)}";
+
+    public string SelectedExportDurationText => GetExportEdit() is not { } selectedEdit
+        ? "Unknown duration"
+        : $"Export {FormatTimestamp(selectedEdit.OutputDuration)}";
+
+    public double FrameStepSeconds
+    {
+        get
+        {
+            var frameRate = Media?.Probe.VideoStreams.FirstOrDefault()?.AverageFrameRate;
+            return frameRate is { IsZero: false }
+                ? frameRate.Value.Denominator / (double)frameRate.Value.Numerator
+                : _timelineQuantum.TotalSeconds;
+        }
+    }
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorText);
 
@@ -335,8 +358,34 @@ public sealed class MediaItemViewModel : ViewModelBase
             return false;
         }
 
-        Edit = Edit.Remove(new MediaRange(SelectionStart, SelectionEnd));
+        var removal = new MediaRange(SelectionStart, SelectionEnd);
+        Edit = Edit.Remove(removal);
+        Playhead = removal.End;
+        SelectionStart = Playhead;
+        SelectionEnd = Playhead;
         return true;
+    }
+
+    public bool KeepSelectionOnly()
+    {
+        if (!CanKeepSelectionOnly || Edit is null)
+        {
+            return false;
+        }
+
+        Edit = Edit.KeepOnly(new MediaRange(SelectionStart, SelectionEnd));
+        Playhead = Edit.KeptRanges.IsEmpty ? SelectionStart : Edit.KeptRanges[0].Start;
+        return true;
+    }
+
+    public SourceEdit? GetExportEdit()
+    {
+        if (Edit is null || SelectionStart >= SelectionEnd)
+        {
+            return Edit;
+        }
+
+        return Edit.KeepOnly(new MediaRange(SelectionStart, SelectionEnd));
     }
 
     public void ResetCuts()
@@ -477,6 +526,8 @@ public sealed class MediaItemViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectionEndSeconds));
         OnPropertyChanged(nameof(SelectionRangeText));
         OnPropertyChanged(nameof(CanRemoveSelection));
+        OnPropertyChanged(nameof(CanKeepSelectionOnly));
+        OnPropertyChanged(nameof(SelectedExportDurationText));
     }
 
     private static string FormatTimestamp(MediaTime value)

@@ -289,9 +289,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 return "Multi-video export will be enabled with the sequence timeline";
             }
 
-            if (SelectedMedia.Edit is null || SelectedMedia.Edit.IsEmpty)
+            if (SelectedMedia.GetExportEdit() is not { } exportEdit || exportEdit.IsEmpty)
             {
-                return "Keep at least one source range before exporting";
+                return "The selected range contains no kept video";
             }
 
             if (SelectedExportPreset.RequiresEvenDimensions &&
@@ -304,10 +304,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string ExportPlanSummary => SelectedMedia?.Edit is null
+    public string ExportPlanSummary => SelectedMedia?.GetExportEdit() is null
         ? SelectedExportPreset.DisplayName
         : $"{SelectedExportPreset.DisplayName} · exact re-encode · " +
-          $"{SelectedMedia.CropSizeText} · {SelectedMedia.OutputDurationText}";
+          $"{SelectedMedia.CropSizeText} · {SelectedMedia.SelectedExportDurationText}";
 
     public bool IsBusy
     {
@@ -498,7 +498,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
-        if (!CanExport || _exportRenderer is null || SelectedMedia?.Media is null || SelectedMedia.Edit is null)
+        if (!CanExport ||
+            _exportRenderer is null ||
+            SelectedMedia?.Media is null ||
+            SelectedMedia.GetExportEdit() is not { } exportEdit)
         {
             StatusText = ExportAvailabilityText;
             return null;
@@ -513,7 +516,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             var plan = _exportPlanner.Create(
                 SelectedMedia.Media,
-                SelectedMedia.Edit,
+                exportEdit,
                 SelectedMedia.Crop,
                 SelectedExportPreset,
                 destinationPath,
@@ -911,6 +914,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             RaiseExportStateChanged();
             MarkProjectDirty();
+        }
+
+        if (eventArgs.PropertyName is nameof(MediaItemViewModel.SelectionStart) or
+            nameof(MediaItemViewModel.SelectionEnd))
+        {
+            RaiseExportStateChanged();
         }
     }
 
