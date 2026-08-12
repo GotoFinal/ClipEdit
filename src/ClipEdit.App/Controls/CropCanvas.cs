@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
-using Avalonia.Media.Imaging;
 using ClipEdit.Domain.Geometry;
 using DomainPixelSize = ClipEdit.Domain.Geometry.PixelSize;
 
@@ -11,9 +10,6 @@ namespace ClipEdit.App.Controls;
 
 public sealed class CropCanvas : Control
 {
-    public static readonly StyledProperty<Bitmap?> SourceProperty =
-        AvaloniaProperty.Register<CropCanvas, Bitmap?>(nameof(Source));
-
     public static readonly StyledProperty<DomainPixelSize> SourceSizeProperty =
         AvaloniaProperty.Register<CropCanvas, DomainPixelSize>(
             nameof(SourceSize),
@@ -27,12 +23,6 @@ public sealed class CropCanvas : Control
 
     public static readonly StyledProperty<bool> IsAspectRatioLockedProperty =
         AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsAspectRatioLocked));
-
-    public static readonly StyledProperty<bool> IsSharedFrameProperty =
-        AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsSharedFrame), true);
-
-    public static readonly StyledProperty<bool> ShowPositionedSourceProperty =
-        AvaloniaProperty.Register<CropCanvas, bool>(nameof(ShowPositionedSource), true);
 
     private const double HandleRadius = 6;
     private const double HitRadius = 16;
@@ -48,13 +38,10 @@ public sealed class CropCanvas : Control
     static CropCanvas()
     {
         AffectsRender<CropCanvas>(
-            SourceProperty,
             SourceSizeProperty,
             CropProperty,
             IsOverlayOnlyProperty,
-            IsAspectRatioLockedProperty,
-            IsSharedFrameProperty,
-            ShowPositionedSourceProperty);
+            IsAspectRatioLockedProperty);
     }
 
     public CropCanvas()
@@ -63,11 +50,6 @@ public sealed class CropCanvas : Control
         ClipToBounds = true;
     }
 
-    public Bitmap? Source
-    {
-        get => GetValue(SourceProperty);
-        set => SetValue(SourceProperty, value);
-    }
 
     public DomainPixelSize SourceSize
     {
@@ -93,17 +75,6 @@ public sealed class CropCanvas : Control
         set => SetValue(IsAspectRatioLockedProperty, value);
     }
 
-    public bool IsSharedFrame
-    {
-        get => GetValue(IsSharedFrameProperty);
-        set => SetValue(IsSharedFrameProperty, value);
-    }
-
-    public bool ShowPositionedSource
-    {
-        get => GetValue(ShowPositionedSourceProperty);
-        set => SetValue(ShowPositionedSourceProperty, value);
-    }
 
     public override void Render(DrawingContext context)
     {
@@ -117,10 +88,6 @@ public sealed class CropCanvas : Control
         }
 
         var viewport = GetImageViewport();
-        if (!IsOverlayOnly && Source is not null)
-        {
-            context.DrawImage(Source, viewport);
-        }
 
         if (Crop.SourceSize != SourceSize)
         {
@@ -128,10 +95,6 @@ public sealed class CropCanvas : Control
         }
 
         var cropRect = GetCropViewport(Crop, viewport);
-        if (IsSharedFrame && ShowPositionedSource && Source is not null)
-        {
-            DrawPositionedSource(context, viewport, cropRect);
-        }
         DrawOutsideMask(context, viewport, cropRect);
         DrawRuleOfThirds(context, cropRect);
         context.DrawRectangle(null, CropPen, cropRect);
@@ -303,16 +266,6 @@ public sealed class CropCanvas : Control
     {
         var scaleX = viewport.Width / SourceSize.Width;
         var scaleY = viewport.Height / SourceSize.Height;
-        if (IsSharedFrame)
-        {
-            var width = crop.Width * scaleX;
-            var height = crop.Height * scaleY;
-            return new Rect(
-                viewport.Center.X - (width / 2),
-                viewport.Center.Y - (height / 2),
-                width,
-                height);
-        }
 
         return new Rect(
             viewport.X + (crop.X * scaleX),
@@ -323,54 +276,12 @@ public sealed class CropCanvas : Control
 
     private Point ViewToSource(Point point, Rect viewport)
     {
-        if (IsSharedFrame)
-        {
-            var cropViewport = GetCropViewport(_dragStartCrop, viewport);
-            return new Point(
-                _dragStartCrop.X + ((point.X - cropViewport.X) * _dragStartCrop.Width / cropViewport.Width),
-                _dragStartCrop.Y + ((point.Y - cropViewport.Y) * _dragStartCrop.Height / cropViewport.Height));
-        }
 
         return new Point(
             (point.X - viewport.X) * SourceSize.Width / viewport.Width,
             (point.Y - viewport.Y) * SourceSize.Height / viewport.Height);
     }
 
-    internal static Rect GetPositionedSourceViewport(
-        CropRegion crop,
-        Rect sourceViewport,
-        Rect cropViewport)
-    {
-        if (sourceViewport.Width <= 0 || sourceViewport.Height <= 0)
-        {
-            return default;
-        }
-
-        var scaleX = sourceViewport.Width / crop.SourceSize.Width;
-        var scaleY = sourceViewport.Height / crop.SourceSize.Height;
-        return new Rect(
-            cropViewport.X - (crop.X * scaleX),
-            cropViewport.Y - (crop.Y * scaleY),
-            sourceViewport.Width,
-            sourceViewport.Height);
-    }
-
-    private void DrawPositionedSource(DrawingContext context, Rect sourceViewport, Rect cropViewport)
-    {
-        if (Source is null || cropViewport.Width <= 0 || cropViewport.Height <= 0)
-        {
-            return;
-        }
-
-        // The shared crop is a fixed frame. Move the complete source beneath it at
-        // the same scale as the uncropped preview; sampling only Crop and drawing it
-        // into cropViewport would enlarge it and make positioning look like zooming.
-        using var clip = context.PushClip(sourceViewport);
-        context.DrawImage(
-            Source,
-            new Rect(Source.Size),
-            GetPositionedSourceViewport(Crop, sourceViewport, cropViewport));
-    }
 
     private static CropRegion ApplyAspectLockedResize(
         CropRegion start,

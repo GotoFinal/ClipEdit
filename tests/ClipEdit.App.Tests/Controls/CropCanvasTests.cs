@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Media.Imaging;
 using AvaloniaPoint = Avalonia.Point;
 using AvaloniaRect = Avalonia.Rect;
 
@@ -125,36 +126,10 @@ public sealed class CropCanvasTests
     }
 
     [Fact]
-    public void Shared_crop_moves_the_full_source_without_scaling_it()
+    public void Crop_canvas_exposes_no_bitmap_source_that_could_duplicate_the_preview()
     {
-        var crop = new CropRegion(new PixelSize(1_920, 1_080), 320, 180, 960, 540);
-        var sourceViewport = new AvaloniaRect(0, 0, 960, 540);
-        var cropViewport = new AvaloniaRect(240, 135, 480, 270);
-
-        var positioned = CropCanvas.GetPositionedSourceViewport(crop, sourceViewport, cropViewport);
-
-        Assert.Equal(sourceViewport.Size, positioned.Size);
-        Assert.Equal(80, positioned.X);
-        Assert.Equal(45, positioned.Y);
-    }
-
-    [Fact]
-    public void Moving_shared_crop_translates_source_beneath_the_fixed_frame()
-    {
-        var sourceSize = new PixelSize(1_920, 1_080);
-        var sourceViewport = new AvaloniaRect(0, 0, 960, 540);
-        var cropViewport = new AvaloniaRect(240, 135, 480, 270);
-        var first = CropCanvas.GetPositionedSourceViewport(
-            new CropRegion(sourceSize, 320, 180, 960, 540),
-            sourceViewport,
-            cropViewport);
-        var moved = CropCanvas.GetPositionedSourceViewport(
-            new CropRegion(sourceSize, 420, 230, 960, 540),
-            sourceViewport,
-            cropViewport);
-
-        Assert.Equal(first.X - 50, moved.X);
-        Assert.Equal(first.Y - 25, moved.Y);
-        Assert.Equal(first.Size, moved.Size);
+        Assert.DoesNotContain(
+            typeof(CropCanvas).GetProperties(),
+            property => property.PropertyType == typeof(Bitmap));
     }
 }
