@@ -53,6 +53,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private bool _isProjectDirty;
     private bool _isLoadingProject;
     private bool _isAudioMixerExpanded;
+    private CropAspectPreset _selectedCropAspectPreset = BuiltInCropAspectPresets.Landscape169;
 
     public MainWindowViewModel(
         IMediaProbe? mediaProbe,
@@ -144,6 +145,29 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool CanRemoveSelectedMedia => SelectedMedia is not null && !IsBusy && !IsExporting;
 
+    public IReadOnlyList<CropAspectPreset> CropAspectPresets => BuiltInCropAspectPresets.All;
+
+    public CropAspectPreset SelectedCropAspectPreset
+    {
+        get => _selectedCropAspectPreset;
+        set => SetProperty(ref _selectedCropAspectPreset, value ?? BuiltInCropAspectPresets.Landscape169);
+    }
+
+    public bool CanApplyCropPreset => SelectedMedia?.HasVideo == true;
+
+    public bool CanApplyCropPresetToAll => VideoItems.Skip(1).Any();
+
+    public bool CanMoveSelectedVideoLeft => GetSelectedVideoIndex() > 0;
+
+    public bool CanMoveSelectedVideoRight
+    {
+        get
+        {
+            var index = GetSelectedVideoIndex();
+            return index >= 0 && index < VideoItems.Count() - 1;
+        }
+    }
+
     public IReadOnlyList<ExportPreset> ExportPresets => BuiltInExportPresets.All;
 
     public ExportPreset SelectedExportPreset
@@ -187,6 +211,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 StartPreviewRefresh(value, debounce: false, clearExisting: true);
                 StartTimelineAnalysis(value, debounce: false);
                 OnPropertyChanged(nameof(CanRemoveSelectedMedia));
+                OnPropertyChanged(nameof(CanApplyCropPreset));
+                OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
+                OnPropertyChanged(nameof(CanMoveSelectedVideoRight));
             }
         }
     }
@@ -608,6 +635,91 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public bool ApplyCropPresetToSelected()
+    {
+        if (SelectedMedia is not { HasVideo: true } mediaItem)
+        {
+            return false;
+        }
+
+        mediaItem.ApplyCropPreset(SelectedCropAspectPreset);
+        StatusText = $"Applied {SelectedCropAspectPreset.DisplayName} to {mediaItem.DisplayName}; the crop remains freely movable and resizable";
+        return true;
+    }
+
+    public bool ApplyCropPresetToAllVideos()
+    {
+        var videos = VideoItems.ToArray();
+        if (videos.Length < 2)
+        {
+            return false;
+        }
+
+        foreach (var video in videos)
+        {
+            video.ApplyCropPreset(SelectedCropAspectPreset);
+        }
+
+        StatusText = $"Applied {SelectedCropAspectPreset.DisplayName} to {videos.Length} clips; position each crop independently";
+        MarkProjectDirty();
+        RaiseExportStateChanged();
+        return true;
+    }
+
+    public bool MoveSelectedVideoLeft()
+    {
+        var videos = VideoItems.ToArray();
+        var index = GetSelectedVideoIndex(videos);
+        return index > 0 && ReorderVideoClip(videos[index], videos[index - 1], insertAfterTarget: false);
+    }
+
+    public bool MoveSelectedVideoRight()
+    {
+        var videos = VideoItems.ToArray();
+        var index = GetSelectedVideoIndex(videos);
+        return index >= 0 && index < videos.Length - 1 &&
+               ReorderVideoClip(videos[index], videos[index + 1], insertAfterTarget: true);
+    }
+
+    public bool ReorderVideoClip(
+        MediaItemViewModel source,
+        MediaItemViewModel target,
+        bool insertAfterTarget)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(target);
+        if (ReferenceEquals(source, target) || !source.HasVideo || !target.HasVideo)
+        {
+            return false;
+        }
+
+        var sourceIndex = MediaItems.IndexOf(source);
+        var targetIndex = MediaItems.IndexOf(target);
+        if (sourceIndex < 0 || targetIndex < 0)
+        {
+            return false;
+        }
+
+        var insertionIndex = targetIndex + (insertAfterTarget ? 1 : 0);
+        if (sourceIndex < insertionIndex)
+        {
+            insertionIndex--;
+        }
+
+        var destinationIndex = Math.Clamp(insertionIndex, 0, MediaItems.Count - 1);
+        if (destinationIndex == sourceIndex)
+        {
+            return false;
+        }
+
+        MediaItems.Move(sourceIndex, destinationIndex);
+        SelectedMedia = source;
+        StatusText = $"Moved {source.DisplayName} in the video sequence";
+        MarkProjectDirty();
+        RaiseWorkspaceStateChanged();
+        return true;
+    }
+
     public async Task<bool> NewProjectAsync(
         bool discardUnsavedChanges = false,
         CancellationToken cancellationToken = default)
@@ -912,6 +1024,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanOpenProject));
         OnPropertyChanged(nameof(CanNewProject));
         OnPropertyChanged(nameof(CanRemoveSelectedMedia));
+        OnPropertyChanged(nameof(CanApplyCropPreset));
+        OnPropertyChanged(nameof(CanApplyCropPresetToAll));
+        OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
+        OnPropertyChanged(nameof(CanMoveSelectedVideoRight));
         RaiseExportStateChanged();
     }
 
@@ -1539,5 +1655,31 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     {
         var microseconds = checked((long)Math.Round(Math.Max(0, seconds) * 1_000_000));
         return new MediaTime(microseconds, 1_000_000);
+    }
+
+    private int GetSelectedVideoIndex()
+    {
+        return GetSelectedVideoIndex(VideoItems.ToArray());
+    }
+
+    private int GetSelectedVideoIndex(IReadOnlyList<MediaItemViewModel> videos)
+    {
+        return SelectedMedia is null ? -1 : videos.IndexOf(SelectedMedia);
+    }
+}
+
+file static class ReadOnlyListExtensions
+{
+    public static int IndexOf<T>(this IReadOnlyList<T> items, T value)
+    {
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (EqualityComparer<T>.Default.Equals(items[index], value))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 }

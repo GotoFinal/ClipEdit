@@ -489,34 +489,83 @@
 
               <Grid ColumnDefinitions="80,*" IsVisible="{Binding ShowTimeline}">
                 <Border Padding="8" Background="#20242D" CornerRadius="6,0,0,6">
-                  <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Text="V1" />
+                  <StackPanel VerticalAlignment="Center" Spacing="5">
+                    <TextBlock FontSize="11" FontWeight="Bold" Text="V1" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <Button Padding="7,2" Classes="secondary" Click="MoveVideoLeft_Click" Content="←" IsEnabled="{Binding CanMoveSelectedVideoLeft}" ToolTip.Tip="Move selected clip left" />
+                      <Button Padding="7,2" Classes="secondary" Click="MoveVideoRight_Click" Content="→" IsEnabled="{Binding CanMoveSelectedVideoRight}" ToolTip.Tip="Move selected clip right" />
+                    </StackPanel>
+                  </StackPanel>
                 </Border>
-                <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                  <ItemsControl ItemsSource="{Binding VideoItems}">
-                    <ItemsControl.ItemsPanel>
+                <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="3">
+                  <TextBlock Classes="muted" FontSize="9" Text="Select a clip to position its crop · drag ⠿ or use arrows to reorder" />
+                  <ListBox
+                      Grid.Row="1"
+                      Padding="0"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      ItemsSource="{Binding VideoItems}"
+                      SelectedItem="{Binding SelectedMedia, Mode=TwoWay}"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                      ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="2" />
+                        <Setter Property="Background" Value="Transparent" />
+                      </Style>
+                      <Style Selector="ListBoxItem:selected">
+                        <Setter Property="Background" Value="#D8CCFF" />
+                      </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemsPanel>
                       <ItemsPanelTemplate>
                         <StackPanel Orientation="Horizontal" />
                       </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
                       <DataTemplate x:DataType="vm:MediaItemViewModel">
                         <Border
                             MinWidth="180"
                             Height="48"
                             Margin="2,0"
-                            Padding="10"
                             Background="#5B45BE"
-                            CornerRadius="5">
-                          <TextBlock
-                              VerticalAlignment="Center"
-                              FontSize="11"
-                              Text="{Binding DisplayName}"
-                              TextTrimming="CharacterEllipsis" />
+                            CornerRadius="5"
+                            DragDrop.AllowDrop="True"
+                            DragDrop.DragOver="VideoClip_DragOver"
+                            DragDrop.Drop="VideoClip_Drop">
+                          <Grid ColumnDefinitions="30,*">
+                            <Border
+                                Background="#30236F"
+                                CornerRadius="5,0,0,5"
+                                Cursor="SizeAll"
+                                PointerPressed="VideoClipDragHandle_PointerPressed"
+                                ToolTip.Tip="Drag to reorder this clip">
+                              <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="15" Text="⠿" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="9,5" VerticalAlignment="Center" Spacing="1">
+                              <TextBlock FontSize="11" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Classes="muted" FontSize="9" Text="{Binding CropSizeText, StringFormat='Crop {0}'}" />
+                            </StackPanel>
+                          </Grid>
                         </Border>
                       </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </ScrollViewer>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                </Grid>
+              </Grid>
+
+              <Grid ColumnDefinitions="Auto,240,Auto,Auto,*" ColumnSpacing="8">
+                <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CROP PRESET" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CropAspectPreset">
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Grid.Column="2" Classes="secondary" Click="ApplyCropPreset_Click" Content="Apply to selected" IsEnabled="{Binding CanApplyCropPreset}" />
+                <Button Grid.Column="3" Classes="secondary" Click="ApplyCropPresetToAll_Click" Content="Apply ratio to all clips" IsEnabled="{Binding CanApplyCropPresetToAll}" IsVisible="{Binding ShowTimeline}" />
+                <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="One-shot resize: moving and free handle resizing stay enabled" />
               </Grid>
 
               <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="8">

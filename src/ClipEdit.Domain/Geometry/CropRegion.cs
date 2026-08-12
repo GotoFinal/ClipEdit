@@ -72,6 +72,58 @@ public readonly record struct CropRegion
         return new CropRegion(SourceSize, clampedX, clampedY, Width, Height);
     }
 
+    public CropRegion ResizeToAspectRatio(int widthUnits, int heightUnits)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(widthUnits);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(heightUnits);
+
+        var divisor = GreatestCommonDivisor(widthUnits, heightUnits);
+        var normalizedWidth = widthUnits / divisor;
+        var normalizedHeight = heightUnits / divisor;
+        var scale = Math.Min(
+            SourceSize.Width / normalizedWidth,
+            SourceSize.Height / normalizedHeight);
+        int width;
+        int height;
+        if (scale > 0)
+        {
+            width = checked(normalizedWidth * scale);
+            height = checked(normalizedHeight * scale);
+        }
+        else if ((long)SourceSize.Width * normalizedHeight >=
+                 (long)SourceSize.Height * normalizedWidth)
+        {
+            height = SourceSize.Height;
+            width = Math.Clamp(
+                (int)Math.Round(
+                    height * (normalizedWidth / (double)normalizedHeight),
+                    MidpointRounding.AwayFromZero),
+                1,
+                SourceSize.Width);
+        }
+        else
+        {
+            width = SourceSize.Width;
+            height = Math.Clamp(
+                (int)Math.Round(
+                    width * (normalizedHeight / (double)normalizedWidth),
+                    MidpointRounding.AwayFromZero),
+                1,
+                SourceSize.Height);
+        }
+        var centerX = X + (Width / 2d);
+        var centerY = Y + (Height / 2d);
+        var x = Math.Clamp(
+            (int)Math.Round(centerX - (width / 2d), MidpointRounding.AwayFromZero),
+            0,
+            SourceSize.Width - width);
+        var y = Math.Clamp(
+            (int)Math.Round(centerY - (height / 2d), MidpointRounding.AwayFromZero),
+            0,
+            SourceSize.Height - height);
+        return new CropRegion(SourceSize, x, y, width, height);
+    }
+
     public static CropRegion FromEdges(
         PixelSize sourceSize,
         int left,
@@ -90,5 +142,15 @@ public readonly record struct CropRegion
         }
 
         return new CropRegion(sourceSize, left, top, right - left, bottom - top);
+    }
+
+    private static int GreatestCommonDivisor(int left, int right)
+    {
+        while (right != 0)
+        {
+            (left, right) = (right, left % right);
+        }
+
+        return left;
     }
 }

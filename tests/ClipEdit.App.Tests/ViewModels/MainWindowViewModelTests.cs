@@ -168,6 +168,122 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Crop_preset_is_a_one_shot_resize_and_does_not_lock_free_handles()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "crop-preset.mkv")]);
+        var media = viewModel.SelectedMedia!;
+        viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Square;
+
+        Assert.True(viewModel.ApplyCropPresetToSelected());
+        Assert.Equal(new CropRegion(media.VideoSize, 420, 0, 1_080, 1_080), media.Crop);
+
+        media.Crop = CropRegion.FromEdges(
+            media.VideoSize,
+            media.Crop.X,
+            media.Crop.Y,
+            media.Crop.Right + 120,
+            media.Crop.Bottom);
+
+        Assert.Equal(1_200, media.Crop.Width);
+        Assert.Equal(1_080, media.Crop.Height);
+        Assert.True(viewModel.IsProjectDirty);
+    }
+
+    [Fact]
+    public async Task Same_crop_preset_applies_to_every_video_but_positions_remain_independent()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync(
+        [
+            Path.Combine(Path.GetTempPath(), "crop-first.mkv"),
+            Path.Combine(Path.GetTempPath(), "crop-second.mkv"),
+        ]);
+        var videos = viewModel.VideoItems.ToArray();
+        viewModel.SelectedCropAspectPreset = BuiltInCropAspectPresets.Portrait916;
+
+        Assert.True(viewModel.ApplyCropPresetToAllVideos());
+        Assert.All(videos, video => Assert.Equal(new PixelSize(603, 1_072), video.Crop.ExportSize));
+
+        videos[0].Crop = videos[0].Crop.MoveClamped(0, 0);
+
+        Assert.Equal(0, videos[0].Crop.X);
+        Assert.Equal(659, videos[1].Crop.X);
+        Assert.Equal(new PixelSize(603, 1_072), videos[1].Crop.ExportSize);
+    }
+
+    [Fact]
+    public async Task Video_clips_can_be_selected_and_reordered_without_losing_their_own_crop()
+    {
+        var firstPath = Path.Combine(Path.GetTempPath(), "sequence-first.mkv");
+        var musicPath = Path.Combine(Path.GetTempPath(), "sequence-music.flac");
+        var secondPath = Path.Combine(Path.GetTempPath(), "sequence-second.mkv");
+        var thirdPath = Path.Combine(Path.GetTempPath(), "sequence-third.mkv");
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([firstPath, musicPath, secondPath, thirdPath]);
+        var videos = viewModel.VideoItems.ToArray();
+        videos[1].ApplyCropPreset(BuiltInCropAspectPresets.Square);
+        videos[1].Crop = videos[1].Crop.MoveClamped(100, 0);
+        viewModel.SelectedMedia = videos[1];
+
+        Assert.True(viewModel.CanMoveSelectedVideoLeft);
+        Assert.True(viewModel.CanMoveSelectedVideoRight);
+        Assert.True(viewModel.MoveSelectedVideoLeft());
+
+        Assert.Equal(
+            [secondPath, firstPath, thirdPath],
+            viewModel.VideoItems.Select(video => video.SourcePath));
+        Assert.Same(videos[1], viewModel.SelectedMedia);
+        Assert.Equal(new CropRegion(videos[1].VideoSize, 100, 0, 1_080, 1_080), videos[1].Crop);
+        Assert.Equal(
+            [secondPath, firstPath, thirdPath],
+            viewModel.CreateProjectDocument().Media
+                .Where(media => Path.GetExtension(media.SourcePath) != ".flac")
+                .Select(media => media.SourcePath));
+
+        Assert.True(viewModel.ReorderVideoClip(videos[1], videos[2], insertAfterTarget: true));
+        Assert.Equal(
+            [firstPath, thirdPath, secondPath],
+            viewModel.VideoItems.Select(video => video.SourcePath));
+    }
+
+    [Fact]
+    public async Task Reordered_clips_and_independent_crop_positions_survive_project_round_trip()
+    {
+        var projectPath = Path.Combine(Path.GetTempPath(), $"crop-sequence-{Guid.NewGuid():N}.clipedit");
+        var firstPath = Path.Combine(Path.GetTempPath(), "roundtrip-first.mkv");
+        var secondPath = Path.Combine(Path.GetTempPath(), "roundtrip-second.mkv");
+        var store = new JsonProjectStore();
+        try
+        {
+            using (var original = new MainWindowViewModel(new StubProbe(), projectStore: store))
+            {
+                await original.ImportFilesAsync([firstPath, secondPath]);
+                original.SelectedCropAspectPreset = BuiltInCropAspectPresets.Square;
+                Assert.True(original.ApplyCropPresetToAllVideos());
+                var videos = original.VideoItems.ToArray();
+                videos[0].Crop = videos[0].Crop.MoveClamped(0, 0);
+                videos[1].Crop = videos[1].Crop.MoveClamped(800, 0);
+                original.SelectedMedia = videos[1];
+                Assert.True(original.MoveSelectedVideoLeft());
+                Assert.True(await original.SaveProjectAsync(projectPath));
+            }
+
+            using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.True(await restored.OpenProjectAsync(projectPath));
+            var restoredVideos = restored.VideoItems.ToArray();
+            Assert.Equal([secondPath, firstPath], restoredVideos.Select(video => video.SourcePath));
+            Assert.Equal(800, restoredVideos[0].Crop.X);
+            Assert.Equal(0, restoredVideos[1].Crop.X);
+            Assert.All(restoredVideos, video => Assert.Equal(new PixelSize(1_080, 1_080), video.Crop.ExportSize));
+        }
+        finally
+        {
+            File.Delete(projectPath);
+        }
+    }
+
+    [Fact]
     public async Task Selected_source_can_keep_only_the_active_range()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());

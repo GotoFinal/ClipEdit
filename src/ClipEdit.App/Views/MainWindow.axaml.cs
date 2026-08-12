@@ -9,6 +9,9 @@ namespace ClipEdit.App.Views;
 
 public sealed partial class MainWindow : Window
 {
+    private static readonly DataFormat<MediaItemViewModel> VideoClipDataFormat =
+        DataFormat.CreateInProcessFormat<MediaItemViewModel>("clipedit-video-clip");
+
     private static readonly FilePickerFileType MediaFileType = new("Media files")
     {
         Patterns =
@@ -273,6 +276,79 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         ViewModel?.SelectedMedia?.ResetCrop();
+    }
+
+    private void ApplyCropPreset_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.ApplyCropPresetToSelected();
+    }
+
+    private void ApplyCropPresetToAll_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.ApplyCropPresetToAllVideos();
+    }
+
+    private void MoveVideoLeft_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.MoveSelectedVideoLeft();
+    }
+
+    private void MoveVideoRight_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.MoveSelectedVideoRight();
+    }
+
+    private async void VideoClipDragHandle_PointerPressed(
+        object? sender,
+        PointerPressedEventArgs eventArgs)
+    {
+        if (sender is not Control { DataContext: MediaItemViewModel source } ||
+            ViewModel is not { } viewModel ||
+            !eventArgs.GetCurrentPoint((Control)sender).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        viewModel.SelectedMedia = source;
+        var transfer = new DataTransfer();
+        transfer.Add(DataTransferItem.Create(VideoClipDataFormat, source));
+        eventArgs.Handled = true;
+        await DragDrop.DoDragDropAsync(eventArgs, transfer, DragDropEffects.Move);
+    }
+
+    private static void VideoClip_DragOver(object? sender, DragEventArgs eventArgs)
+    {
+        eventArgs.DragEffects = sender is Control { DataContext: MediaItemViewModel } &&
+                                eventArgs.DataTransfer.Contains(VideoClipDataFormat)
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
+        eventArgs.Handled = true;
+    }
+
+    private void VideoClip_Drop(object? sender, DragEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: MediaItemViewModel target } control &&
+            ViewModel is { } viewModel &&
+            eventArgs.DataTransfer.TryGetValue(VideoClipDataFormat) is { } source)
+        {
+            var insertAfter = eventArgs.GetPosition(control).X >= control.Bounds.Width / 2;
+            viewModel.ReorderVideoClip(source, target, insertAfter);
+            eventArgs.DragEffects = DragDropEffects.Move;
+        }
+        else
+        {
+            eventArgs.DragEffects = DragDropEffects.None;
+        }
+
+        eventArgs.Handled = true;
     }
 
     private void TimelineZoomOut_Click(object? sender, RoutedEventArgs eventArgs)

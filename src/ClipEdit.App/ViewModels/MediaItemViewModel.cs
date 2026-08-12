@@ -506,6 +506,19 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public void ApplyCropPreset(CropAspectPreset preset)
+    {
+        ArgumentNullException.ThrowIfNull(preset);
+        if (!HasVideo)
+        {
+            return;
+        }
+
+        Crop = preset.IsFullFrame
+            ? CropRegion.FullFrame(VideoSize)
+            : Crop.ResizeToAspectRatio(preset.WidthUnits, preset.HeightUnits);
+    }
+
     public void ZoomTimeline(double factor, double? anchorSeconds = null)
     {
         if (!double.IsFinite(factor) || factor <= 0)
