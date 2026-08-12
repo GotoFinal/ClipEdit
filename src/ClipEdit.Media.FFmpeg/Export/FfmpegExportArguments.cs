@@ -93,9 +93,11 @@ internal static class FfmpegExportArguments
             if (segment.UsesCanvasTransform)
             {
                 var transform = segment.CanvasTransform;
+                var rotationRadians = $"{transform.RotationDegrees}*PI/180";
                 var rotation = transform.RotationDegrees == 0
                     ? string.Empty
-                    : $",format=rgba,rotate={transform.RotationDegrees}*PI/180:ow=rotw(iw):oh=roth(ih):c=black@0";
+                    : $",format=rgba,rotate={rotationRadians}:" +
+                      $"ow=rotw({rotationRadians}):oh=roth({rotationRadians}):c=black@0";
                 filters.Add(
                     $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
                     $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +

@@ -189,8 +189,11 @@ public sealed class FfmpegExportArgumentsTests
             graph);
         Assert.Contains(
             "scale=round(iw*1.25):round(ih*0.75):flags=lanczos," +
-            "format=rgba,rotate=15*PI/180:ow=rotw(iw):oh=roth(ih):c=black@0",
+            "format=rgba,rotate=15*PI/180:" +
+            "ow=rotw(15*PI/180):oh=roth(15*PI/180):c=black@0",
             graph);
+        Assert.DoesNotContain("rotw(iw)", graph);
+        Assert.DoesNotContain("roth(ih)", graph);
         Assert.Contains(
             "overlay=x=(W-w)/2+120.5:y=(H-h)/2-40:shortest=1," +
             "crop=1080:1080:420:0",
