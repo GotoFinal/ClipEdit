@@ -31,6 +31,9 @@ public sealed class CropCanvas : Control
     public static readonly StyledProperty<bool> IsSharedFrameProperty =
         AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsSharedFrame), true);
 
+    public static readonly StyledProperty<bool> ShowPositionedSourceProperty =
+        AvaloniaProperty.Register<CropCanvas, bool>(nameof(ShowPositionedSource), true);
+
     private const double HandleRadius = 6;
     private const double HitRadius = 12;
     private static readonly IBrush OutsideBrush = new ImmutableSolidColorBrush(0xAA000000);
@@ -50,7 +53,8 @@ public sealed class CropCanvas : Control
             CropProperty,
             IsOverlayOnlyProperty,
             IsAspectRatioLockedProperty,
-            IsSharedFrameProperty);
+            IsSharedFrameProperty,
+            ShowPositionedSourceProperty);
     }
 
     public CropCanvas()
@@ -95,6 +99,12 @@ public sealed class CropCanvas : Control
         set => SetValue(IsSharedFrameProperty, value);
     }
 
+    public bool ShowPositionedSource
+    {
+        get => GetValue(ShowPositionedSourceProperty);
+        set => SetValue(ShowPositionedSourceProperty, value);
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -118,7 +128,7 @@ public sealed class CropCanvas : Control
         }
 
         var cropRect = GetCropViewport(Crop, viewport);
-        if (IsSharedFrame && Source is not null)
+        if (IsSharedFrame && ShowPositionedSource && Source is not null)
         {
             DrawPositionedSource(context, cropRect);
         }

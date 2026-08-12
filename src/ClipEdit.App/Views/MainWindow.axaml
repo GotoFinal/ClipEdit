@@ -278,6 +278,7 @@
                       IsOverlayOnly="True"
                       IsAspectRatioLocked="{Binding IsCropAspectLocked}"
                       IsSharedFrame="True"
+                      ShowPositionedSource="{Binding IsPaused, ElementName=LivePreview}"
                       Source="{Binding PreviewImage}"
                       ZIndex="10"
                       SourceSize="{Binding SelectedMedia.VideoSize}"
