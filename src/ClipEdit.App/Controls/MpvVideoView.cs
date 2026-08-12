@@ -44,6 +44,11 @@ public sealed class MpvVideoView : OpenGlControlBase
             nameof(PlayButtonText),
             view => view.PlayButtonText);
 
+    public static readonly DirectProperty<MpvVideoView, string> DecoderStatusProperty =
+        AvaloniaProperty.RegisterDirect<MpvVideoView, string>(
+            nameof(DecoderStatus),
+            view => view.DecoderStatus);
+
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly DispatcherTimer _positionTimer;
     private CancellationTokenSource? _loadCancellation;
@@ -55,6 +60,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private bool _isPlaybackAvailable;
     private string _playbackStatus = "Initializing the local preview engine…";
     private string _playButtonText = "▶";
+    private string _decoderStatus = "Decoder pending";
     private bool _mediaLoaded;
     private bool _shutdownStarted;
     private bool _positionPollInProgress;
@@ -130,6 +136,12 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => _playButtonText;
         private set => SetAndRaise(PlayButtonTextProperty, ref _playButtonText, value);
+    }
+
+    public string DecoderStatus
+    {
+        get => _decoderStatus;
+        private set => SetAndRaise(DecoderStatusProperty, ref _decoderStatus, value);
     }
 
     public async Task TogglePlaybackAsync(CancellationToken cancellationToken = default)
@@ -279,6 +291,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         var sourcePath = SourcePath;
         _mediaLoaded = false;
         _isEndOfFile = false;
+        DecoderStatus = "Decoder pending";
         IsPlaybackAvailable = false;
         if (string.IsNullOrWhiteSpace(sourcePath))
         {
@@ -308,6 +321,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             }
 
             await engine.SetPausedAsync(IsPaused, cancellationToken);
+            var initialSnapshot = await engine.GetPlaybackSnapshotAsync(cancellationToken);
+            UpdateDecoderStatus(initialSnapshot.HardwareDecoder);
             cancellationToken.ThrowIfCancellationRequested();
             _mediaLoaded = true;
             IsPlaybackAvailable = true;
@@ -464,6 +479,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         try
         {
             var snapshot = await _engine.GetPlaybackSnapshotAsync(_lifetimeCancellation.Token);
+            UpdateDecoderStatus(snapshot.HardwareDecoder);
             if (snapshot.Position is not null)
             {
                 _updatingPositionFromPlayback = true;
@@ -514,5 +530,21 @@ public sealed class MpvVideoView : OpenGlControlBase
     private void SetPlaybackWarning(string message)
     {
         Dispatcher.UIThread.Post(() => PlaybackStatus = message);
+    }
+
+    private void UpdateDecoderStatus(string? hardwareDecoder)
+    {
+        if (string.IsNullOrWhiteSpace(hardwareDecoder))
+        {
+            DecoderStatus = "Decoder unavailable";
+        }
+        else if (string.Equals(hardwareDecoder, "no", StringComparison.OrdinalIgnoreCase))
+        {
+            DecoderStatus = "Software decode";
+        }
+        else
+        {
+            DecoderStatus = $"Hardware decode · {hardwareDecoder}";
+        }
     }
 }

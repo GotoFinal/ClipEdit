@@ -317,6 +317,10 @@
                           Foreground="#8D93A5"
                           Text="{Binding PlaybackStatus, ElementName=LivePreview}"
                           TextTrimming="CharacterEllipsis" />
+                      <TextBlock
+                          FontSize="10"
+                          Foreground="#7C5CFC"
+                          Text="{Binding DecoderStatus, ElementName=LivePreview}" />
                     </StackPanel>
                   </Border>
                 </Grid>

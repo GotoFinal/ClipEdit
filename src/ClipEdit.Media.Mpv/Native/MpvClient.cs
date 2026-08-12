@@ -35,6 +35,7 @@ internal sealed class MpvClient : IDisposable
             SetOption("keep-open", "yes");
             SetOption("pause", "yes");
             SetOption("vo", "libmpv");
+            SetOption("hwdec", "auto");
             Check(_native.Initialize(_handle), "initialize libmpv");
         }
         catch
@@ -107,7 +108,10 @@ internal sealed class MpvClient : IDisposable
 
     public PreviewPlaybackSnapshot GetPlaybackSnapshot()
     {
-        return new PreviewPlaybackSnapshot(GetPosition(), GetFlagProperty("eof-reached"));
+        return new PreviewPlaybackSnapshot(
+            GetPosition(),
+            GetFlagProperty("eof-reached"),
+            GetStringProperty("hwdec-current"));
     }
 
     public void SetPaused(bool isPaused) => SetProperty("pause", isPaused ? "yes" : "no");
