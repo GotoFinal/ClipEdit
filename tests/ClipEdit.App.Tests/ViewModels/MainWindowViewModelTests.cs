@@ -1,7 +1,9 @@
 using System.Collections.Immutable;
 using ClipEdit.App.ViewModels;
+using ClipEdit.Application.Export;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
+using ClipEdit.Media.Export;
 using ClipEdit.Media.Probe;
 
 namespace ClipEdit.App.Tests.ViewModels;
@@ -93,6 +95,46 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(new MediaTime(60, 1), media.SelectionEnd);
     }
 
+    [Fact]
+    public async Task Export_uses_the_selected_preset_and_current_exact_edits()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
+        var media = viewModel.SelectedMedia!;
+        media.PlayheadSeconds = 5;
+        media.MarkSelectionStart();
+        media.PlayheadSeconds = 10;
+        media.MarkSelectionEnd();
+        media.RemoveSelection();
+        viewModel.SelectedExportPreset = BuiltInExportPresets.WebM;
+        var destination = Path.Combine(Path.GetTempPath(), "rendered clip.webm");
+
+        var result = await viewModel.ExportAsync(destination, replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(BuiltInExportPresets.WebM, renderer.Plan!.Preset);
+        Assert.Equal(media.KeptRanges, renderer.Plan.SourceRanges);
+        Assert.Equal(media.Crop, renderer.Plan.Crop);
+        Assert.Equal(destination, renderer.Plan.DestinationPath);
+        Assert.Equal("source-clip.webm", viewModel.GetSuggestedExportFileName());
+    }
+
+    [Fact]
+    public async Task Export_is_disabled_with_an_actionable_reason_for_odd_dimensions()
+    {
+        var viewModel = new MainWindowViewModel(
+            new StubProbe(),
+            exportRenderer: new RecordingExportRenderer());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
+
+        viewModel.SelectedMedia!.CropWidth = 1_919;
+
+        Assert.False(viewModel.CanExport);
+        Assert.Contains("even", viewModel.ExportAvailabilityText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new PixelSize(1_919, 1_080), viewModel.SelectedMedia.Crop.ExportSize);
+    }
+
     private sealed class StubProbe(string? failingPath = null) : IMediaProbe
     {
         public Task<MediaProbeResult> ProbeAsync(
@@ -111,6 +153,22 @@ public sealed class MainWindowViewModelTests
                 string.Equals(extension, ".flac", StringComparison.OrdinalIgnoreCase)
                     ? CreateAudioProbe(sourcePath)
                     : CreateVideoProbe(sourcePath));
+        }
+    }
+
+    private sealed class RecordingExportRenderer : IExportRenderer
+    {
+        public ExportPlan? Plan { get; private set; }
+
+        public Task<ExportResult> RenderAsync(
+            ExportPlan plan,
+            IProgress<ExportProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Plan = plan;
+            progress?.Report(new ExportProgress(1, "Complete", TimeSpan.FromSeconds(1)));
+            return Task.FromResult(new ExportResult(plan.DestinationPath, 1_024, TimeSpan.FromSeconds(1)));
         }
     }
 

@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Avalonia.Media.Imaging;
+using ClipEdit.Application.Export;
 using ClipEdit.Application.Media;
 using ClipEdit.Domain.Geometry;
+using ClipEdit.Media.Export;
 using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
 
@@ -17,17 +19,28 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly HashSet<string> _knownPaths = new(PathComparer);
     private readonly ImportMediaUseCase? _importMedia;
     private readonly IFrameDecoder? _frameDecoder;
+    private readonly IExportRenderer? _exportRenderer;
+    private readonly SingleSourceExportPlanner _exportPlanner = new();
     private MediaItemViewModel? _selectedMedia;
     private bool _isBusy;
     private bool _isPreviewLoading;
     private Bitmap? _previewImage;
     private string? _previewErrorText;
     private CancellationTokenSource? _previewCancellation;
+    private CancellationTokenSource? _exportCancellation;
+    private ExportPreset _selectedExportPreset = BuiltInExportPresets.Mp4Compatible;
+    private bool _isExporting;
+    private double _exportProgress;
+    private string _exportPhaseText = string.Empty;
     private string _statusText = "Ready";
 
-    public MainWindowViewModel(IMediaProbe? mediaProbe, IFrameDecoder? frameDecoder = null)
+    public MainWindowViewModel(
+        IMediaProbe? mediaProbe,
+        IFrameDecoder? frameDecoder = null,
+        IExportRenderer? exportRenderer = null)
     {
         _frameDecoder = frameDecoder;
+        _exportRenderer = exportRenderer;
         if (mediaProbe is not null)
         {
             _importMedia = new ImportMediaUseCase(mediaProbe);
@@ -50,6 +63,21 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public string SupportedMediaHint => "Video and audio files supported by the local media engine";
 
     public ObservableCollection<MediaItemViewModel> MediaItems { get; } = [];
+
+    public IReadOnlyList<ExportPreset> ExportPresets => BuiltInExportPresets.All;
+
+    public ExportPreset SelectedExportPreset
+    {
+        get => _selectedExportPreset;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (SetProperty(ref _selectedExportPreset, value))
+            {
+                RaiseExportStateChanged();
+            }
+        }
+    }
 
     public MediaItemViewModel? SelectedMedia
     {
@@ -119,6 +147,93 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public bool HasPreviewError => !string.IsNullOrWhiteSpace(PreviewErrorText);
 
     public bool IsImportAvailable => _importMedia is not null;
+
+    public bool IsExportAvailable => _exportRenderer is not null;
+
+    public bool IsExporting
+    {
+        get => _isExporting;
+        private set
+        {
+            if (SetProperty(ref _isExporting, value))
+            {
+                OnPropertyChanged(nameof(CanExport));
+                OnPropertyChanged(nameof(CanCancelExport));
+                OnPropertyChanged(nameof(ShowExportProgress));
+            }
+        }
+    }
+
+    public bool CanCancelExport => IsExporting;
+
+    public bool ShowExportProgress => IsExporting || ExportProgress > 0;
+
+    public double ExportProgress
+    {
+        get => _exportProgress;
+        private set
+        {
+            if (SetProperty(ref _exportProgress, Math.Clamp(value, 0, 1)))
+            {
+                OnPropertyChanged(nameof(ExportProgressPercent));
+                OnPropertyChanged(nameof(ShowExportProgress));
+            }
+        }
+    }
+
+    public int ExportProgressPercent => (int)Math.Round(ExportProgress * 100);
+
+    public string ExportPhaseText
+    {
+        get => _exportPhaseText;
+        private set => SetProperty(ref _exportPhaseText, value);
+    }
+
+    public bool CanExport => ExportAvailabilityText == "Ready to export" && !IsExporting;
+
+    public string ExportAvailabilityText
+    {
+        get
+        {
+            if (_exportRenderer is null)
+            {
+                return "FFmpeg was not found; export is unavailable";
+            }
+
+            if (SelectedMedia?.Media is null || !SelectedMedia.HasVideo)
+            {
+                return "Select an imported video to export";
+            }
+
+            if (VideoItems.Count() > 1)
+            {
+                return "Multi-video export will be enabled with the sequence timeline";
+            }
+
+            if (ExternalAudioItems.Any())
+            {
+                return "External-audio mixing must be configured before export";
+            }
+
+            if (SelectedMedia.Edit is null || SelectedMedia.Edit.IsEmpty)
+            {
+                return "Keep at least one source range before exporting";
+            }
+
+            if (SelectedExportPreset.RequiresEvenDimensions &&
+                (((SelectedMedia.Crop.Width & 1) != 0) || ((SelectedMedia.Crop.Height & 1) != 0)))
+            {
+                return $"{SelectedExportPreset.DisplayName} needs an even crop width and height";
+            }
+
+            return "Ready to export";
+        }
+    }
+
+    public string ExportPlanSummary => SelectedMedia?.Edit is null
+        ? SelectedExportPreset.DisplayName
+        : $"{SelectedExportPreset.DisplayName} · exact re-encode · " +
+          $"{SelectedMedia.CropSizeText} · {SelectedMedia.OutputDurationText}";
 
     public bool IsBusy
     {
@@ -251,6 +366,86 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         RaiseWorkspaceStateChanged();
     }
 
+    public string GetSuggestedExportFileName()
+    {
+        var sourceName = SelectedMedia is null
+            ? "clip"
+            : Path.GetFileNameWithoutExtension(SelectedMedia.DisplayName);
+        return $"{sourceName}-clip{SelectedExportPreset.FileExtension}";
+    }
+
+    public async Task<ExportResult?> ExportAsync(
+        string destinationPath,
+        bool replaceExistingDestination,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        if (!CanExport || _exportRenderer is null || SelectedMedia?.Media is null || SelectedMedia.Edit is null)
+        {
+            StatusText = ExportAvailabilityText;
+            return null;
+        }
+
+        _exportCancellation?.Cancel();
+        _exportCancellation?.Dispose();
+        _exportCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var request = _exportCancellation;
+
+        try
+        {
+            var plan = _exportPlanner.Create(
+                SelectedMedia.Media,
+                SelectedMedia.Edit,
+                SelectedMedia.Crop,
+                SelectedExportPreset,
+                destinationPath,
+                replaceExistingDestination);
+            IsExporting = true;
+            ExportProgress = 0;
+            ExportPhaseText = "Preparing";
+            StatusText = ExportPlanSummary;
+            var progress = new Progress<ClipEdit.Media.Export.ExportProgress>(update =>
+            {
+                ExportProgress = update.Fraction;
+                ExportPhaseText = $"{update.Phase} · {ExportProgressPercent}%";
+            });
+
+            var result = await _exportRenderer.RenderAsync(plan, progress, request.Token);
+            ExportProgress = 1;
+            ExportPhaseText = "Complete · 100%";
+            StatusText = $"Exported {Path.GetFileName(result.DestinationPath)}";
+            return result;
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested)
+        {
+            ExportProgress = 0;
+            ExportPhaseText = "Canceled";
+            StatusText = "Export canceled; the previous destination was not changed";
+            return null;
+        }
+        catch (Exception exception) when (exception is ExportException or ExportPlanException)
+        {
+            ExportProgress = 0;
+            ExportPhaseText = "Failed";
+            StatusText = exception.Message;
+            return null;
+        }
+        finally
+        {
+            if (ReferenceEquals(_exportCancellation, request))
+            {
+                IsExporting = false;
+                request.Dispose();
+                _exportCancellation = null;
+            }
+        }
+    }
+
+    public void CancelExport()
+    {
+        _exportCancellation?.Cancel();
+    }
+
     public void Dispose()
     {
         if (SelectedMedia is not null)
@@ -261,6 +456,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
         _previewCancellation = null;
+        _exportCancellation?.Cancel();
+        _exportCancellation?.Dispose();
+        _exportCancellation = null;
         PreviewImage = null;
     }
 
@@ -278,6 +476,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(WorkspaceTitle));
         OnPropertyChanged(nameof(CropSizeText));
         OnPropertyChanged(nameof(AudioSummaryText));
+        RaiseExportStateChanged();
     }
 
     private static string BuildAudioStreamText(AudioStreamInfo audio)
@@ -294,6 +493,18 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             StartPreviewRefresh((MediaItemViewModel?)sender, debounce: true, clearExisting: false);
         }
+
+        if (eventArgs.PropertyName is nameof(MediaItemViewModel.Crop) or nameof(MediaItemViewModel.Edit))
+        {
+            RaiseExportStateChanged();
+        }
+    }
+
+    private void RaiseExportStateChanged()
+    {
+        OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(ExportAvailabilityText));
+        OnPropertyChanged(nameof(ExportPlanSummary));
     }
 
     private void StartPreviewRefresh(

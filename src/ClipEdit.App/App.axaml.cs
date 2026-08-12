@@ -3,6 +3,8 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Views;
+using ClipEdit.Media.Export;
+using ClipEdit.Media.FFmpeg.Export;
 using ClipEdit.Media.FFmpeg.Frames;
 using ClipEdit.Media.FFmpeg.Probe;
 using ClipEdit.Media.FFmpeg.Process;
@@ -30,7 +32,10 @@ public sealed partial class App : Avalonia.Application
             IFrameDecoder? frameDecoder = ffmpegPath is null
                 ? null
                 : new FfmpegFrameDecoder(ffmpegPath);
-            var viewModel = new MainWindowViewModel(mediaProbe, frameDecoder);
+            IExportRenderer? exportRenderer = ffmpegPath is null
+                ? null
+                : new FfmpegExportRenderer(ffmpegPath);
+            var viewModel = new MainWindowViewModel(mediaProbe, frameDecoder, exportRenderer);
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel,

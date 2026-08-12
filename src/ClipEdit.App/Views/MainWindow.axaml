@@ -4,6 +4,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ClipEdit.App.Controls"
+    xmlns:mediaExport="using:ClipEdit.Media.Export"
     xmlns:vm="using:ClipEdit.App.ViewModels"
     Title="{Binding ProductName}"
     Width="1240"
@@ -75,7 +76,29 @@
             Foreground="#AEB3C2"
             Text="{Binding WorkspaceTitle}" />
 
-        <Button Grid.Column="2" Classes="secondary" Content="Export" IsEnabled="False" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+          <ComboBox
+              Width="176"
+              ItemsSource="{Binding ExportPresets}"
+              SelectedItem="{Binding SelectedExportPreset}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="mediaExport:ExportPreset">
+                <TextBlock Text="{Binding DisplayName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <Button
+              Classes="primary"
+              Click="Export_Click"
+              Content="Export"
+              IsEnabled="{Binding CanExport}"
+              ToolTip.Tip="{Binding ExportAvailabilityText}" />
+          <Button
+              Classes="secondary"
+              Click="CancelExport_Click"
+              Content="Cancel"
+              IsVisible="{Binding CanCancelExport}" />
+        </StackPanel>
       </Grid>
     </Border>
 
@@ -424,9 +447,18 @@
         Background="#181B22"
         BorderBrush="#292D38"
         BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+      <Grid ColumnDefinitions="*,180,Auto" ColumnSpacing="12" VerticalAlignment="Center">
         <TextBlock FontSize="11" Foreground="#777E91" Text="Local, private, and non-destructive" />
-        <TextBlock Grid.Column="1" FontSize="11" Foreground="#A2A8B8" Text="{Binding StatusText}" />
+        <ProgressBar
+            Grid.Column="1"
+            Height="5"
+            Maximum="1"
+            Value="{Binding ExportProgress}"
+            IsVisible="{Binding ShowExportProgress}" />
+        <StackPanel Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="10">
+          <TextBlock FontSize="11" Foreground="#B7A9FF" Text="{Binding ExportPhaseText}" />
+          <TextBlock FontSize="11" Foreground="#A2A8B8" Text="{Binding StatusText}" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
       </Grid>
     </Border>
   </Grid>

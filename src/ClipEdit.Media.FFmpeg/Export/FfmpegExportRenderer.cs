@@ -80,7 +80,7 @@ public sealed class FfmpegExportRenderer : IExportRenderer
 
             try
             {
-                File.Move(temporaryPath, plan.DestinationPath, overwrite: false);
+                FinalizeOutput(temporaryPath, plan);
             }
             catch (IOException exception)
             {
@@ -122,7 +122,7 @@ public sealed class FfmpegExportRenderer : IExportRenderer
                 "The export destination cannot replace the source media.");
         }
 
-        if (File.Exists(plan.DestinationPath))
+        if (File.Exists(plan.DestinationPath) && !plan.ReplaceExistingDestination)
         {
             throw new ExportException(
                 ExportFailure.DestinationExists,
@@ -135,6 +135,40 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             throw new ExportException(
                 ExportFailure.DestinationUnavailable,
                 "The selected export folder does not exist or cannot be accessed.");
+        }
+    }
+
+    internal static void FinalizeOutput(string temporaryPath, ExportPlan plan)
+    {
+        if (!File.Exists(plan.DestinationPath))
+        {
+            File.Move(temporaryPath, plan.DestinationPath, overwrite: false);
+            return;
+        }
+
+        if (!plan.ReplaceExistingDestination)
+        {
+            throw new IOException("The export destination appeared before finalization.");
+        }
+
+        var directory = Path.GetDirectoryName(plan.DestinationPath)!;
+        var backupPath = Path.Combine(
+            directory,
+            $".{Path.GetFileName(plan.DestinationPath)}.{Guid.NewGuid():N}.backup");
+        File.Move(plan.DestinationPath, backupPath, overwrite: false);
+        try
+        {
+            File.Move(temporaryPath, plan.DestinationPath, overwrite: false);
+            TryDelete(backupPath);
+        }
+        catch
+        {
+            if (!File.Exists(plan.DestinationPath) && File.Exists(backupPath))
+            {
+                File.Move(backupPath, plan.DestinationPath, overwrite: false);
+            }
+
+            throw;
         }
     }
 

@@ -21,7 +21,8 @@ public sealed record ExportPlan
         int? audioStreamIndex,
         CropRegion crop,
         ImmutableArray<MediaRange> sourceRanges,
-        ExportPreset preset)
+        ExportPreset preset,
+        bool replaceExistingDestination = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
@@ -62,6 +63,7 @@ public sealed record ExportPlan
         Crop = crop;
         SourceRanges = sourceRanges;
         Preset = preset;
+        ReplaceExistingDestination = replaceExistingDestination;
     }
 
     public string SourcePath { get; }
@@ -77,6 +79,8 @@ public sealed record ExportPlan
     public ImmutableArray<MediaRange> SourceRanges { get; }
 
     public ExportPreset Preset { get; }
+
+    public bool ReplaceExistingDestination { get; }
 
     public ExportStrategy Strategy => ExportStrategy.ExactTranscode;
 

@@ -131,6 +131,55 @@ public sealed partial class MainWindow : Window
         ViewModel?.SelectedMedia?.ResetCuts();
     }
 
+    private async void Export_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is not { CanExport: true } viewModel)
+        {
+            return;
+        }
+
+        var preset = viewModel.SelectedExportPreset;
+        var destination = await StorageProvider.SaveFilePickerAsync(
+            new FilePickerSaveOptions
+            {
+                Title = "Export clip",
+                SuggestedFileName = viewModel.GetSuggestedExportFileName(),
+                DefaultExtension = preset.FileExtension.TrimStart('.'),
+                ShowOverwritePrompt = true,
+                FileTypeChoices =
+                [
+                    new FilePickerFileType(preset.DisplayName)
+                    {
+                        Patterns = [$"*{preset.FileExtension}"],
+                    },
+                ],
+            });
+        if (destination?.Path is not { IsFile: true } destinationUri)
+        {
+            return;
+        }
+
+        var destinationPath = destinationUri.LocalPath;
+        if (!destinationPath.EndsWith(preset.FileExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            destinationPath = Path.ChangeExtension(destinationPath, preset.FileExtension);
+        }
+
+        await viewModel.ExportAsync(
+            destinationPath,
+            replaceExistingDestination: File.Exists(destinationPath),
+            _lifetimeCancellation.Token);
+    }
+
+    private void CancelExport_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.CancelExport();
+    }
+
     private void OnClosed(object? sender, EventArgs eventArgs)
     {
         _ = sender;

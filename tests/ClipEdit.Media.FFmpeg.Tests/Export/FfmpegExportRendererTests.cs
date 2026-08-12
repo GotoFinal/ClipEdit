@@ -53,7 +53,39 @@ public sealed class FfmpegExportRendererTests
         }
     }
 
-    private static ExportPlan CreatePlan(string sourcePath, string destinationPath)
+    [Fact]
+    public async Task Authorized_replacement_swaps_only_after_the_new_output_exists()
+    {
+        var sourcePath = Path.GetTempFileName();
+        var destinationPath = Path.GetTempFileName();
+        var temporaryPath = Path.GetTempFileName();
+        await File.WriteAllTextAsync(destinationPath, "old output");
+        await File.WriteAllTextAsync(temporaryPath, "new output");
+
+        try
+        {
+            var plan = CreatePlan(sourcePath, destinationPath, replaceExistingDestination: true);
+
+            FfmpegExportRenderer.FinalizeOutput(temporaryPath, plan);
+
+            Assert.Equal("new output", await File.ReadAllTextAsync(destinationPath));
+            Assert.False(File.Exists(temporaryPath));
+            Assert.Empty(Directory.EnumerateFiles(
+                Path.GetDirectoryName(destinationPath)!,
+                $".{Path.GetFileName(destinationPath)}.*.backup"));
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+            File.Delete(destinationPath);
+            File.Delete(temporaryPath);
+        }
+    }
+
+    private static ExportPlan CreatePlan(
+        string sourcePath,
+        string destinationPath,
+        bool replaceExistingDestination = false)
     {
         var preset = new ExportPreset(
             "mp4",
@@ -70,6 +102,7 @@ public sealed class FfmpegExportRendererTests
             null,
             CropRegion.FullFrame(new PixelSize(100, 100)),
             ImmutableArray.Create(new MediaRange(MediaTime.Zero, new MediaTime(1, 1))),
-            preset);
+            preset,
+            replaceExistingDestination);
     }
 }

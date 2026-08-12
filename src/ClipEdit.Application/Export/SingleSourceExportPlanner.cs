@@ -12,7 +12,8 @@ public sealed class SingleSourceExportPlanner
         SourceEdit edit,
         CropRegion crop,
         ExportPreset preset,
-        string destinationPath)
+        string destinationPath,
+        bool replaceExistingDestination = false)
     {
         ArgumentNullException.ThrowIfNull(media);
         ArgumentNullException.ThrowIfNull(edit);
@@ -37,6 +38,7 @@ public sealed class SingleSourceExportPlanner
             media.Probe.AudioStreams.FirstOrDefault()?.Index,
             crop,
             edit.KeptRanges,
-            preset);
+            preset,
+            replaceExistingDestination);
     }
 }
