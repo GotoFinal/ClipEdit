@@ -11,6 +11,7 @@ using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Export;
 using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
+using ClipEdit.Media.Preview;
 
 namespace ClipEdit.App.ViewModels;
 
@@ -350,6 +351,15 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public string AudioTrackCountText =>
         $"{AudioTracks.Count} track{(AudioTracks.Count == 1 ? string.Empty : "s")}";
+
+    public IReadOnlyList<PreviewAudioTrack> PreviewAudioTracks => SelectedMedia is null
+        ? []
+        : AudioTracks
+            .Where(track =>
+                !track.IsExternal &&
+                PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath))
+            .Select(track => new PreviewAudioTrack(track.StreamIndex, track.GainDb, track.IsMuted))
+            .ToArray();
 
     public string AudioMixerButtonText => ShowAudioMixer ? "Hide mixer" : "Mixer";
 
@@ -765,6 +775,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(VideoItems));
         OnPropertyChanged(nameof(ExternalAudioItems));
         OnPropertyChanged(nameof(AudioTrackCountText));
+        OnPropertyChanged(nameof(PreviewAudioTracks));
         OnPropertyChanged(nameof(EditingModeText));
         OnPropertyChanged(nameof(WorkspaceTitle));
         OnPropertyChanged(nameof(CropSizeText));
@@ -804,6 +815,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             MarkProjectDirty();
             RaiseExportStateChanged();
+            OnPropertyChanged(nameof(PreviewAudioTracks));
         }
     }
 

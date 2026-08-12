@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Mpv;
+using ClipEdit.Media.Preview;
 
 namespace ClipEdit.App.Controls;
 
@@ -22,6 +23,11 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     public static readonly StyledProperty<double> VolumeProperty =
         AvaloniaProperty.Register<MpvVideoView, double>(nameof(Volume), defaultValue: 1);
+
+    public static readonly StyledProperty<IReadOnlyList<PreviewAudioTrack>> AudioTracksProperty =
+        AvaloniaProperty.Register<MpvVideoView, IReadOnlyList<PreviewAudioTrack>>(
+            nameof(AudioTracks),
+            defaultValue: Array.Empty<PreviewAudioTrack>());
 
     public static readonly DirectProperty<MpvVideoView, bool> IsPlaybackAvailableProperty =
         AvaloniaProperty.RegisterDirect<MpvVideoView, bool>(
@@ -42,6 +48,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private readonly DispatcherTimer _positionTimer;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _seekCancellation;
+    private CancellationTokenSource? _audioMixCancellation;
     private Task<MpvPreviewEngine>? _engineTask;
     private MpvPreviewEngine? _engine;
     private MpvOpenGlRenderContext? _renderContext;
@@ -63,6 +70,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             static (view, _) => view.StartPauseChange());
         VolumeProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartVolumeChange());
+        AudioTracksProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.StartAudioMixChange());
     }
 
     public MpvVideoView()
@@ -96,6 +105,12 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => GetValue(VolumeProperty);
         set => SetValue(VolumeProperty, value);
+    }
+
+    public IReadOnlyList<PreviewAudioTrack> AudioTracks
+    {
+        get => GetValue(AudioTracksProperty);
+        set => SetValue(AudioTracksProperty, value);
     }
 
     public bool IsPlaybackAvailable
@@ -140,6 +155,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         _lifetimeCancellation.Cancel();
         _loadCancellation?.Cancel();
         _seekCancellation?.Cancel();
+        _audioMixCancellation?.Cancel();
         if (_renderContext is null && _engine is not null)
         {
             await _engine.DisposeAsync();
@@ -260,11 +276,25 @@ public sealed class MpvVideoView : OpenGlControlBase
             await engine.LoadAsync(sourcePath, cancellationToken);
             await engine.SeekAsync(Position, cancellationToken);
             await engine.SetVolumeAsync(Volume, cancellationToken);
+            string? audioWarning = null;
+            try
+            {
+                await engine.SetAudioTracksAsync(AudioTracks, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                audioWarning = $"Live audio mix unavailable: {exception.Message}";
+            }
+
             await engine.SetPausedAsync(IsPaused, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             _mediaLoaded = true;
             IsPlaybackAvailable = true;
-            PlaybackStatus = "Live preview is ready";
+            PlaybackStatus = audioWarning ?? "Live preview is ready";
             RequestNextFrameRendering();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -365,6 +395,38 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
     }
 
+    private void StartAudioMixChange()
+    {
+        if (!_mediaLoaded || _engine is null || _shutdownStarted)
+        {
+            return;
+        }
+
+        _audioMixCancellation?.Cancel();
+        _audioMixCancellation?.Dispose();
+        _audioMixCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
+        _ = ApplyAudioMixAsync(AudioTracks.ToArray(), _audioMixCancellation.Token);
+    }
+
+    private async Task ApplyAudioMixAsync(
+        IReadOnlyList<PreviewAudioTrack> audioTracks,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(80), cancellationToken);
+            await _engine!.SetAudioTracksAsync(audioTracks, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A newer mixer state superseded this graph rebuild.
+        }
+        catch (Exception exception)
+        {
+            SetPlaybackWarning($"Live audio mix unavailable: {exception.Message}");
+        }
+    }
+
     private void RequestRenderFromNativeCallback()
     {
         Dispatcher.UIThread.Post(RequestNextFrameRendering, DispatcherPriority.Render);
@@ -420,5 +482,10 @@ public sealed class MpvVideoView : OpenGlControlBase
                 IsPlaybackAvailable = false;
                 PlaybackStatus = message;
             });
+    }
+
+    private void SetPlaybackWarning(string message)
+    {
+        Dispatcher.UIThread.Post(() => PlaybackStatus = message);
     }
 }

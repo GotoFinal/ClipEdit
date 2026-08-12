@@ -125,6 +125,22 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Embedded_audio_mixer_state_is_projected_for_live_preview()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "source.mkv")]);
+        var track = Assert.Single(viewModel.AudioTracks);
+
+        track.GainDb = -7.5;
+        track.IsMuted = true;
+
+        var previewTrack = Assert.Single(viewModel.PreviewAudioTracks);
+        Assert.Equal(track.StreamIndex, previewTrack.StreamIndex);
+        Assert.Equal(-7.5, previewTrack.GainDb);
+        Assert.True(previewTrack.IsMuted);
+    }
+
+    [Fact]
     public async Task Export_is_disabled_with_an_actionable_reason_for_odd_dimensions()
     {
         var viewModel = new MainWindowViewModel(

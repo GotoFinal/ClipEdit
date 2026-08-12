@@ -15,4 +15,8 @@ public interface IPreviewEngine : IAsyncDisposable
     Task SetPausedAsync(bool isPaused, CancellationToken cancellationToken);
 
     Task SetVolumeAsync(double volume, CancellationToken cancellationToken);
+
+    Task SetAudioTracksAsync(
+        IReadOnlyList<PreviewAudioTrack> audioTracks,
+        CancellationToken cancellationToken);
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using ClipEdit.Domain.Timeline;
+using ClipEdit.Media.Preview;
 
 namespace ClipEdit.Media.Mpv.Native;
 
@@ -11,6 +12,7 @@ internal sealed class MpvClient : IDisposable
     private const int EndFileEvent = 7;
     private const int PropertyUnavailableError = -10;
     private const int DoubleFormat = 5;
+    private const int Int64Format = 4;
     private readonly MpvNativeLibrary _native;
     private nint _handle;
 
@@ -114,6 +116,40 @@ internal sealed class MpvClient : IDisposable
         SetProperty("volume", (volume * 100).ToString("R", CultureInfo.InvariantCulture));
     }
 
+    public void SetAudioTracks(IReadOnlyList<PreviewAudioTrack> audioTracks)
+    {
+        ArgumentNullException.ThrowIfNull(audioTracks);
+        if (audioTracks.Any(track => track is null) ||
+            audioTracks.Select(track => track.StreamIndex).Distinct().Count() != audioTracks.Count)
+        {
+            throw new ArgumentException(
+                "Preview audio tracks must be non-null and use distinct stream indices.",
+                nameof(audioTracks));
+        }
+
+        var enabledTracks = audioTracks.Where(track => !track.IsMuted).ToArray();
+        if (enabledTracks.Length == 0)
+        {
+            SetProperty("lavfi-complex", string.Empty);
+            SetProperty("aid", "no");
+            return;
+        }
+
+        var availableTracks = GetAudioTrackIdsByFfmpegIndex();
+        var graphTracks = enabledTracks.Select(track =>
+        {
+            if (!availableTracks.TryGetValue(track.StreamIndex, out var mpvTrackId))
+            {
+                throw new MpvPreviewException(
+                    $"libmpv did not expose embedded audio stream {track.StreamIndex}.");
+            }
+
+            return new MpvAudioGraphTrack(mpvTrackId, track.GainDb);
+        }).ToArray();
+
+        SetProperty("lavfi-complex", MpvAudioGraphBuilder.Build(graphTracks));
+    }
+
     public void Dispose()
     {
         if (_handle == nint.Zero)
@@ -163,6 +199,72 @@ internal sealed class MpvClient : IDisposable
         using var nativeName = new Utf8String(name);
         using var nativeValue = new Utf8String(value);
         Check(_native.SetPropertyString(_handle, nativeName.Pointer, nativeValue.Pointer), $"set property '{name}'");
+    }
+
+    private IReadOnlyDictionary<int, long> GetAudioTrackIdsByFfmpegIndex()
+    {
+        var count = GetInt64Property("track-list/count");
+        if (count is < 0 or > 10_000)
+        {
+            throw new MpvPreviewException($"libmpv reported an invalid track count: {count}.");
+        }
+
+        var tracks = new Dictionary<int, long>();
+        for (var index = 0; index < count; index++)
+        {
+            if (!string.Equals(
+                    GetStringProperty($"track-list/{index}/type"),
+                    "audio",
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var ffmpegIndex = GetInt64Property($"track-list/{index}/ff-index");
+            var mpvTrackId = GetInt64Property($"track-list/{index}/id");
+            if (ffmpegIndex is < 0 or > int.MaxValue || mpvTrackId <= 0)
+            {
+                continue;
+            }
+
+            tracks[checked((int)ffmpegIndex)] = mpvTrackId;
+        }
+
+        return tracks;
+    }
+
+    private long GetInt64Property(string name)
+    {
+        using var nativeName = new Utf8String(name);
+        var valuePointer = Marshal.AllocCoTaskMem(sizeof(long));
+        try
+        {
+            Check(_native.GetProperty(_handle, nativeName.Pointer, Int64Format, valuePointer), $"read '{name}'");
+            return Marshal.ReadInt64(valuePointer);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(valuePointer);
+        }
+    }
+
+    private string? GetStringProperty(string name)
+    {
+        using var nativeName = new Utf8String(name);
+        var valuePointer = _native.GetPropertyString(_handle, nativeName.Pointer);
+        if (valuePointer == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return Marshal.PtrToStringUTF8(valuePointer);
+        }
+        finally
+        {
+            _native.Free(valuePointer);
+        }
     }
 
     private void RunCommand(params string[] arguments)

@@ -19,6 +19,8 @@ internal sealed class MpvNativeLibrary : IDisposable
         SetOptionString = GetDelegate<SetStringDelegate>("mpv_set_option_string");
         SetPropertyString = GetDelegate<SetStringDelegate>("mpv_set_property_string");
         GetProperty = GetDelegate<GetPropertyDelegate>("mpv_get_property");
+        GetPropertyString = GetDelegate<GetPropertyStringDelegate>("mpv_get_property_string");
+        Free = GetDelegate<FreeDelegate>("mpv_free");
         Command = GetDelegate<CommandDelegate>("mpv_command");
         WaitEvent = GetDelegate<WaitEventDelegate>("mpv_wait_event");
         ErrorString = GetDelegate<ErrorStringDelegate>("mpv_error_string");
@@ -51,6 +53,10 @@ internal sealed class MpvNativeLibrary : IDisposable
     internal SetStringDelegate SetPropertyString { get; }
 
     internal GetPropertyDelegate GetProperty { get; }
+
+    internal GetPropertyStringDelegate GetPropertyString { get; }
+
+    internal FreeDelegate Free { get; }
 
     internal CommandDelegate Command { get; }
 
@@ -136,6 +142,12 @@ internal sealed class MpvNativeLibrary : IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int GetPropertyDelegate(nint handle, nint name, int format, nint value);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate nint GetPropertyStringDelegate(nint handle, nint name);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void FreeDelegate(nint value);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int CommandDelegate(nint handle, nint arguments);

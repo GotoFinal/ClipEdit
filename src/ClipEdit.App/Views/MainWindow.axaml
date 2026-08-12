@@ -251,6 +251,7 @@
                   <controls:MpvVideoView
                       x:Name="LivePreview"
                       Margin="8"
+                      AudioTracks="{Binding PreviewAudioTracks}"
                       IsPaused="True"
                       Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
                       SourcePath="{Binding SelectedMedia.SourcePath}" />
@@ -308,7 +309,15 @@
                       VerticalAlignment="Top"
                       Background="#B3151820"
                       CornerRadius="6">
-                    <TextBlock FontSize="10" Foreground="#AEB3C2" Text="SOURCE PREVIEW" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock FontSize="10" Foreground="#AEB3C2" Text="SOURCE PREVIEW" />
+                      <TextBlock
+                          MaxWidth="520"
+                          FontSize="10"
+                          Foreground="#8D93A5"
+                          Text="{Binding PlaybackStatus, ElementName=LivePreview}"
+                          TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
                   </Border>
                 </Grid>
               </Border>

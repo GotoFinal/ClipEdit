@@ -89,6 +89,15 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     public Task SetVolumeAsync(double volume, CancellationToken cancellationToken) =>
         InvokeAsync(client => client.SetVolume(volume), cancellationToken);
 
+    public Task SetAudioTracksAsync(
+        IReadOnlyList<PreviewAudioTrack> audioTracks,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(audioTracks);
+        var snapshot = audioTracks.ToArray();
+        return InvokeAsync(client => client.SetAudioTracks(snapshot), cancellationToken);
+    }
+
     public MpvOpenGlRenderContext CreateOpenGlRenderContext(
         Func<string, nint> getProcAddress,
         Action requestRender)
