@@ -10,7 +10,7 @@
     Width="1240"
     Height="800"
     MinWidth="900"
-    MinHeight="620"
+    MinHeight="680"
     Background="#111318"
     DragDrop.AllowDrop="True">
 
@@ -18,64 +18,65 @@
     <Style Selector="Button.primary">
       <Setter Property="Background" Value="#7C5CFC" />
       <Setter Property="Foreground" Value="White" />
-      <Setter Property="Padding" Value="20,10" />
-      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="14,7" />
+      <Setter Property="CornerRadius" Value="6" />
     </Style>
     <Style Selector="Button.secondary">
       <Setter Property="Background" Value="#252936" />
       <Setter Property="Foreground" Value="#E9EAF0" />
-      <Setter Property="Padding" Value="16,9" />
-      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="12,7" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <Style Selector="Button.icon">
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="6" />
     </Style>
     <Style Selector="Border.panel">
       <Setter Property="Background" Value="#181B22" />
       <Setter Property="BorderBrush" Value="#303543" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="CornerRadius" Value="8" />
     </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="Foreground" Value="#8D93A5" />
     </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="64,*,38">
+  <Grid RowDefinitions="56,*,28">
     <Border
         Grid.Row="0"
-        Padding="22,0"
+        Padding="12,0"
         Background="#181B22"
         BorderBrush="#292D38"
         BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-          <Border Width="32" Height="32" Background="#7C5CFC" CornerRadius="9">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="12" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Border Width="30" Height="30" Background="#7C5CFC" CornerRadius="8">
             <TextBlock
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                FontSize="18"
+                FontSize="16"
                 FontWeight="Bold"
                 Text="C" />
           </Border>
           <TextBlock
               VerticalAlignment="Center"
-              FontSize="19"
+              FontSize="17"
               FontWeight="SemiBold"
               Text="{Binding ProductName}" />
-          <Border Padding="8,4" Background="#242033" CornerRadius="6">
-            <TextBlock
-                FontSize="10"
-                FontWeight="Bold"
-                Foreground="#B7A9FF"
-                Text="{Binding EditingModeText}" />
-          </Border>
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
           <Button
               Classes="secondary"
               Click="NewProject_Click"
-              Content="New project"
+              Content="New"
               IsEnabled="{Binding CanNewProject}" />
           <Button
               Classes="secondary"
               Click="OpenProject_Click"
-              Content="Open project"
+              Content="Open"
               IsEnabled="{Binding CanOpenProject}" />
           <Button
               Classes="secondary"
@@ -84,16 +85,37 @@
               IsEnabled="{Binding CanSaveProject}" />
         </StackPanel>
 
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="CROP" />
+          <ComboBox Width="132" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:CropAspectPreset">
+                <TextBlock Text="{Binding DisplayName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <ToggleButton
+              Width="30"
+              Height="28"
+              Padding="6"
+              Classes="secondary"
+              IsChecked="{Binding IsCropAspectLocked, Mode=TwoWay}"
+              ToolTip.Tip="Lock crop ratio while resizing">
+            <PathIcon Width="14" Height="14" Data="M4,7 V5 A4,4 0 0 1 12,5 V7 H14 V15 H2 V7 Z M6,7 H10 V5 A2,2 0 0 0 6,5 Z" />
+          </ToggleButton>
+        </StackPanel>
+
         <TextBlock
-            Grid.Column="1"
+            Grid.Column="3"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Foreground="#AEB3C2"
-            Text="{Binding WorkspaceTitle}" />
+            Text="{Binding WorkspaceTitle}"
+            TextTrimming="CharacterEllipsis" />
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
           <ComboBox
-              Width="176"
+              Width="154"
               ItemsSource="{Binding ExportPresets}"
               SelectedItem="{Binding SelectedExportPreset}">
             <ComboBox.ItemTemplate>
@@ -117,9 +139,9 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" Margin="20" ColumnDefinitions="250,*" ColumnSpacing="18">
-      <Border Grid.Column="0" Classes="panel" Padding="14">
-        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+    <Grid Grid.Row="1" Margin="10" ColumnDefinitions="214,*" ColumnSpacing="10">
+      <Border Grid.Column="0" Classes="panel" Padding="10">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
           <Grid ColumnDefinitions="*,Auto">
             <TextBlock VerticalAlignment="Center" FontSize="12" FontWeight="Bold" Text="PROJECT MEDIA" />
             <TextBlock
@@ -141,7 +163,7 @@
               SelectedItem="{Binding SelectedMedia}">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:MediaItemViewModel">
-                <Border Margin="0,0,0,8" Padding="10" Background="#20242D" CornerRadius="8">
+                <Border Margin="0,0,0,6" Padding="8" Background="#20242D" CornerRadius="6">
                   <Grid ColumnDefinitions="34,*" ColumnSpacing="9">
                     <Border
                         Width="34"
@@ -169,17 +191,17 @@
             </ListBox.ItemTemplate>
           </ListBox>
 
-          <StackPanel Grid.Row="2" Spacing="8">
+          <StackPanel Grid.Row="2" Spacing="5">
             <ProgressBar Height="3" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
             <Button
                 Classes="secondary"
                 Click="OpenMedia_Click"
-                Content="＋ Add media"
+                Content="Add media"
                 IsEnabled="{Binding IsImportAvailable}" />
             <Button
                 Classes="secondary"
                 Click="RemoveSelectedMedia_Click"
-                Content="− Remove selected"
+                Content="Remove selected"
                 IsEnabled="{Binding CanRemoveSelectedMedia}"
                 ToolTip.Tip="Removes the selected item from this project; the source file stays untouched" />
           </StackPanel>
@@ -248,22 +270,22 @@
         </Border>
 
         <Grid
-            RowDefinitions="*,Auto"
-            RowSpacing="14"
+            RowDefinitions="3*,2*"
+            RowSpacing="10"
             IsVisible="{Binding ShowQuickWorkspace}">
-          <Border Classes="panel" Padding="18">
-            <Grid RowDefinitions="*,Auto,Auto" RowSpacing="10">
+          <Border Classes="panel" Padding="10">
+            <Grid RowDefinitions="*,Auto,Auto" RowSpacing="6">
               <Border Background="#0B0D12" CornerRadius="8">
                 <Grid>
                   <Image
-                      Margin="8"
+                      Margin="5"
                       IsVisible="{Binding HasPreviewImage}"
                       Source="{Binding PreviewImage}"
                       Stretch="Uniform" />
 
                   <controls:MpvVideoView
                       x:Name="LivePreview"
-                      Margin="8"
+                      Margin="5"
                       AudioTracks="{Binding PreviewAudioTracks}"
                       HasCuts="{Binding SelectedVideoClip.IsTrimmed}"
                       IsPaused="True"
@@ -272,7 +294,7 @@
                       SourcePath="{Binding SelectedMedia.SourcePath}" />
 
                   <controls:CropCanvas
-                      Margin="8"
+                      Margin="5"
                       AutomationProperties.Name="Video crop selection"
                       Crop="{Binding SelectedVideoClip.SourceWindow, Mode=TwoWay}"
                       IsOverlayOnly="True"
@@ -365,29 +387,43 @@
 
               <Grid Grid.Row="2" ColumnDefinitions="*,Auto,*">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="{Binding SequencePlayheadText}" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                  <Button Classes="secondary" Click="GoToStart_Click" Content="│◀" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                  <Button AutomationProperties.Name="Go to start" Classes="secondary icon" Click="GoToStart_Click">
+                    <PathIcon Width="14" Height="14" Data="M2,2 H4 V14 H2 Z M14,2 L6,8 L14,14 Z" />
+                  </Button>
                   <Button
                       AutomationProperties.Name="Previous source frame"
-                      Classes="secondary"
+                      Classes="secondary icon"
                       Click="StepFrameBackward_Click"
-                      Content="◀"
                       IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
-                      ToolTip.Tip="Previous source frame (best effort)" />
+                      ToolTip.Tip="Previous source frame (best effort)">
+                    <PathIcon Width="13" Height="13" Data="M13,2 L4,8 L13,14 Z" />
+                  </Button>
                   <Button
+                      Width="36"
+                      Height="30"
+                      Padding="8"
+                      AutomationProperties.Name="Play or pause"
                       Classes="primary"
                       Click="TogglePlayback_Click"
-                      Content="{Binding PlayButtonText, ElementName=LivePreview}"
                       IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
-                      ToolTip.Tip="{Binding PlaybackStatus, ElementName=LivePreview}" />
+                      ToolTip.Tip="{Binding PlaybackStatus, ElementName=LivePreview}">
+                    <Grid>
+                      <PathIcon Width="14" Height="14" Data="M3,2 L14,8 L3,14 Z" IsVisible="{Binding IsPaused, ElementName=LivePreview}" />
+                      <PathIcon Width="14" Height="14" Data="M3,2 H7 V14 H3 Z M10,2 H14 V14 H10 Z" IsVisible="{Binding !IsPaused, ElementName=LivePreview}" />
+                    </Grid>
+                  </Button>
                   <Button
                       AutomationProperties.Name="Next source frame"
-                      Classes="secondary"
+                      Classes="secondary icon"
                       Click="StepFrameForward_Click"
-                      Content="▶"
                       IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
-                      ToolTip.Tip="Next source frame" />
-                  <Button Classes="secondary" Click="GoToEnd_Click" Content="▶│" />
+                      ToolTip.Tip="Next source frame">
+                    <PathIcon Width="13" Height="13" Data="M3,2 L12,8 L3,14 Z" />
+                  </Button>
+                  <Button AutomationProperties.Name="Go to end" Classes="secondary icon" Click="GoToEnd_Click">
+                    <PathIcon Width="14" Height="14" Data="M2,2 L10,8 L2,14 Z M12,2 H14 V14 H12 Z" />
+                  </Button>
                 </StackPanel>
                 <TextBlock
                     Grid.Column="2"
@@ -400,8 +436,8 @@
             </Grid>
           </Border>
 
-          <Border Grid.Row="1" Classes="panel" Padding="14">
-            <StackPanel Spacing="10">
+          <Border Grid.Row="1" Classes="panel" Padding="10">
+            <StackPanel Spacing="6">
               <Grid ColumnDefinitions="Auto,*,Auto">
                 <TextBlock FontSize="11" FontWeight="Bold" Text="EDIT" />
                 <TextBlock
@@ -411,37 +447,32 @@
                     Text="{Binding EditingModeText}" />
               </Grid>
 
-              <Grid ColumnDefinitions="Auto,240,Auto,*" ColumnSpacing="8">
-                <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CROP PRESET" />
-                <ComboBox Grid.Column="1" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:CropAspectPreset">
-                      <TextBlock Text="{Binding DisplayName}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-                <ToggleButton Grid.Column="2" Classes="secondary" Content="🔒" IsChecked="{Binding IsCropAspectLocked, Mode=TwoWay}" ToolTip.Tip="Lock the crop aspect ratio" />
-                <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="Preset applies immediately · drag the video under the shared frame to position each clip" />
-              </Grid>
-
-              <Border Height="172" Padding="8" Background="#20242D" CornerRadius="7" IsVisible="{Binding ShowTimeline}">
-                <Grid ColumnDefinitions="72,*" RowDefinitions="26,*" RowSpacing="4">
+              <Border Height="122" Padding="6" Background="#20242D" CornerRadius="6" IsVisible="{Binding ShowTimeline}">
+                <Grid ColumnDefinitions="44,*" RowDefinitions="22,*" RowSpacing="3">
                   <StackPanel Grid.RowSpan="2" VerticalAlignment="Center" Spacing="5">
                     <TextBlock FontSize="11" FontWeight="Bold" Text="V1" />
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                      <Button Padding="7,2" Classes="secondary" Click="MoveVideoLeft_Click" Content="←" IsEnabled="{Binding CanMoveSelectedVideoLeft}" ToolTip.Tip="Move selected clip left (Ctrl+Left)" />
-                      <Button Padding="7,2" Classes="secondary" Click="MoveVideoRight_Click" Content="→" IsEnabled="{Binding CanMoveSelectedVideoRight}" ToolTip.Tip="Move selected clip right (Ctrl+Right)" />
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                      <Button Width="20" Height="22" Padding="4" Classes="secondary" Click="MoveVideoLeft_Click" IsEnabled="{Binding CanMoveSelectedVideoLeft}" ToolTip.Tip="Move selected clip left (Ctrl+Left)">
+                        <PathIcon Width="10" Height="10" Data="M13,2 L4,8 L13,14 Z" />
+                      </Button>
+                      <Button Width="20" Height="22" Padding="4" Classes="secondary" Click="MoveVideoRight_Click" IsEnabled="{Binding CanMoveSelectedVideoRight}" ToolTip.Tip="Move selected clip right (Ctrl+Right)">
+                        <PathIcon Width="10" Height="10" Data="M3,2 L12,8 L3,14 Z" />
+                      </Button>
                     </StackPanel>
                   </StackPanel>
                   <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                       <TextBlock Classes="muted" FontSize="9" Text="{Binding SequenceTimelineViewportText}" />
-                      <TextBlock Classes="muted" FontSize="9" Text="Wheel zooms · Shift+wheel/middle drag pans · drag clip edges to restore/trim" />
+                      <TextBlock Classes="muted" FontSize="9" Text="Wheel zoom · Shift+wheel pan · drag edges to restore or trim" />
                     </StackPanel>
-                    <Button Grid.Column="1" Padding="8,1" Classes="secondary" Click="TimelineZoomOut_Click" Content="−" IsEnabled="{Binding CanZoomSequenceTimelineOut}" />
+                    <Button Grid.Column="1" Width="24" Height="20" Padding="5" Classes="secondary" Click="TimelineZoomOut_Click" IsEnabled="{Binding CanZoomSequenceTimelineOut}">
+                      <PathIcon Width="10" Height="10" Data="M2,8 H14" />
+                    </Button>
                     <TextBlock Grid.Column="2" MinWidth="35" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" Text="{Binding SequenceTimelineZoomText}" />
-                    <Button Grid.Column="3" Padding="8,1" Classes="secondary" Click="TimelineZoomIn_Click" Content="+" IsEnabled="{Binding CanZoomSequenceTimelineIn}" />
-                    <Button Grid.Column="4" Padding="8,1" Classes="secondary" Click="TimelineFit_Click" Content="Fit" IsEnabled="{Binding CanZoomSequenceTimelineOut}" />
+                    <Button Grid.Column="3" Width="24" Height="20" Padding="5" Classes="secondary" Click="TimelineZoomIn_Click" IsEnabled="{Binding CanZoomSequenceTimelineIn}">
+                      <PathIcon Width="10" Height="10" Data="M2,8 H14 M8,2 V14" />
+                    </Button>
+                    <Button Grid.Column="4" Height="20" Padding="7,1" Classes="secondary" Click="TimelineFit_Click" Content="Fit" IsEnabled="{Binding CanZoomSequenceTimelineOut}" />
                   </Grid>
                   <controls:SequenceTimelineCanvas
                       Grid.Column="1"
@@ -459,14 +490,13 @@
                       SelectionEnd="{Binding SequenceSelectionEndSeconds, Mode=TwoWay}"
                       SelectionStart="{Binding SequenceSelectionStartSeconds, Mode=TwoWay}"
                       SplitRequested="SequenceTimeline_SplitRequested"
-                      ToolTip.Tip="Click/drag to select · S splits · Delete removes selected clip · edge arrows nudge a trim"
                       ViewportStart="{Binding SequenceTimelineViewportStart, Mode=TwoWay}"
                       VisualRevision="{Binding SequenceTimelineVisualRevision}"
                       Zoom="{Binding SequenceTimelineZoom, Mode=TwoWay}" />
                 </Grid>
               </Border>
 
-              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="8" IsVisible="{Binding ShowTimeline}">
+              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="5" IsVisible="{Binding ShowTimeline}">
                 <Button Classes="secondary" Click="MarkIn_Click" Content="Mark in" />
                 <Button Grid.Column="1" Classes="secondary" Click="MarkOut_Click" Content="Mark out" />
                 <Button Grid.Column="2" Classes="primary" Click="RemoveSelection_Click" Content="Remove selected range" IsEnabled="{Binding CanRemoveSequenceSelection}" />
@@ -480,16 +510,16 @@
                 </StackPanel>
               </Grid>
 
-              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="8">
+              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="5">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CROP" />
                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="X" />
-                <TextBox Grid.Column="2" Width="58" Text="{Binding SelectedVideoClip.CropX, Mode=TwoWay}" />
+                <TextBox Grid.Column="2" Width="54" Text="{Binding SelectedVideoClip.CropX, Mode=TwoWay}" />
                 <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Y" />
-                <TextBox Grid.Column="4" Width="58" Text="{Binding SelectedVideoClip.CropY, Mode=TwoWay}" />
+                <TextBox Grid.Column="4" Width="54" Text="{Binding SelectedVideoClip.CropY, Mode=TwoWay}" />
                 <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="W" />
-                <TextBox Grid.Column="6" Width="66" Text="{Binding SelectedVideoClip.CropWidth, Mode=TwoWay}" />
+                <TextBox Grid.Column="6" Width="60" Text="{Binding SelectedVideoClip.CropWidth, Mode=TwoWay}" />
                 <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="H" />
-                <TextBox Grid.Column="8" Width="66" Text="{Binding SelectedVideoClip.CropHeight, Mode=TwoWay}" />
+                <TextBox Grid.Column="8" Width="60" Text="{Binding SelectedVideoClip.CropHeight, Mode=TwoWay}" />
                 <Button Grid.Column="9" Classes="secondary" Click="ResetCrop_Click" Content="Reset crop" />
                 <StackPanel Grid.Column="10" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="EXPORT" />
@@ -577,7 +607,7 @@
 
     <Border
         Grid.Row="2"
-        Padding="16,0"
+        Padding="10,0"
         Background="#181B22"
         BorderBrush="#292D38"
         BorderThickness="0,1,0,0">
