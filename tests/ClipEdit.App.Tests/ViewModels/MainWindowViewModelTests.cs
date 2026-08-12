@@ -524,6 +524,12 @@ public sealed class MainWindowViewModelTests
         Assert.False(viewModel.CanExport);
         Assert.Contains("even", viewModel.ExportAvailabilityText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(new PixelSize(1_919, 1_080), viewModel.SelectedVideoClip.SourceWindow.ExportSize);
+        Assert.True(viewModel.CanFixExportCompatibility);
+        Assert.Equal("Use 1918 × 1080", viewModel.ExportCompatibilityActionText);
+
+        Assert.True(viewModel.MakeExportCropCompatible());
+        Assert.True(viewModel.CanExport);
+        Assert.Equal(new PixelSize(1_918, 1_080), viewModel.SelectedVideoClip.SourceWindow.ExportSize);
     }
 
     [Fact]

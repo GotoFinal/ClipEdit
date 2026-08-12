@@ -556,14 +556,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
             var outputSize = slices[0].Clip.SourceWindow.ExportSize;
             if (SelectedExportPreset.RequiresEvenDimensions &&
-                (((outputSize.Width & 1) != 0) || ((outputSize.Height & 1) != 0) ||
-                 slices.Any(slice =>
-                     (slice.Clip.SourceWindow.X & 1) != 0 ||
-                     (slice.Clip.SourceWindow.Y & 1) != 0 ||
-                     (slice.Clip.SourceWindow.Width & 1) != 0 ||
-                     (slice.Clip.SourceWindow.Height & 1) != 0)))
+                (((outputSize.Width & 1) != 0) || ((outputSize.Height & 1) != 0)))
             {
-                return $"{SelectedExportPreset.DisplayName} needs even crop coordinates and dimensions on every selected clip";
+                return $"{SelectedExportPreset.DisplayName} requires even output dimensions; current crop is {outputSize.Width} × {outputSize.Height}";
             }
 
             return "Ready to export";
@@ -2277,6 +2272,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportAvailabilityText));
+        OnPropertyChanged(nameof(HasExportBlockingIssue));
+        OnPropertyChanged(nameof(CanFixExportCompatibility));
+        OnPropertyChanged(nameof(ExportCompatibilityActionText));
         OnPropertyChanged(nameof(ExportPlanSummary));
     }
 

@@ -505,6 +505,13 @@ public sealed partial class MainWindow : Window
         ViewModel?.ToggleAudioMixer();
     }
 
+    private void FixExportCompatibility_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.MakeExportCropCompatible();
+    }
+
     private async void Export_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

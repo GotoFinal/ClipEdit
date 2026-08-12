@@ -105,13 +105,26 @@
           </ToggleButton>
         </StackPanel>
 
-        <TextBlock
+        <StackPanel
             Grid.Column="3"
             HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Foreground="#AEB3C2"
-            Text="{Binding WorkspaceTitle}"
-            TextTrimming="CharacterEllipsis" />
+            VerticalAlignment="Center">
+          <TextBlock
+              HorizontalAlignment="Center"
+              Foreground="#AEB3C2"
+              Text="{Binding WorkspaceTitle}"
+              TextTrimming="CharacterEllipsis" />
+          <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasExportBlockingIssue}">
+            <TextBlock
+                MaxWidth="310"
+                VerticalAlignment="Center"
+                FontSize="10"
+                Foreground="#FFB36B"
+                Text="{Binding ExportAvailabilityText}"
+                TextTrimming="CharacterEllipsis" />
+            <Button Classes="secondary" Padding="7,2" Click="FixExportCompatibility_Click" Content="{Binding ExportCompatibilityActionText}" IsVisible="{Binding CanFixExportCompatibility}" />
+          </StackPanel>
+        </StackPanel>
 
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
           <ComboBox
