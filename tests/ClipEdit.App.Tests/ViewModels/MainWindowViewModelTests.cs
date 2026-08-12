@@ -612,17 +612,36 @@ public sealed class MainWindowViewModelTests
         var clip = viewModel.SelectedVideoClip!;
 
         Assert.Equal(14, clip.TimelineThumbnails.Count);
-        Assert.Equal(2.143, decoder.TimelineTimestamps[0], 3);
-        Assert.Equal(57.857, decoder.TimelineTimestamps[13], 3);
+        var initialTimestamps = decoder.TimelineTimestamps.Take(14).Order().ToArray();
+        Assert.Equal(2, initialTimestamps[0], 3);
+        Assert.Equal(58, initialTimestamps[13], 3);
+        Assert.True(decoder.MaximumConcurrentTimelineDecodes >= 2);
 
         viewModel.ZoomSequenceTimeline(2, anchor: 30);
         await decoder.WaitForCallCountAsync(28);
 
         Assert.Equal(2, viewModel.SequenceTimelineZoom);
         Assert.Equal(15, viewModel.SequenceTimelineViewportStart, 3);
-        Assert.Equal(16.071, decoder.TimelineTimestamps[14], 3);
-        Assert.Equal(43.929, decoder.TimelineTimestamps[27], 3);
+        var zoomedTimestamps = decoder.TimelineTimestamps.Skip(14).Take(14).Order().ToArray();
+        Assert.Equal(17, zoomedTimestamps[0], 3);
+        Assert.Equal(43, zoomedTimestamps[13], 3);
     }
+
+    [AvaloniaFact]
+    public async Task Timeline_hover_uses_a_warm_filmstrip_frame_before_exact_refinement()
+    {
+        var decoder = new RecordingFrameDecoder();
+        using var viewModel = new MainWindowViewModel(new StubProbe(), frameDecoder: decoder);
+
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "hover-preview.mkv")]);
+        await decoder.WaitForCallCountAsync(14);
+
+        viewModel.TimelineHoverTime = 5;
+
+        Assert.True(viewModel.HasTimelineHoverPreview);
+        Assert.Equal(0, decoder.HoverCalls);
+    }
+
 
     [AvaloniaFact]
     public async Task Mixer_waveform_regenerates_for_the_zoomed_visible_range()
@@ -688,11 +707,28 @@ public sealed class MainWindowViewModelTests
 
     private sealed class RecordingFrameDecoder : IFrameDecoder
     {
+        private readonly object _gate = new();
         private readonly List<double> _timelineTimestamps = [];
+        private int _activeTimelineDecodes;
+        private int _maximumConcurrentTimelineDecodes;
+        private int _hoverCalls;
 
-        public IReadOnlyList<double> TimelineTimestamps => _timelineTimestamps;
+        public IReadOnlyList<double> TimelineTimestamps
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _timelineTimestamps.ToArray();
+                }
+            }
+        }
 
-        public Task<DecodedFrame> DecodeAsync(
+        public int MaximumConcurrentTimelineDecodes => Volatile.Read(ref _maximumConcurrentTimelineDecodes);
+
+        public int HoverCalls => Volatile.Read(ref _hoverCalls);
+
+        public async Task<DecodedFrame> DecodeAsync(
             string sourcePath,
             int videoStreamIndex,
             MediaTime timestamp,
@@ -702,22 +738,54 @@ public sealed class MainWindowViewModelTests
             cancellationToken.ThrowIfCancellationRequested();
             if (maximumSize == new PixelSize(240, 120))
             {
-                _timelineTimestamps.Add(timestamp.TotalSeconds);
+                var active = Interlocked.Increment(ref _activeTimelineDecodes);
+                UpdateMaximum(active);
+                try
+                {
+                    await Task.Delay(15, cancellationToken);
+                    lock (_gate)
+                    {
+                        _timelineTimestamps.Add(timestamp.TotalSeconds);
+                    }
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _activeTimelineDecodes);
+                }
             }
-            return Task.FromResult(new DecodedFrame(TinyPng, "image/png"));
+            else if (maximumSize == new PixelSize(360, 202))
+            {
+                Interlocked.Increment(ref _hoverCalls);
+            }
+
+            return new DecodedFrame(TinyPng, "image/png");
         }
 
         public async Task WaitForCallCountAsync(int count)
         {
             var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(3);
-            while (_timelineTimestamps.Count < count && DateTime.UtcNow < timeout)
+            while (TimelineTimestamps.Count < count && DateTime.UtcNow < timeout)
             {
                 await Task.Delay(10);
             }
 
             Assert.True(
-                _timelineTimestamps.Count >= count,
-                $"Expected {count} timeline frame requests, received {_timelineTimestamps.Count}.");
+                TimelineTimestamps.Count >= count,
+                $"Expected {count} timeline frame requests, received {TimelineTimestamps.Count}.");
+            await Task.Delay(25);
+        }
+
+        private void UpdateMaximum(int active)
+        {
+            while (true)
+            {
+                var current = Volatile.Read(ref _maximumConcurrentTimelineDecodes);
+                if (active <= current ||
+                    Interlocked.CompareExchange(ref _maximumConcurrentTimelineDecodes, active, current) == current)
+                {
+                    return;
+                }
+            }
         }
     }
 

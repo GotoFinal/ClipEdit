@@ -16,8 +16,12 @@ using ClipEdit.Media.Preview;
 
 namespace ClipEdit.App.ViewModels;
 
-public sealed class MainWindowViewModel : ViewModelBase, IDisposable
+public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
+    private const int SequenceViewportThumbnailCount = 14;
+    private static readonly PixelSize TimelineThumbnailSize = new(240, 120);
+    private static readonly PixelSize TimelineHoverSize = new(360, 202);
+    private static readonly int AnalysisConcurrency = Math.Clamp(Environment.ProcessorCount / 2, 2, 4);
     private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
         : StringComparer.Ordinal;
@@ -44,10 +48,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _sequenceTimelineAnalysisCancellation;
     private CancellationTokenSource? _timelineHoverCancellation;
     private Bitmap? _timelineHoverPreviewImage;
+    private TimelineFrameCacheKey? _timelineHoverCacheKey;
     private double _timelineHoverTime = -1;
     private int _sequenceTimelineVisualRevision;
     private readonly Dictionary<AudioTrackViewModel, CancellationTokenSource> _waveformCancellations = [];
-    private readonly SemaphoreSlim _analysisSlots = new(initialCount: 2, maxCount: 2);
+    private readonly SemaphoreSlim _analysisSlots = new(AnalysisConcurrency, AnalysisConcurrency);
+    private readonly TimelineFrameCache _timelineFrameCache = new();
     private CancellationTokenSource? _exportCancellation;
     private CancellationTokenSource? _autosaveCancellation;
     private ExportPreset _selectedExportPreset = BuiltInExportPresets.Mp4Compatible;
@@ -1656,6 +1662,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _knownPaths.Clear();
         _pendingMediaIds.Clear();
         _unavailableProjectMedia.Clear();
+        _timelineFrameCache.Clear();
         _isAudioMixerExpanded = false;
         _sequencePlayhead = MediaTime.Zero;
         _sequenceSelectionStart = MediaTime.Zero;
@@ -2057,16 +2064,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void StartSequenceTimelineAnalysis(bool debounce)
     {
-        _sequenceTimelineAnalysisCancellation?.Cancel();
-        _sequenceTimelineAnalysisCancellation = null;
-        if (_frameDecoder is null || VideoClips.Count == 0 || SequenceDurationSeconds <= 0)
-        {
-            return;
-        }
-
-        var request = new CancellationTokenSource();
-        _sequenceTimelineAnalysisCancellation = request;
-        _ = RefreshSequenceTimelineAnalysisAsync(VideoClips.ToArray(), request, debounce);
+        StartCachedSequenceTimelineAnalysis(debounce);
     }
 
     private async Task RefreshSequenceTimelineAnalysisAsync(
@@ -2212,26 +2210,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void StartTimelineHoverPreview(double timelineSeconds)
     {
-        _timelineHoverCancellation?.Cancel();
-        _timelineHoverCancellation = null;
-        if (timelineSeconds < 0 || _frameDecoder is null)
-        {
-            TimelineHoverPreviewImage = null;
-            return;
-        }
-
-        var clip = FindClipAtTimelineTime(SequenceTimeFromSeconds(timelineSeconds));
-        if (clip?.Source.Media?.Probe.VideoStreams.FirstOrDefault() is not { } video)
-        {
-            TimelineHoverPreviewImage = null;
-            return;
-        }
-
-        var request = new CancellationTokenSource();
-        _timelineHoverCancellation = request;
-        var sourceTime = clip.SourceStart +
-                         (SequenceTimeFromSeconds(timelineSeconds) - clip.TimelineStart);
-        _ = RefreshTimelineHoverPreviewAsync(clip, video.Index, sourceTime, request);
+        StartCachedTimelineHoverPreview(timelineSeconds);
     }
 
     private async Task RefreshTimelineHoverPreviewAsync(
@@ -2653,7 +2632,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (debounce)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(140), cancellationToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken);
             }
 
             IsPreviewLoading = true;

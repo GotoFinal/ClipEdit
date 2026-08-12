@@ -61,6 +61,9 @@ public sealed class MpvVideoView : OpenGlControlBase
     private readonly DispatcherTimer _positionTimer;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _seekCancellation;
+    private MediaTime _pendingSeekPosition;
+    private int _seekRevision;
+    private bool _seekLoopRunning;
     private CancellationTokenSource? _audioMixCancellation;
     private Task<MpvPreviewEngine>? _engineTask;
     private MpvPreviewEngine? _engine;
@@ -344,6 +347,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
 
         _loadCancellation?.Cancel();
+        _seekCancellation?.Cancel();
         _loadCancellation?.Dispose();
         _loadCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
         _ = LoadAsync(_loadCancellation.Token);
@@ -410,27 +414,61 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
 
         _isEndOfFile = false;
+        _pendingSeekPosition = Position;
+        _seekRevision++;
+        if (_seekLoopRunning)
+        {
+            return;
+        }
 
         _seekCancellation?.Cancel();
         _seekCancellation?.Dispose();
-        _seekCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
-        _ = SeekAsync(_seekCancellation.Token);
+        var request = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
+        _seekCancellation = request;
+        _seekLoopRunning = true;
+        _ = SeekLatestAsync(request);
     }
 
-    private async Task SeekAsync(CancellationToken cancellationToken)
+    private async Task SeekLatestAsync(CancellationTokenSource request)
     {
+        var cancellationToken = request.Token;
+        var handledRevision = -1;
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(45), cancellationToken);
-            await _engine!.SeekAsync(Position, cancellationToken);
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var revision = _seekRevision;
+                var target = _pendingSeekPosition;
+                await _engine!.SeekAsync(target, cancellationToken);
+                handledRevision = revision;
+                await Task.Delay(TimeSpan.FromMilliseconds(16), cancellationToken);
+                if (handledRevision == _seekRevision)
+                {
+                    break;
+                }
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // A newer playhead position superseded this seek.
+            // Media reload or shutdown superseded this seek loop.
         }
         catch (Exception exception)
         {
             SetFailure($"Live preview seek failed: {exception.Message}");
+        }
+        finally
+        {
+            _seekLoopRunning = false;
+            if (ReferenceEquals(_seekCancellation, request))
+            {
+                _seekCancellation = null;
+            }
+
+            request.Dispose();
+            if (!_shutdownStarted && _mediaLoaded && handledRevision != _seekRevision)
+            {
+                StartSeek();
+            }
         }
     }
 
