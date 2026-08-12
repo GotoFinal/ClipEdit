@@ -88,6 +88,7 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         _lifetimeCancellation.Cancel();
+        ViewModel?.Dispose();
         _lifetimeCancellation.Dispose();
     }
 }

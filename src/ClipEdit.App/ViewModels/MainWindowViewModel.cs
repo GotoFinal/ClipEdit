@@ -1,10 +1,14 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media.Imaging;
 using ClipEdit.Application.Media;
+using ClipEdit.Domain.Geometry;
+using ClipEdit.Domain.Timeline;
+using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
 
 namespace ClipEdit.App.ViewModels;
 
-public sealed class MainWindowViewModel : ViewModelBase
+public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
@@ -12,12 +16,18 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private readonly HashSet<string> _knownPaths = new(PathComparer);
     private readonly ImportMediaUseCase? _importMedia;
+    private readonly IFrameDecoder? _frameDecoder;
     private MediaItemViewModel? _selectedMedia;
     private bool _isBusy;
+    private bool _isPreviewLoading;
+    private Bitmap? _previewImage;
+    private string? _previewErrorText;
+    private CancellationTokenSource? _previewCancellation;
     private string _statusText = "Ready";
 
-    public MainWindowViewModel(IMediaProbe? mediaProbe)
+    public MainWindowViewModel(IMediaProbe? mediaProbe, IFrameDecoder? frameDecoder = null)
     {
+        _frameDecoder = frameDecoder;
         if (mediaProbe is not null)
         {
             _importMedia = new ImportMediaUseCase(mediaProbe);
@@ -49,9 +59,49 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (SetProperty(ref _selectedMedia, value))
             {
                 RaiseWorkspaceStateChanged();
+                StartPreviewRefresh(value);
             }
         }
     }
+
+    public Bitmap? PreviewImage
+    {
+        get => _previewImage;
+        private set
+        {
+            var previous = _previewImage;
+            if (SetProperty(ref _previewImage, value))
+            {
+                previous?.Dispose();
+                OnPropertyChanged(nameof(HasPreviewImage));
+                OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+            }
+        }
+    }
+
+    public bool HasPreviewImage => PreviewImage is not null;
+
+    public bool ShowPreviewPlaceholder => !HasPreviewImage;
+
+    public bool IsPreviewLoading
+    {
+        get => _isPreviewLoading;
+        private set => SetProperty(ref _isPreviewLoading, value);
+    }
+
+    public string? PreviewErrorText
+    {
+        get => _previewErrorText;
+        private set
+        {
+            if (SetProperty(ref _previewErrorText, value))
+            {
+                OnPropertyChanged(nameof(HasPreviewError));
+            }
+        }
+    }
+
+    public bool HasPreviewError => !string.IsNullOrWhiteSpace(PreviewErrorText);
 
     public bool IsImportAvailable => _importMedia is not null;
 
@@ -186,6 +236,14 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaiseWorkspaceStateChanged();
     }
 
+    public void Dispose()
+    {
+        _previewCancellation?.Cancel();
+        _previewCancellation?.Dispose();
+        _previewCancellation = null;
+        PreviewImage = null;
+    }
+
     private void RaiseWorkspaceStateChanged()
     {
         OnPropertyChanged(nameof(HasReadyMedia));
@@ -209,4 +267,62 @@ public sealed class MainWindowViewModel : ViewModelBase
                      (audio.ChannelCount is null ? "unknown layout" : $"{audio.ChannelCount} ch");
         return $"{language} · {audio.CodecName.ToUpperInvariant()} · {layout}";
     }
+
+    private void StartPreviewRefresh(MediaItemViewModel? mediaItem)
+    {
+        _previewCancellation?.Cancel();
+        _previewCancellation?.Dispose();
+        _previewCancellation = new CancellationTokenSource();
+        _ = RefreshPreviewAsync(mediaItem, _previewCancellation.Token);
+    }
+
+    private async Task RefreshPreviewAsync(
+        MediaItemViewModel? mediaItem,
+        CancellationToken cancellationToken)
+    {
+        PreviewImage = null;
+        PreviewErrorText = null;
+
+        var video = mediaItem?.Media?.Probe.VideoStreams.FirstOrDefault();
+        if (video is null || _frameDecoder is null)
+        {
+            return;
+        }
+
+        IsPreviewLoading = true;
+        try
+        {
+            var duration = mediaItem!.Media!.Probe.Duration;
+            var timestamp = duration is null
+                ? MediaTime.Zero
+                : Min(new MediaTime(1, 1), duration.Value / 10);
+            var decodedFrame = await _frameDecoder.DecodeAsync(
+                mediaItem.SourcePath,
+                video.Index,
+                timestamp,
+                new PixelSize(1_280, 720),
+                cancellationToken);
+
+            await using var stream = new MemoryStream(decodedFrame.EncodedImage.ToArray(), writable: false);
+            PreviewImage = new Bitmap(stream);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A new selection superseded this decode request.
+        }
+        catch (FrameDecodeException exception)
+        {
+            PreviewErrorText = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            PreviewErrorText = $"Could not display a preview frame: {exception.Message}";
+        }
+        finally
+        {
+            IsPreviewLoading = false;
+        }
+    }
+
+    private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;
 }

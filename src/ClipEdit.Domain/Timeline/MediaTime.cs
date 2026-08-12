@@ -75,6 +75,16 @@ public readonly record struct MediaTime : IComparable<MediaTime>
 
     public static MediaTime operator *(long multiplier, MediaTime value) => value * multiplier;
 
+    public static MediaTime operator /(MediaTime value, long divisor)
+    {
+        if (divisor == 0)
+        {
+            throw new DivideByZeroException();
+        }
+
+        return Create(value.Numerator, (Int128)value.Denominator * divisor);
+    }
+
     public static bool operator <(MediaTime left, MediaTime right) => left.CompareTo(right) < 0;
 
     public static bool operator <=(MediaTime left, MediaTime right) => left.CompareTo(right) <= 0;

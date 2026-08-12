@@ -74,4 +74,12 @@ public sealed class MediaTimeTests
 
         Assert.Equal(new MediaTime(1001, 30_000), result);
     }
+
+    [Fact]
+    public void Division_preserves_exact_time()
+    {
+        Assert.Equal(new MediaTime(1, 10), new MediaTime(1, 1) / 10);
+        Assert.Equal(new MediaTime(-1, 2), new MediaTime(1, 1) / -2);
+        Assert.Throws<DivideByZeroException>(() => new MediaTime(1, 1) / 0);
+    }
 }

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using ClipEdit.Media.Probe;
+using DiagnosticProcess = System.Diagnostics.Process;
 
 namespace ClipEdit.Media.FFmpeg.Probe;
 
@@ -46,7 +47,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe
                 "The selected media file no longer exists or cannot be accessed.");
         }
 
-        using var process = new Process
+        using var process = new DiagnosticProcess
         {
             StartInfo = CreateStartInfo(fullSourcePath),
             EnableRaisingEvents = true,
@@ -198,7 +199,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe
             : $"ffprobe failed with exit code {exitCode}: {detail}";
     }
 
-    private static void TryKill(Process process)
+    private static void TryKill(DiagnosticProcess process)
     {
         try
         {

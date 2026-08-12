@@ -3,7 +3,10 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Views;
+using ClipEdit.Media.FFmpeg.Frames;
 using ClipEdit.Media.FFmpeg.Probe;
+using ClipEdit.Media.FFmpeg.Process;
+using ClipEdit.Media.Frames;
 using ClipEdit.Media.Probe;
 
 namespace ClipEdit.App;
@@ -23,7 +26,11 @@ public sealed partial class App : Avalonia.Application
             IMediaProbe? mediaProbe = ffprobePath is null
                 ? null
                 : new FfprobeMediaProbe(ffprobePath);
-            var viewModel = new MainWindowViewModel(mediaProbe);
+            var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+            IFrameDecoder? frameDecoder = ffmpegPath is null
+                ? null
+                : new FfmpegFrameDecoder(ffmpegPath);
+            var viewModel = new MainWindowViewModel(mediaProbe, frameDecoder);
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel,

@@ -208,7 +208,17 @@
             <Grid RowDefinitions="*,Auto" RowSpacing="12">
               <Border Background="#0B0D12" CornerRadius="8">
                 <Grid>
-                  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                  <Image
+                      Margin="8"
+                      IsVisible="{Binding HasPreviewImage}"
+                      Source="{Binding PreviewImage}"
+                      Stretch="Uniform" />
+
+                  <StackPanel
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Spacing="10"
+                      IsVisible="{Binding ShowPreviewPlaceholder}">
                     <TextBlock
                         HorizontalAlignment="Center"
                         FontSize="42"
@@ -230,7 +240,17 @@
                         HorizontalAlignment="Center"
                         FontSize="11"
                         Foreground="#6F7689"
-                        Text="Playback integration follows the import slice" />
+                        Text="Decoding source frame…"
+                        IsVisible="{Binding IsPreviewLoading}" />
+                    <TextBlock
+                        MaxWidth="560"
+                        HorizontalAlignment="Center"
+                        FontSize="11"
+                        Foreground="#E28B8B"
+                        Text="{Binding PreviewErrorText}"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap"
+                        IsVisible="{Binding HasPreviewError}" />
                   </StackPanel>
 
                   <Border
