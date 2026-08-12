@@ -1,10 +1,22 @@
 using ClipEdit.App.Controls;
 using ClipEdit.Domain.Geometry;
+using AvaloniaPoint = Avalonia.Point;
+using AvaloniaRect = Avalonia.Rect;
 
 namespace ClipEdit.App.Tests.Controls;
 
 public sealed class CropCanvasTests
 {
+    [Fact]
+    public void Pointer_inside_crop_body_selects_move_drag()
+    {
+        var mode = CropCanvas.GetDragMode(
+            new AvaloniaPoint(100, 80),
+            new AvaloniaRect(20, 20, 160, 120));
+
+        Assert.Equal(CropDragMode.Move, mode);
+    }
+
     [Fact]
     public void Move_drag_clamps_without_changing_export_size()
     {

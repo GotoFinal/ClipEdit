@@ -351,6 +351,14 @@ public sealed class MediaItemViewModel : ViewModelBase
         SelectionEnd = Edit.SourceDuration;
     }
 
+    public void ResetCrop()
+    {
+        if (HasVideo)
+        {
+            Crop = CropRegion.FullFrame(VideoSize);
+        }
+    }
+
     public void RestoreEditing(CropRegion crop, SourceEdit edit)
     {
         ArgumentNullException.ThrowIfNull(edit);

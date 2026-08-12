@@ -55,6 +55,55 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task New_project_requires_discard_confirmation_and_clears_all_editing_state()
+    {
+        var store = new RecordingProjectStore();
+        using var viewModel = new MainWindowViewModel(
+            new StubProbe(),
+            projectStore: store,
+            recoveryDirectory: Path.GetTempPath(),
+            autosaveDelay: TimeSpan.FromHours(1));
+        await viewModel.ImportFilesAsync(
+        [
+            Path.Combine(Path.GetTempPath(), "new-project.mkv"),
+            Path.Combine(Path.GetTempPath(), "new-project.flac"),
+        ]);
+        var previousProjectId = viewModel.CreateProjectDocument().ProjectId;
+
+        Assert.False(await viewModel.NewProjectAsync());
+        Assert.NotEmpty(viewModel.MediaItems);
+
+        Assert.True(await viewModel.NewProjectAsync(discardUnsavedChanges: true));
+        Assert.Empty(viewModel.MediaItems);
+        Assert.Empty(viewModel.AudioTracks);
+        Assert.Null(viewModel.SelectedMedia);
+        Assert.Null(viewModel.ProjectPath);
+        Assert.False(viewModel.IsProjectDirty);
+        Assert.False(viewModel.ShowQuickWorkspace);
+        Assert.NotEqual(previousProjectId, viewModel.CreateProjectDocument().ProjectId);
+        Assert.EndsWith($"{previousProjectId:N}.recovery.clipedit", store.DeletedPath);
+    }
+
+    [Fact]
+    public async Task Removing_selected_media_removes_its_tracks_but_never_its_source()
+    {
+        var videoPath = Path.Combine(Path.GetTempPath(), "remove.mkv");
+        var musicPath = Path.Combine(Path.GetTempPath(), "keep.flac");
+        using var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([videoPath, musicPath]);
+
+        Assert.True(viewModel.RemoveSelectedMedia());
+
+        Assert.DoesNotContain(viewModel.MediaItems, item => item.SourcePath == videoPath);
+        Assert.DoesNotContain(viewModel.AudioTracks, track => track.SourcePath == videoPath);
+        Assert.Contains(viewModel.MediaItems, item => item.SourcePath == musicPath);
+        Assert.True(viewModel.IsProjectDirty);
+
+        await viewModel.ImportFilesAsync([videoPath]);
+        Assert.Contains(viewModel.MediaItems, item => item.SourcePath == videoPath);
+    }
+
+    [Fact]
     public async Task Import_failure_stays_local_to_the_failed_media_item()
     {
         var goodPath = Path.Combine(Path.GetTempPath(), "good.mkv");
@@ -95,6 +144,19 @@ public sealed class MainWindowViewModelTests
 
         Assert.True(media.Edit.IsUnedited);
         Assert.Equal(new MediaTime(60, 1), media.SelectionEnd);
+    }
+
+    [Fact]
+    public async Task Selected_source_crop_can_reset_to_the_full_oriented_frame()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "crop-reset.mkv")]);
+        var media = viewModel.SelectedMedia!;
+        media.Crop = new CropRegion(media.VideoSize, 420, 0, 1_080, 1_080);
+
+        media.ResetCrop();
+
+        Assert.Equal(CropRegion.FullFrame(media.VideoSize), media.Crop);
     }
 
     [Fact]
@@ -327,6 +389,8 @@ public sealed class MainWindowViewModelTests
 
         public string? SavedPath { get; private set; }
 
+        public string? DeletedPath { get; private set; }
+
         public Task<ProjectDocument> LoadAsync(
             string projectPath,
             CancellationToken cancellationToken = default)
@@ -350,6 +414,7 @@ public sealed class MainWindowViewModelTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            DeletedPath = projectPath;
             return Task.CompletedTask;
         }
     }

@@ -119,7 +119,7 @@ public sealed class CropCanvas : Control
         var viewport = GetImageViewport();
         var pointer = eventArgs.GetPosition(this);
         var cropRect = SourceToView(Crop, viewport);
-        _dragMode = HitTest(pointer, cropRect);
+        _dragMode = GetDragMode(pointer, cropRect);
         if (_dragMode == CropDragMode.None)
         {
             return;
@@ -156,6 +156,12 @@ public sealed class CropCanvas : Control
 
         _dragMode = CropDragMode.None;
         eventArgs.Handled = true;
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs eventArgs)
+    {
+        base.OnPointerCaptureLost(eventArgs);
+        _dragMode = CropDragMode.None;
     }
 
     protected override void OnKeyDown(KeyEventArgs eventArgs)
@@ -264,7 +270,7 @@ public sealed class CropCanvas : Control
         context.DrawLine(GridPen, new Point(crop.Left, crop.Y + (crop.Height * 2 / 3)), new Point(crop.Right, crop.Y + (crop.Height * 2 / 3)));
     }
 
-    private static CropDragMode HitTest(Point pointer, Rect crop)
+    internal static CropDragMode GetDragMode(Point pointer, Rect crop)
     {
         foreach (var handle in GetHandles(crop))
         {

@@ -42,6 +42,32 @@ public sealed partial class MainWindow : Window
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
 
+    private async void NewProject_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is not { CanNewProject: true } viewModel)
+        {
+            return;
+        }
+
+        if (viewModel.IsProjectDirty)
+        {
+            var confirmation = new ConfirmActionDialog(
+                "Create a new project?",
+                "The current project has unsaved changes. Discard them and start a new empty project? Source media files will not be changed.",
+                "Discard and create new");
+            if (!await confirmation.ShowDialog<bool>(this))
+            {
+                return;
+            }
+        }
+
+        await viewModel.NewProjectAsync(
+            discardUnsavedChanges: true,
+            _lifetimeCancellation.Token);
+    }
+
     private async void OpenMedia_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
@@ -233,6 +259,32 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         ViewModel?.SelectedMedia?.ResetCuts();
+    }
+
+    private void ResetCrop_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SelectedMedia?.ResetCrop();
+    }
+
+    private async void RemoveSelectedMedia_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is not { CanRemoveSelectedMedia: true, SelectedMedia: { } selected } viewModel)
+        {
+            return;
+        }
+
+        var confirmation = new ConfirmActionDialog(
+            "Remove media from project?",
+            $"Remove {selected.DisplayName} and its edits from this project? The source file will stay untouched.",
+            "Remove from project");
+        if (await confirmation.ShowDialog<bool>(this))
+        {
+            viewModel.RemoveSelectedMedia();
+        }
     }
 
     private static void RemoveAudioSelection_Click(object? sender, RoutedEventArgs eventArgs)

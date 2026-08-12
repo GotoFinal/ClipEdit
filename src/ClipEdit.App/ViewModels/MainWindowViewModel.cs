@@ -132,6 +132,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public bool CanOpenProject =>
         IsProjectPersistenceAvailable && !IsBusy && !IsExporting && !IsProjectDirty;
 
+    public bool CanNewProject =>
+        !IsBusy && !IsExporting && (MediaItems.Count > 0 || ProjectPath is not null || IsProjectDirty);
+
+    public bool CanRemoveSelectedMedia => SelectedMedia is not null && !IsBusy && !IsExporting;
+
     public IReadOnlyList<ExportPreset> ExportPresets => BuiltInExportPresets.All;
 
     public ExportPreset SelectedExportPreset
@@ -172,6 +177,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
                 RaiseWorkspaceStateChanged();
                 StartPreviewRefresh(value, debounce: false, clearExisting: true);
+                OnPropertyChanged(nameof(CanRemoveSelectedMedia));
             }
         }
     }
@@ -231,6 +237,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(ShowExportProgress));
                 OnPropertyChanged(nameof(CanSaveProject));
                 OnPropertyChanged(nameof(CanOpenProject));
+                OnPropertyChanged(nameof(CanNewProject));
+                OnPropertyChanged(nameof(CanRemoveSelectedMedia));
             }
         }
     }
@@ -310,6 +318,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             {
                 OnPropertyChanged(nameof(CanSaveProject));
                 OnPropertyChanged(nameof(CanOpenProject));
+                OnPropertyChanged(nameof(CanNewProject));
+                OnPropertyChanged(nameof(CanRemoveSelectedMedia));
             }
         }
     }
@@ -579,6 +589,73 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(AudioMixerButtonText));
     }
 
+    public async Task<bool> NewProjectAsync(
+        bool discardUnsavedChanges = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsBusy || IsExporting)
+        {
+            StatusText = "Wait for the current operation before creating a new project.";
+            return false;
+        }
+
+        if (IsProjectDirty && !discardUnsavedChanges)
+        {
+            StatusText = "Confirm that you want to discard the current project's unsaved changes.";
+            return false;
+        }
+
+        _isLoadingProject = true;
+        try
+        {
+            await DeleteRecoveryAsync(cancellationToken);
+            ClearProjectContent();
+            _projectId = Guid.NewGuid();
+            ProjectPath = null;
+            SelectedExportPreset = BuiltInExportPresets.Mp4Compatible;
+            IsProjectDirty = false;
+            ExportProgress = 0;
+            ExportPhaseText = string.Empty;
+            StatusText = "New project ready";
+            RaiseWorkspaceStateChanged();
+            return true;
+        }
+        finally
+        {
+            _isLoadingProject = false;
+        }
+    }
+
+    public bool RemoveSelectedMedia()
+    {
+        if (SelectedMedia is not { } mediaItem || IsBusy || IsExporting)
+        {
+            return false;
+        }
+
+        var selectedIndex = MediaItems.IndexOf(mediaItem);
+        SelectedMedia = null;
+        foreach (var audioTrack in AudioTracks
+                     .Where(track => PathComparer.Equals(track.SourcePath, mediaItem.SourcePath))
+                     .ToArray())
+        {
+            audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
+            AudioTracks.Remove(audioTrack);
+        }
+
+        MediaItems.Remove(mediaItem);
+        _knownPaths.Remove(mediaItem.SourcePath);
+        _unavailableProjectMedia.RemoveAll(saved =>
+            PathComparer.Equals(saved.SourcePath, mediaItem.SourcePath));
+        SelectedMedia = MediaItems.Count == 0
+            ? null
+            : MediaItems[Math.Min(selectedIndex, MediaItems.Count - 1)];
+        StatusText = $"Removed {mediaItem.DisplayName} from the project; the source file was not changed";
+        MarkProjectDirty();
+        RaiseWorkspaceStateChanged();
+        return true;
+    }
+
     public async Task<bool> SaveProjectAsync(
         string? projectPath = null,
         CancellationToken cancellationToken = default)
@@ -795,7 +872,24 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(AudioSummaryText));
         OnPropertyChanged(nameof(CanSaveProject));
         OnPropertyChanged(nameof(CanOpenProject));
+        OnPropertyChanged(nameof(CanNewProject));
+        OnPropertyChanged(nameof(CanRemoveSelectedMedia));
         RaiseExportStateChanged();
+    }
+
+    private void ClearProjectContent()
+    {
+        SelectedMedia = null;
+        foreach (var audioTrack in AudioTracks)
+        {
+            audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
+        }
+
+        AudioTracks.Clear();
+        MediaItems.Clear();
+        _knownPaths.Clear();
+        _unavailableProjectMedia.Clear();
+        _isAudioMixerExpanded = false;
     }
 
     private static string BuildAudioStreamText(AudioStreamInfo audio)
