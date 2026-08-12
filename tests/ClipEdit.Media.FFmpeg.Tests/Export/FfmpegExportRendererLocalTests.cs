@@ -135,7 +135,7 @@ public sealed class FfmpegExportRendererLocalTests
 
     [Fact]
     [Trait("Category", "LocalMedia")]
-    public async Task Renderer_concatenates_multiple_sequence_instances_with_per_clip_crops()
+    public async Task Renderer_concatenates_clip_transforms_beneath_one_shared_crop()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
         var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
@@ -154,9 +154,13 @@ public sealed class FfmpegExportRendererLocalTests
         var audioPlans = audio is null
             ? ImmutableArray<ExportAudioTrackPlan>.Empty
             : [new ExportAudioTrackPlan(audio.Index, -3)];
-        var firstCrop = new CropRegion(video.OrientedSize, 0, 0, 640, 360);
-        var secondX = Math.Min(video.OrientedSize.Width - 640, 640);
-        var secondCrop = new CropRegion(video.OrientedSize, secondX, 0, 640, 360);
+        var canvasSize = video.OrientedSize;
+        var sharedCrop = new CropRegion(
+            canvasSize,
+            (canvasSize.Width - 640) / 2,
+            (canvasSize.Height - 360) / 2,
+            640,
+            360);
         var destinationPath = Path.Combine(
             Path.GetTempPath(),
             $"clipedit-sequence-{Guid.NewGuid():N}.mp4");
@@ -166,13 +170,17 @@ public sealed class FfmpegExportRendererLocalTests
                     sourcePath,
                     video.Index,
                     new MediaRange(new MediaTime(1, 1), new MediaTime(2, 1)),
-                    firstCrop,
+                    canvasSize,
+                    sharedCrop,
+                    new ClipCanvasTransform(-160, 0, 1.1, 0),
                     audioPlans),
                 new ExportVideoSegmentPlan(
                     sourcePath,
                     video.Index,
                     new MediaRange(new MediaTime(3, 1), new MediaTime(4, 1)),
-                    secondCrop,
+                    canvasSize,
+                    sharedCrop,
+                    new ClipCanvasTransform(160, 0, 1.1, 15),
                     audioPlans),
             ],
             new PixelSize(320, 180),
