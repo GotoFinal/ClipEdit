@@ -10,10 +10,15 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     private readonly BlockingCollection<WorkItem> _workItems = new();
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly object _lifetimeGate = new();
     private readonly MpvNativeLibrary _native;
     private readonly Thread _ownerThread;
     private int _disposeStarted;
+    private int _renderContextCount;
     private int _state = (int)PreviewState.Initializing;
+    private nint _clientHandle;
+    private TaskCompletionSource? _renderContextsReleased;
+    private Task? _disposeTask;
 
     private MpvPreviewEngine(MpvNativeLibrary native)
     {
@@ -77,15 +82,38 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     public Task SetVolumeAsync(double volume, CancellationToken cancellationToken) =>
         InvokeAsync(client => client.SetVolume(volume), cancellationToken);
 
-    public async ValueTask DisposeAsync()
+    public MpvOpenGlRenderContext CreateOpenGlRenderContext(
+        Func<string, nint> getProcAddress,
+        Action requestRender)
     {
-        if (Interlocked.Exchange(ref _disposeStarted, 1) == 0)
+        ArgumentNullException.ThrowIfNull(getProcAddress);
+        ArgumentNullException.ThrowIfNull(requestRender);
+        lock (_lifetimeGate)
         {
-            _workItems.CompleteAdding();
+            ObjectDisposedException.ThrowIf(_disposeStarted != 0, this);
+            if (_clientHandle == nint.Zero || State == PreviewState.Initializing)
+            {
+                throw new InvalidOperationException("The libmpv client is not ready for rendering.");
+            }
+
+            _renderContextCount++;
         }
 
-        await _stopped.Task.ConfigureAwait(false);
-        _workItems.Dispose();
+        return new MpvOpenGlRenderContext(
+            _native,
+            _clientHandle,
+            getProcAddress,
+            requestRender,
+            ReleaseRenderContext);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (_lifetimeGate)
+        {
+            _disposeTask ??= DisposeCoreAsync();
+            return new ValueTask(_disposeTask);
+        }
     }
 
     private Task InvokeAsync(Action<MpvClient> action, CancellationToken cancellationToken)
@@ -111,6 +139,11 @@ public sealed class MpvPreviewEngine : IPreviewEngine
         try
         {
             using var client = new MpvClient(_native);
+            lock (_lifetimeGate)
+            {
+                _clientHandle = client.Handle;
+            }
+
             Volatile.Write(ref _state, (int)PreviewState.Idle);
             _ready.TrySetResult();
 
@@ -149,9 +182,54 @@ public sealed class MpvPreviewEngine : IPreviewEngine
         }
         finally
         {
+            lock (_lifetimeGate)
+            {
+                _clientHandle = nint.Zero;
+            }
+
             _native.Dispose();
             Volatile.Write(ref _state, (int)PreviewState.Disposed);
             _stopped.TrySetResult();
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        Task? renderContextsReleased;
+        lock (_lifetimeGate)
+        {
+            _disposeStarted = 1;
+            if (_renderContextCount == 0)
+            {
+                renderContextsReleased = null;
+            }
+            else
+            {
+                _renderContextsReleased ??= new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                renderContextsReleased = _renderContextsReleased.Task;
+            }
+        }
+
+        if (renderContextsReleased is not null)
+        {
+            await renderContextsReleased.ConfigureAwait(false);
+        }
+
+        _workItems.CompleteAdding();
+        await _stopped.Task.ConfigureAwait(false);
+        _workItems.Dispose();
+    }
+
+    private void ReleaseRenderContext()
+    {
+        lock (_lifetimeGate)
+        {
+            _renderContextCount--;
+            if (_renderContextCount == 0)
+            {
+                _renderContextsReleased?.TrySetResult();
+            }
         }
     }
 

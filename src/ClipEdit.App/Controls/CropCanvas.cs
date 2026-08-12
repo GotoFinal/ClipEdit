@@ -21,6 +21,9 @@ public sealed class CropCanvas : Control
     public static readonly StyledProperty<CropRegion> CropProperty =
         AvaloniaProperty.Register<CropCanvas, CropRegion>(nameof(Crop));
 
+    public static readonly StyledProperty<bool> IsOverlayOnlyProperty =
+        AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsOverlayOnly));
+
     private const double HandleRadius = 6;
     private const double HitRadius = 12;
     private static readonly IBrush OutsideBrush = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
@@ -34,7 +37,7 @@ public sealed class CropCanvas : Control
 
     static CropCanvas()
     {
-        AffectsRender<CropCanvas>(SourceProperty, SourceSizeProperty, CropProperty);
+        AffectsRender<CropCanvas>(SourceProperty, SourceSizeProperty, CropProperty, IsOverlayOnlyProperty);
     }
 
     public CropCanvas()
@@ -61,13 +64,22 @@ public sealed class CropCanvas : Control
         set => SetValue(CropProperty, value);
     }
 
+    public bool IsOverlayOnly
+    {
+        get => GetValue(IsOverlayOnlyProperty);
+        set => SetValue(IsOverlayOnlyProperty, value);
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));
+        if (!IsOverlayOnly)
+        {
+            context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));
+        }
 
         var viewport = GetImageViewport();
-        if (Source is not null)
+        if (!IsOverlayOnly && Source is not null)
         {
             context.DrawImage(Source, viewport);
         }

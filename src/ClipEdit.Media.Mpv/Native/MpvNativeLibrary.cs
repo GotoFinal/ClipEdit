@@ -22,6 +22,12 @@ internal sealed class MpvNativeLibrary : IDisposable
         WaitEvent = GetDelegate<WaitEventDelegate>("mpv_wait_event");
         ErrorString = GetDelegate<ErrorStringDelegate>("mpv_error_string");
         TerminateDestroy = GetDelegate<TerminateDestroyDelegate>("mpv_terminate_destroy");
+        RenderContextCreate = GetDelegate<RenderContextCreateDelegate>("mpv_render_context_create");
+        RenderContextSetUpdateCallback = GetDelegate<RenderContextSetUpdateCallbackDelegate>(
+            "mpv_render_context_set_update_callback");
+        RenderContextUpdate = GetDelegate<RenderContextUpdateDelegate>("mpv_render_context_update");
+        RenderContextRender = GetDelegate<RenderContextRenderDelegate>("mpv_render_context_render");
+        RenderContextFree = GetDelegate<RenderContextFreeDelegate>("mpv_render_context_free");
 
         ApiVersion = MpvApiVersion.FromPacked(ClientApiVersion());
         if (ApiVersion.Major != ExpectedApiMajor || ApiVersion.Minor < MinimumApiMinor)
@@ -50,6 +56,16 @@ internal sealed class MpvNativeLibrary : IDisposable
     internal ErrorStringDelegate ErrorString { get; }
 
     internal TerminateDestroyDelegate TerminateDestroy { get; }
+
+    internal RenderContextCreateDelegate RenderContextCreate { get; }
+
+    internal RenderContextSetUpdateCallbackDelegate RenderContextSetUpdateCallback { get; }
+
+    internal RenderContextUpdateDelegate RenderContextUpdate { get; }
+
+    internal RenderContextRenderDelegate RenderContextRender { get; }
+
+    internal RenderContextFreeDelegate RenderContextFree { get; }
 
     public static MpvNativeLibrary Load(string libraryPath)
     {
@@ -126,4 +142,19 @@ internal sealed class MpvNativeLibrary : IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void TerminateDestroyDelegate(nint handle);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int RenderContextCreateDelegate(out nint context, nint handle, nint parameters);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void RenderContextSetUpdateCallbackDelegate(nint context, nint callback, nint callbackContext);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate ulong RenderContextUpdateDelegate(nint context);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int RenderContextRenderDelegate(nint context, nint parameters);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void RenderContextFreeDelegate(nint context);
 }

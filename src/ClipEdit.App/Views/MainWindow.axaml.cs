@@ -171,6 +171,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void TogglePlayback_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        await LivePreview.TogglePlaybackAsync(_lifetimeCancellation.Token);
+    }
+
     private void GoToEnd_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
@@ -288,6 +295,7 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         _lifetimeCancellation.Cancel();
+        _ = LivePreview.ShutdownAsync();
         ViewModel?.Dispose();
         _lifetimeCancellation.Dispose();
     }

@@ -242,12 +242,24 @@
             <Grid RowDefinitions="*,Auto,Auto" RowSpacing="10">
               <Border Background="#0B0D12" CornerRadius="8">
                 <Grid>
+                  <Image
+                      Margin="8"
+                      IsVisible="{Binding HasPreviewImage}"
+                      Source="{Binding PreviewImage}"
+                      Stretch="Uniform" />
+
+                  <controls:MpvVideoView
+                      x:Name="LivePreview"
+                      Margin="8"
+                      IsPaused="True"
+                      Position="{Binding SelectedMedia.Playhead}"
+                      SourcePath="{Binding SelectedMedia.SourcePath}" />
+
                   <controls:CropCanvas
                       Margin="8"
                       AutomationProperties.Name="Video crop selection"
                       Crop="{Binding SelectedMedia.Crop, Mode=TwoWay}"
-                      IsVisible="{Binding HasPreviewImage}"
-                      Source="{Binding PreviewImage}"
+                      IsOverlayOnly="True"
                       SourceSize="{Binding SelectedMedia.VideoSize}" />
 
                   <StackPanel
@@ -313,7 +325,12 @@
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="{Binding SelectedMedia.PlayheadText}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                   <Button Classes="secondary" Click="GoToStart_Click" Content="│◀" />
-                  <Button Classes="primary" Content="▶" IsEnabled="False" ToolTip.Tip="Playback engine not connected yet" />
+                  <Button
+                      Classes="primary"
+                      Click="TogglePlayback_Click"
+                      Content="{Binding PlayButtonText, ElementName=LivePreview}"
+                      IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
+                      ToolTip.Tip="{Binding PlaybackStatus, ElementName=LivePreview}" />
                   <Button Classes="secondary" Click="GoToEnd_Click" Content="▶│" />
                 </StackPanel>
                 <TextBlock
