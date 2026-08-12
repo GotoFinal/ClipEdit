@@ -20,10 +20,19 @@ public sealed record ProjectMediaDocument(
     int CropHeight,
     long SourceDurationNumerator,
     int SourceDurationDenominator,
-    IReadOnlyList<ProjectRangeDocument> KeptRanges);
+    IReadOnlyList<ProjectRangeDocument> KeptRanges,
+    IReadOnlyList<ProjectAudioTrackDocument>? AudioTracks = null);
 
 public sealed record ProjectRangeDocument(
     long StartNumerator,
     int StartDenominator,
     long EndNumerator,
     int EndDenominator);
+
+public sealed record ProjectAudioTrackDocument(
+    int StreamIndex,
+    double GainDb,
+    bool IsMuted,
+    long SourceDurationNumerator,
+    int SourceDurationDenominator,
+    IReadOnlyList<ProjectRangeDocument> KeptRanges);

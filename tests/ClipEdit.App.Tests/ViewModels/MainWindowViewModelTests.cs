@@ -155,6 +155,12 @@ public sealed class MainWindowViewModelTests
             media.PlayheadSeconds = 10;
             media.MarkSelectionEnd();
             media.RemoveSelection();
+            var audioTrack = Assert.Single(original.AudioTracks);
+            audioTrack.SelectionStartSeconds = 12;
+            audioTrack.SelectionEndSeconds = 14;
+            audioTrack.RemoveSelection();
+            audioTrack.GainDb = -4.5;
+            audioTrack.IsMuted = true;
             original.SelectedExportPreset = BuiltInExportPresets.WebM;
             Assert.True(await original.SaveProjectAsync(projectPath));
             Assert.False(original.IsProjectDirty);
@@ -166,6 +172,10 @@ public sealed class MainWindowViewModelTests
             Assert.Equal(media.Crop, restored.SelectedMedia!.Crop);
             Assert.Equal(media.Edit!.SourceDuration, restored.SelectedMedia.Edit!.SourceDuration);
             Assert.Equal<MediaRange>(media.KeptRanges, restored.SelectedMedia.KeptRanges);
+            var restoredAudio = Assert.Single(restored.AudioTracks);
+            Assert.Equal(audioTrack.GainDb, restoredAudio.GainDb);
+            Assert.Equal(audioTrack.IsMuted, restoredAudio.IsMuted);
+            Assert.Equal<MediaRange>(audioTrack.KeptRanges, restoredAudio.KeptRanges);
             Assert.False(restored.IsProjectDirty);
 
             using var recovered = new MainWindowViewModel(new StubProbe(), projectStore: store);

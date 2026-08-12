@@ -45,6 +45,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private string? _projectPath;
     private bool _isProjectDirty;
     private bool _isLoadingProject;
+    private bool _isAudioMixerExpanded;
 
     public MainWindowViewModel(
         IMediaProbe? mediaProbe,
@@ -87,6 +88,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public string SupportedMediaHint => "Video and audio files supported by the local media engine";
 
     public ObservableCollection<MediaItemViewModel> MediaItems { get; } = [];
+
+    public ObservableCollection<AudioTrackViewModel> AudioTracks { get; } = [];
 
     public bool IsProjectPersistenceAvailable => _projectStore is not null;
 
@@ -281,6 +284,16 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 return "External-audio mixing must be configured before export";
             }
 
+            if (AudioTracks.Count > 1)
+            {
+                return "Multiple audio-track mixing is not connected to export yet";
+            }
+
+            if (AudioTracks.Any(track => track.IsEdited))
+            {
+                return "Audio cut/gain decisions are saved, but export parity is not connected yet";
+            }
+
             if (SelectedMedia.Edit is null || SelectedMedia.Edit.IsEmpty)
             {
                 return "Keep at least one source range before exporting";
@@ -328,13 +341,21 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool ShowTimeline => MediaItems.Count(item => item.HasVideo) > 1;
 
-    public bool ShowAudioMixer => MediaItems.Any(item => item.IsExternalAudio);
+    public bool HasAudioTracks => AudioTracks.Count > 0;
+
+    public bool ShowAudioMixer =>
+        HasAudioTracks && (_isAudioMixerExpanded || ExternalAudioItems.Any());
 
     public bool ShowRangeStrip => ShowQuickWorkspace && !ShowTimeline;
 
     public IEnumerable<MediaItemViewModel> VideoItems => MediaItems.Where(item => item.HasVideo);
 
     public IEnumerable<MediaItemViewModel> ExternalAudioItems => MediaItems.Where(item => item.IsExternalAudio);
+
+    public string AudioTrackCountText =>
+        $"{AudioTracks.Count} track{(AudioTracks.Count == 1 ? string.Empty : "s")}";
+
+    public string AudioMixerButtonText => ShowAudioMixer ? "Hide mixer" : "Mixer";
 
     public string EditingModeText => ShowTimeline ? "TIMELINE" : "QUICK EDIT";
 
@@ -423,6 +444,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             await item.ProbeAsync(_importMedia, cancellationToken);
+            AddAudioTracks(item);
             if (item.IsReady && SelectedMedia is null)
             {
                 SelectedMedia = item;
@@ -524,6 +546,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _exportCancellation?.Cancel();
     }
 
+    public void ToggleAudioMixer()
+    {
+        _isAudioMixerExpanded = !_isAudioMixerExpanded;
+        OnPropertyChanged(nameof(ShowAudioMixer));
+        OnPropertyChanged(nameof(AudioMixerButtonText));
+    }
+
     public async Task<bool> SaveProjectAsync(
         string? projectPath = null,
         CancellationToken cancellationToken = default)
@@ -594,6 +623,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         try
         {
             SelectedMedia = null;
+            foreach (var audioTrack in AudioTracks)
+            {
+                audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
+            }
+
+            AudioTracks.Clear();
             MediaItems.Clear();
             _knownPaths.Clear();
             _unavailableProjectMedia.Clear();
@@ -697,6 +732,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             SelectedMedia.PropertyChanged -= OnSelectedMediaPropertyChanged;
         }
 
+        foreach (var audioTrack in AudioTracks)
+        {
+            audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
+        }
+
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
         _previewCancellation = null;
@@ -716,9 +756,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ShowQuickWorkspace));
         OnPropertyChanged(nameof(ShowTimeline));
         OnPropertyChanged(nameof(ShowAudioMixer));
+        OnPropertyChanged(nameof(HasAudioTracks));
+        OnPropertyChanged(nameof(AudioMixerButtonText));
         OnPropertyChanged(nameof(ShowRangeStrip));
         OnPropertyChanged(nameof(VideoItems));
         OnPropertyChanged(nameof(ExternalAudioItems));
+        OnPropertyChanged(nameof(AudioTrackCountText));
         OnPropertyChanged(nameof(EditingModeText));
         OnPropertyChanged(nameof(WorkspaceTitle));
         OnPropertyChanged(nameof(CropSizeText));
@@ -750,6 +793,48 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private void OnAudioTrackPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        if (eventArgs.PropertyName is nameof(AudioTrackViewModel.Edit) or
+            nameof(AudioTrackViewModel.GainDb) or
+            nameof(AudioTrackViewModel.IsMuted))
+        {
+            MarkProjectDirty();
+            RaiseExportStateChanged();
+        }
+    }
+
+    private void AddAudioTracks(MediaItemViewModel mediaItem)
+    {
+        if (mediaItem.Media is null)
+        {
+            return;
+        }
+
+        foreach (var stream in mediaItem.Media.Probe.AudioStreams)
+        {
+            if (AudioTracks.Any(track =>
+                    PathComparer.Equals(track.SourcePath, mediaItem.SourcePath) &&
+                    track.StreamIndex == stream.Index))
+            {
+                continue;
+            }
+
+            try
+            {
+                var track = new AudioTrackViewModel(mediaItem.Media, stream);
+                track.PropertyChanged += OnAudioTrackPropertyChanged;
+                AudioTracks.Add(track);
+            }
+            catch (ArgumentException)
+            {
+                // Streams without usable duration remain in probe details but cannot be edited yet.
+            }
+        }
+
+        RaiseWorkspaceStateChanged();
+    }
+
     private void RaiseExportStateChanged()
     {
         OnPropertyChanged(nameof(CanExport));
@@ -757,7 +842,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ExportPlanSummary));
     }
 
-    private static bool TryCreateMediaDocument(
+    private bool TryCreateMediaDocument(
         MediaItemViewModel item,
         out ProjectMediaDocument? document)
     {
@@ -778,6 +863,16 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             : CropRegion.FullFrame(new PixelSize(1, 1));
         var ranges = item.Edit?.KeptRanges ??
                      [new MediaRange(MediaTime.Zero, duration.Value)];
+        var audioTracks = AudioTracks
+            .Where(track => PathComparer.Equals(track.SourcePath, item.SourcePath))
+            .Select(track => new ProjectAudioTrackDocument(
+                track.StreamIndex,
+                track.GainDb,
+                track.IsMuted,
+                track.Edit.SourceDuration.Numerator,
+                track.Edit.SourceDuration.Denominator,
+                track.KeptRanges.Select(CreateRangeDocument).ToArray()))
+            .ToArray();
         document = new ProjectMediaDocument(
             item.SourcePath,
             item.Media.Probe.FileSizeBytes,
@@ -789,28 +884,19 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             crop.Height,
             duration.Value.Numerator,
             duration.Value.Denominator,
-            ranges.Select(range => new ProjectRangeDocument(
-                    range.Start.Numerator,
-                    range.Start.Denominator,
-                    range.End.Numerator,
-                    range.End.Denominator))
-                .ToArray());
+            ranges.Select(CreateRangeDocument).ToArray(),
+            audioTracks);
         return true;
     }
 
-    private static bool TryRestoreMedia(
+    private bool TryRestoreMedia(
         MediaItemViewModel item,
         ProjectMediaDocument document,
         out string? warning)
     {
         warning = null;
-        if (!item.HasVideo)
-        {
-            return true;
-        }
-
         var expectedSize = new PixelSize(document.SourceWidth, document.SourceHeight);
-        if (expectedSize != item.VideoSize ||
+        if ((item.HasVideo && expectedSize != item.VideoSize) ||
             (document.ExpectedFileSizeBytes is { } expectedBytes &&
              item.Media?.Probe.FileSizeBytes is { } actualBytes &&
              expectedBytes != actualBytes))
@@ -821,21 +907,37 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
         try
         {
-            var duration = new MediaTime(
-                document.SourceDurationNumerator,
-                document.SourceDurationDenominator);
-            var edit = SourceEdit.FromKeptRanges(
-                duration,
-                document.KeptRanges.Select(range => new MediaRange(
-                    new MediaTime(range.StartNumerator, range.StartDenominator),
-                    new MediaTime(range.EndNumerator, range.EndDenominator))));
-            var crop = new CropRegion(
-                expectedSize,
-                document.CropX,
-                document.CropY,
-                document.CropWidth,
-                document.CropHeight);
-            item.RestoreEditing(crop, edit);
+            if (item.HasVideo)
+            {
+                var duration = new MediaTime(
+                    document.SourceDurationNumerator,
+                    document.SourceDurationDenominator);
+                var edit = SourceEdit.FromKeptRanges(
+                    duration,
+                    document.KeptRanges.Select(CreateMediaRange));
+                var crop = new CropRegion(
+                    expectedSize,
+                    document.CropX,
+                    document.CropY,
+                    document.CropWidth,
+                    document.CropHeight);
+                item.RestoreEditing(crop, edit);
+            }
+
+            foreach (var savedAudio in document.AudioTracks ?? [])
+            {
+                var track = AudioTracks.FirstOrDefault(candidate =>
+                    PathComparer.Equals(candidate.SourcePath, item.SourcePath) &&
+                    candidate.StreamIndex == savedAudio.StreamIndex) ??
+                    throw new ArgumentException($"Audio stream {savedAudio.StreamIndex} is no longer available.");
+                var audioEdit = SourceEdit.FromKeptRanges(
+                    new MediaTime(
+                        savedAudio.SourceDurationNumerator,
+                        savedAudio.SourceDurationDenominator),
+                    savedAudio.KeptRanges.Select(CreateMediaRange));
+                track.Restore(audioEdit, savedAudio.GainDb, savedAudio.IsMuted);
+            }
+
             return true;
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
@@ -843,6 +945,22 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             warning = $"{item.DisplayName} could not restore its saved edits: {exception.Message}";
             return false;
         }
+    }
+
+    private static ProjectRangeDocument CreateRangeDocument(MediaRange range)
+    {
+        return new ProjectRangeDocument(
+            range.Start.Numerator,
+            range.Start.Denominator,
+            range.End.Numerator,
+            range.End.Denominator);
+    }
+
+    private static MediaRange CreateMediaRange(ProjectRangeDocument range)
+    {
+        return new MediaRange(
+            new MediaTime(range.StartNumerator, range.StartDenominator),
+            new MediaTime(range.EndNumerator, range.EndDenominator));
     }
 
     private void MarkProjectDirty()

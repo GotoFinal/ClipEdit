@@ -11,6 +11,7 @@ public sealed class JsonProjectStore : IProjectStore
     private const long MaximumProjectBytes = 4 * 1024 * 1024;
     private const int MaximumMediaItems = 10_000;
     private const int MaximumRangesPerMedia = 100_000;
+    private const int MaximumAudioTracksPerMedia = 1_000;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -247,6 +248,49 @@ public sealed class JsonProjectStore : IProjectStore
                 ProjectStoreFailure.InvalidDocument,
                 "A saved edit range is invalid.",
                 exception);
+        }
+
+        if (media.AudioTracks is null)
+        {
+            return;
+        }
+
+        if (media.AudioTracks.Count > MaximumAudioTracksPerMedia)
+        {
+            throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "A media entry contains too many audio tracks.");
+        }
+
+        foreach (var audioTrack in media.AudioTracks)
+        {
+            if (audioTrack is null ||
+                audioTrack.StreamIndex < 0 ||
+                !double.IsFinite(audioTrack.GainDb) ||
+                audioTrack.GainDb is < -60 or > 12 ||
+                audioTrack.SourceDurationNumerator <= 0 ||
+                audioTrack.SourceDurationDenominator <= 0 ||
+                audioTrack.KeptRanges is null ||
+                audioTrack.KeptRanges.Count > MaximumRangesPerMedia)
+            {
+                throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "A saved audio track is invalid.");
+            }
+
+            try
+            {
+                var duration = new MediaTime(
+                    audioTrack.SourceDurationNumerator,
+                    audioTrack.SourceDurationDenominator);
+                var ranges = audioTrack.KeptRanges.Select(range => new MediaRange(
+                    new MediaTime(range.StartNumerator, range.StartDenominator),
+                    new MediaTime(range.EndNumerator, range.EndDenominator)));
+                _ = SourceEdit.FromKeptRanges(duration, ranges);
+            }
+            catch (Exception exception) when (exception is ArgumentException or OverflowException or DivideByZeroException)
+            {
+                throw new ProjectStoreException(
+                    ProjectStoreFailure.InvalidDocument,
+                    "A saved audio edit range is invalid.",
+                    exception);
+            }
         }
     }
 

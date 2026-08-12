@@ -425,26 +425,57 @@
                   <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding SelectedMedia.CropSizeText}" />
                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="AUDIO" />
                   <TextBlock VerticalAlignment="Center" Text="{Binding AudioSummaryText}" />
+                  <Button
+                      Classes="secondary"
+                      Click="ToggleAudioMixer_Click"
+                      Content="{Binding AudioMixerButtonText}"
+                      IsVisible="{Binding HasAudioTracks}" />
                 </StackPanel>
               </Grid>
 
-              <Grid ColumnDefinitions="80,*" IsVisible="{Binding ShowAudioMixer}">
-                <Border Padding="8" Background="#20242D" CornerRadius="6,0,0,6">
-                  <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Text="AUDIO" />
-                </Border>
-                <ItemsControl Grid.Column="1" ItemsSource="{Binding ExternalAudioItems}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:MediaItemViewModel">
-                      <Border Height="38" Margin="2,0" Padding="10" Background="#306D5D" CornerRadius="5">
-                        <Grid ColumnDefinitions="*,Auto">
-                          <TextBlock VerticalAlignment="Center" FontSize="11" Text="{Binding DisplayName}" />
-                          <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="10" Text="0.0 dB" />
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </Grid>
+              <Border Padding="10" Background="#151820" CornerRadius="7" IsVisible="{Binding ShowAudioMixer}">
+                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
+                    <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding AudioTrackCountText}" />
+                  </Grid>
+                  <ScrollViewer Grid.Row="1" MaxHeight="230" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding AudioTracks}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AudioTrackViewModel">
+                          <Border Margin="0,0,0,7" Padding="9" Background="#20242D" CornerRadius="6">
+                            <Grid RowDefinitions="Auto,34,Auto" RowSpacing="7">
+                              <Grid ColumnDefinitions="*,Auto,150,58" ColumnSpacing="8">
+                                <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                <CheckBox Grid.Column="1" VerticalAlignment="Center" Content="Mute" IsChecked="{Binding IsMuted, Mode=TwoWay}" />
+                                <Slider Grid.Column="2" Minimum="-60" Maximum="12" Value="{Binding GainDb, Mode=TwoWay}" />
+                                <TextBlock Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Text="{Binding GainText}" />
+                              </Grid>
+                              <controls:SourceRangeCanvas
+                                  Grid.Row="1"
+                                  AutomationProperties.Name="Audio kept ranges and cut selection"
+                                  Duration="{Binding DurationSeconds}"
+                                  KeptRanges="{Binding KeptRanges}"
+                                  Playhead="{Binding PlayheadSeconds, Mode=TwoWay}"
+                                  SelectionEnd="{Binding SelectionEndSeconds, Mode=TwoWay}"
+                                  SelectionStart="{Binding SelectionStartSeconds, Mode=TwoWay}" />
+                              <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                                <Button
+                                    Classes="secondary"
+                                    Click="RemoveAudioSelection_Click"
+                                    Content="Remove selected audio"
+                                    IsEnabled="{Binding CanRemoveSelection}" />
+                                <Button Grid.Column="1" Classes="secondary" Click="ResetAudioTrack_Click" Content="Reset" IsEnabled="{Binding IsEdited}" />
+                                <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding OutputDurationText}" />
+                              </Grid>
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Grid>
+              </Border>
             </StackPanel>
           </Border>
         </Grid>

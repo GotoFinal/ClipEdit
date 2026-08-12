@@ -209,6 +209,31 @@ public sealed partial class MainWindow : Window
         ViewModel?.SelectedMedia?.ResetCuts();
     }
 
+    private static void RemoveAudioSelection_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is Control { DataContext: AudioTrackViewModel track })
+        {
+            track.RemoveSelection();
+        }
+    }
+
+    private static void ResetAudioTrack_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is Control { DataContext: AudioTrackViewModel track })
+        {
+            track.Reset();
+        }
+    }
+
+    private void ToggleAudioMixer_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.ToggleAudioMixer();
+    }
+
     private async void Export_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
