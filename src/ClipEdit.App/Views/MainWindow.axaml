@@ -252,7 +252,9 @@
                       x:Name="LivePreview"
                       Margin="8"
                       AudioTracks="{Binding PreviewAudioTracks}"
+                      HasCuts="{Binding SelectedMedia.IsEdited}"
                       IsPaused="True"
+                      PlaybackRanges="{Binding SelectedMedia.KeptRanges}"
                       Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
                       SourcePath="{Binding SelectedMedia.SourcePath}" />
 
@@ -321,6 +323,11 @@
                           FontSize="10"
                           Foreground="#7C5CFC"
                           Text="{Binding DecoderStatus, ElementName=LivePreview}" />
+                      <TextBlock
+                          FontSize="10"
+                          Foreground="#E3B341"
+                          IsVisible="{Binding HasCuts, ElementName=LivePreview}"
+                          Text="Cut preview sampled · export exact" />
                     </StackPanel>
                   </Border>
                 </Grid>

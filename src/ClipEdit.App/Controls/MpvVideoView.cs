@@ -29,6 +29,14 @@ public sealed class MpvVideoView : OpenGlControlBase
             nameof(AudioTracks),
             defaultValue: Array.Empty<PreviewAudioTrack>());
 
+    public static readonly StyledProperty<IReadOnlyList<MediaRange>> PlaybackRangesProperty =
+        AvaloniaProperty.Register<MpvVideoView, IReadOnlyList<MediaRange>>(
+            nameof(PlaybackRanges),
+            defaultValue: Array.Empty<MediaRange>());
+
+    public static readonly StyledProperty<bool> HasCutsProperty =
+        AvaloniaProperty.Register<MpvVideoView, bool>(nameof(HasCuts));
+
     public static readonly DirectProperty<MpvVideoView, bool> IsPlaybackAvailableProperty =
         AvaloniaProperty.RegisterDirect<MpvVideoView, bool>(
             nameof(IsPlaybackAvailable),
@@ -85,7 +93,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         _positionTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(100),
+            Interval = TimeSpan.FromMilliseconds(50),
         };
         _positionTimer.Tick += OnPositionTimerTick;
     }
@@ -120,6 +128,18 @@ public sealed class MpvVideoView : OpenGlControlBase
         set => SetValue(AudioTracksProperty, value);
     }
 
+    public IReadOnlyList<MediaRange> PlaybackRanges
+    {
+        get => GetValue(PlaybackRangesProperty);
+        set => SetValue(PlaybackRangesProperty, value);
+    }
+
+    public bool HasCuts
+    {
+        get => GetValue(HasCutsProperty);
+        set => SetValue(HasCutsProperty, value);
+    }
+
     public bool IsPlaybackAvailable
     {
         get => _isPlaybackAvailable;
@@ -152,20 +172,24 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (IsPaused && _isEndOfFile && _engine is not null)
+        if (PlaybackRanges.Count == 0)
         {
-            _updatingPositionFromPlayback = true;
-            try
-            {
-                SetCurrentValue(PositionProperty, MediaTime.Zero);
-            }
-            finally
-            {
-                _updatingPositionFromPlayback = false;
-            }
+            PlaybackStatus = "No kept video ranges to play";
+            return;
+        }
 
-            await _engine.SeekAsync(MediaTime.Zero, cancellationToken);
-            _isEndOfFile = false;
+        if (IsPaused && _engine is not null)
+        {
+            var decision = GetPlaybackRangeDecision(Position, PlaybackRanges);
+            var target = _isEndOfFile || decision.Action == PlaybackRangeAction.End
+                ? PlaybackRanges[0].Start
+                : decision.Target;
+            if (target is not null)
+            {
+                SetPositionFromPlayback(target.Value);
+                await _engine.SeekAsync(target.Value, cancellationToken);
+                _isEndOfFile = false;
+            }
         }
 
         SetCurrentValue(IsPausedProperty, !IsPaused);
@@ -482,23 +506,29 @@ public sealed class MpvVideoView : OpenGlControlBase
             UpdateDecoderStatus(snapshot.HardwareDecoder);
             if (snapshot.Position is not null)
             {
-                _updatingPositionFromPlayback = true;
-                try
+                var decision = GetPlaybackRangeDecision(snapshot.Position.Value, PlaybackRanges);
+                if (decision.Action == PlaybackRangeAction.Seek)
                 {
-                    SetCurrentValue(PositionProperty, snapshot.Position.Value);
+                    SetPositionFromPlayback(decision.Target!.Value);
+                    await _engine.SeekAsync(decision.Target.Value, _lifetimeCancellation.Token);
+                    return;
                 }
-                finally
+
+                if (decision.Action == PlaybackRangeAction.End)
                 {
-                    _updatingPositionFromPlayback = false;
+                    SetPositionFromPlayback(PlaybackRanges.Count == 0
+                        ? snapshot.Position.Value
+                        : PlaybackRanges[^1].End);
+                    CompletePlayback("Reached the end of the kept video ranges");
+                    return;
                 }
+
+                SetPositionFromPlayback(snapshot.Position.Value);
             }
 
             if (snapshot.IsEndOfFile)
             {
-                _isEndOfFile = true;
-                _positionTimer.Stop();
-                SetCurrentValue(IsPausedProperty, true);
-                PlaybackStatus = "Playback ended; press Play to restart";
+                CompletePlayback("Playback ended; press Play to restart");
             }
         }
         catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
@@ -514,6 +544,48 @@ public sealed class MpvVideoView : OpenGlControlBase
         {
             _positionPollInProgress = false;
         }
+    }
+
+    internal static PlaybackRangeDecision GetPlaybackRangeDecision(
+        MediaTime position,
+        IReadOnlyList<MediaRange> ranges)
+    {
+        ArgumentNullException.ThrowIfNull(ranges);
+        foreach (var range in ranges)
+        {
+            if (position < range.Start)
+            {
+                return new PlaybackRangeDecision(PlaybackRangeAction.Seek, range.Start);
+            }
+
+            if (position < range.End)
+            {
+                return new PlaybackRangeDecision(PlaybackRangeAction.Continue, Target: null);
+            }
+        }
+
+        return new PlaybackRangeDecision(PlaybackRangeAction.End, Target: null);
+    }
+
+    private void SetPositionFromPlayback(MediaTime position)
+    {
+        _updatingPositionFromPlayback = true;
+        try
+        {
+            SetCurrentValue(PositionProperty, position);
+        }
+        finally
+        {
+            _updatingPositionFromPlayback = false;
+        }
+    }
+
+    private void CompletePlayback(string status)
+    {
+        _isEndOfFile = true;
+        _positionTimer.Stop();
+        SetCurrentValue(IsPausedProperty, true);
+        PlaybackStatus = status;
     }
 
     private void SetFailure(string message)
@@ -548,3 +620,14 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
     }
 }
+
+internal enum PlaybackRangeAction
+{
+    Continue,
+    Seek,
+    End,
+}
+
+internal readonly record struct PlaybackRangeDecision(
+    PlaybackRangeAction Action,
+    MediaTime? Target);
