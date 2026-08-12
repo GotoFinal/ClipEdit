@@ -105,7 +105,7 @@ public sealed class CropCanvas : Control
         }
 
         var cropRect = GetCropViewport(Crop, viewport);
-        DrawOutsideMask(context, viewport, cropRect);
+        DrawOutsideMask(context, new Rect(Bounds.Size), cropRect);
         DrawRuleOfThirds(context, cropRect);
         context.DrawRectangle(null, CropPen, cropRect);
 
@@ -395,12 +395,23 @@ public sealed class CropCanvas : Control
         return new CropRegion(start.SourceSize, x, y, width, height);
     }
 
-    private static void DrawOutsideMask(DrawingContext context, Rect viewport, Rect crop)
+    private static void DrawOutsideMask(DrawingContext context, Rect bounds, Rect crop)
     {
-        context.FillRectangle(OutsideBrush, new Rect(viewport.X, viewport.Y, viewport.Width, crop.Top - viewport.Top));
-        context.FillRectangle(OutsideBrush, new Rect(viewport.X, crop.Bottom, viewport.Width, viewport.Bottom - crop.Bottom));
-        context.FillRectangle(OutsideBrush, new Rect(viewport.X, crop.Top, crop.Left - viewport.Left, crop.Height));
-        context.FillRectangle(OutsideBrush, new Rect(crop.Right, crop.Top, viewport.Right - crop.Right, crop.Height));
+        foreach (var rectangle in GetOutsideMaskRectangles(bounds, crop))
+        {
+            context.FillRectangle(OutsideBrush, rectangle);
+        }
+    }
+
+    internal static IReadOnlyList<Rect> GetOutsideMaskRectangles(Rect bounds, Rect crop)
+    {
+        return
+        [
+            new Rect(bounds.X, bounds.Y, bounds.Width, crop.Top - bounds.Top),
+            new Rect(bounds.X, crop.Bottom, bounds.Width, bounds.Bottom - crop.Bottom),
+            new Rect(bounds.X, crop.Top, crop.Left - bounds.Left, crop.Height),
+            new Rect(crop.Right, crop.Top, bounds.Right - crop.Right, crop.Height),
+        ];
     }
 
     private static void DrawRuleOfThirds(DrawingContext context, Rect crop)

@@ -163,6 +163,24 @@ public sealed class CropCanvasTests
     }
 
     [Fact]
+    public void Outside_mask_covers_the_entire_preview_beyond_the_canvas_crop()
+    {
+        var bounds = new AvaloniaRect(0, 0, 1_000, 700);
+        var crop = new AvaloniaRect(300, 200, 400, 300);
+
+        var rectangles = CropCanvas.GetOutsideMaskRectangles(bounds, crop);
+
+        Assert.Equal(
+            [
+                new AvaloniaRect(0, 0, 1_000, 200),
+                new AvaloniaRect(0, 500, 1_000, 200),
+                new AvaloniaRect(0, 200, 300, 300),
+                new AvaloniaRect(700, 200, 300, 300),
+            ],
+            rectangles);
+    }
+
+    [Fact]
     public void Crop_canvas_exposes_no_bitmap_source_that_could_duplicate_the_preview()
     {
         Assert.DoesNotContain(
