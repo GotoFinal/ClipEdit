@@ -132,4 +132,73 @@ public sealed class FfmpegExportRendererLocalTests
             File.Delete(destinationPath);
         }
     }
+
+    [Fact]
+    [Trait("Category", "LocalMedia")]
+    public async Task Renderer_concatenates_multiple_sequence_instances_with_per_clip_crops()
+    {
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
+        var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+        var ffprobePath = FfprobeExecutableLocator.Find();
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            !File.Exists(sourcePath) ||
+            ffmpegPath is null ||
+            ffprobePath is null)
+        {
+            return;
+        }
+
+        var probe = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(sourcePath);
+        var video = probe.VideoStreams.First();
+        var audio = probe.AudioStreams.FirstOrDefault();
+        var audioPlans = audio is null
+            ? ImmutableArray<ExportAudioTrackPlan>.Empty
+            : [new ExportAudioTrackPlan(audio.Index, -3)];
+        var firstCrop = new CropRegion(video.OrientedSize, 0, 0, 640, 360);
+        var secondX = Math.Min(video.OrientedSize.Width - 640, 640);
+        var secondCrop = new CropRegion(video.OrientedSize, secondX, 0, 640, 360);
+        var destinationPath = Path.Combine(
+            Path.GetTempPath(),
+            $"clipedit-sequence-{Guid.NewGuid():N}.mp4");
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    sourcePath,
+                    video.Index,
+                    new MediaRange(new MediaTime(1, 1), new MediaTime(2, 1)),
+                    firstCrop,
+                    audioPlans),
+                new ExportVideoSegmentPlan(
+                    sourcePath,
+                    video.Index,
+                    new MediaRange(new MediaTime(3, 1), new MediaTime(4, 1)),
+                    secondCrop,
+                    audioPlans),
+            ],
+            new PixelSize(320, 180),
+            destinationPath,
+            new ExportPreset(
+                "mp4-local-sequence",
+                "MP4 local sequence",
+                ".mp4",
+                ExportContainer.Mp4,
+                VideoCodecFamily.H264,
+                AudioCodecFamily.Aac,
+                requiresEvenDimensions: true));
+
+        try
+        {
+            var result = await new FfmpegExportRenderer(ffmpegPath).RenderAsync(plan);
+            var rendered = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(result.DestinationPath);
+
+            Assert.True(result.FileSizeBytes > 0);
+            Assert.Equal(new PixelSize(320, 180), rendered.VideoStreams.Single().OrientedSize);
+            Assert.True(rendered.Duration >= new MediaTime(19, 10));
+            Assert.True(rendered.Duration <= new MediaTime(21, 10));
+        }
+        finally
+        {
+            File.Delete(destinationPath);
+        }
+    }
 }
