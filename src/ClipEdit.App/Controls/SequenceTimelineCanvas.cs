@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
-using Avalonia.Media.Imaging;
 using ClipEdit.App.ViewModels;
 
 namespace ClipEdit.App.Controls;
@@ -41,9 +40,6 @@ public sealed class SequenceTimelineCanvas : Control
     public static readonly StyledProperty<double> HoverTimeProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, double>(nameof(HoverTime), -1);
 
-    public static readonly StyledProperty<Bitmap?> HoverImageProperty =
-        AvaloniaProperty.Register<SequenceTimelineCanvas, Bitmap?>(nameof(HoverImage));
-
     public static readonly StyledProperty<int> VisualRevisionProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, int>(nameof(VisualRevision));
 
@@ -60,10 +56,8 @@ public sealed class SequenceTimelineCanvas : Control
     private static readonly IPen SelectionPen = new Pen(0xFFE8DEFF, 2.5).ToImmutable();
     private static readonly IPen PlayheadPen = new Pen(0xFFFF6D8A, 2).ToImmutable();
     private static readonly IPen HoverPen = new Pen(0xFF9DE7FF, 1).ToImmutable();
-    private static readonly IPen HoverBorderPen = new Pen(0xFF9DE7FF, 2).ToImmutable();
     private const double TrackTop = 28;
-    private const double EdgeHitWidth = 9;
-    private const double SelectionBandHeight = 18;
+    private const double EdgeHitWidth = 14;
 
     private SequenceTimelineDragMode _dragMode;
     private VideoClipViewModel? _dragClip;
@@ -87,7 +81,6 @@ public sealed class SequenceTimelineCanvas : Control
             ZoomProperty,
             ViewportStartProperty,
             HoverTimeProperty,
-            HoverImageProperty,
             VisualRevisionProperty);
     }
 
@@ -159,12 +152,6 @@ public sealed class SequenceTimelineCanvas : Control
         set => SetValue(HoverTimeProperty, value);
     }
 
-    public Bitmap? HoverImage
-    {
-        get => GetValue(HoverImageProperty);
-        set => SetValue(HoverImageProperty, value);
-    }
-
     public int VisualRevision
     {
         get => GetValue(VisualRevisionProperty);
@@ -198,7 +185,6 @@ public sealed class SequenceTimelineCanvas : Control
         {
             var x = TimeToX(HoverTime);
             context.DrawLine(HoverPen, new Point(x, TrackTop), new Point(x, Bounds.Height));
-            DrawHoverPreview(context, x);
         }
     }
 
@@ -225,41 +211,39 @@ public sealed class SequenceTimelineCanvas : Control
         Focus();
         var point = eventArgs.GetPosition(this);
         var time = XToTime(point.X);
+        _dragClip = null;
         var normalizedSelectionStart = Math.Min(SelectionStart, SelectionEnd);
         var normalizedSelectionEnd = Math.Max(SelectionStart, SelectionEnd);
-        if (point.Y <= SelectionBandHeight &&
+        var hasSelection = normalizedSelectionEnd - normalizedSelectionStart > 0.000001;
+        if (hasSelection &&
+            point.Y < TrackTop &&
             Math.Abs(point.X - TimeToX(normalizedSelectionStart)) <= EdgeHitWidth)
         {
             _dragMode = SequenceTimelineDragMode.SelectionStart;
         }
-        else if (point.Y <= SelectionBandHeight &&
-                 Math.Abs(point.X - TimeToX(normalizedSelectionEnd)) <= EdgeHitWidth)
+        else if (hasSelection &&
+                 point.Y < TrackTop &&
+                  Math.Abs(point.X - TimeToX(normalizedSelectionEnd)) <= EdgeHitWidth)
         {
             _dragMode = SequenceTimelineDragMode.SelectionEnd;
         }
         else
         {
-            _dragClip = FindClip(time);
-            if (_dragClip is not null)
+            var trimHit = FindTrimHit(point);
+            if (trimHit is { } hit)
             {
+                _dragClip = hit.Clip;
                 SetCurrentValue(SelectedClipProperty, _dragClip);
-                var clipLeft = TimeToX(_dragClip.TimelineStartSeconds);
-                var clipRight = TimeToX(_dragClip.TimelineEndSeconds);
-                if (point.Y >= TrackTop && Math.Abs(point.X - clipLeft) <= EdgeHitWidth)
-                {
-                    _dragMode = SequenceTimelineDragMode.TrimStart;
-                }
-                else if (point.Y >= TrackTop && Math.Abs(point.X - clipRight) <= EdgeHitWidth)
-                {
-                    _dragMode = SequenceTimelineDragMode.TrimEnd;
-                }
-                else
-                {
-                    _dragMode = SequenceTimelineDragMode.NewSelection;
-                }
+                _dragMode = hit.Mode;
             }
             else
             {
+                _dragClip = FindClip(time);
+                if (_dragClip is not null)
+                {
+                    SetCurrentValue(SelectedClipProperty, _dragClip);
+                }
+
                 _dragMode = SequenceTimelineDragMode.NewSelection;
             }
         }
@@ -535,28 +519,10 @@ public sealed class SequenceTimelineCanvas : Control
         var selectionRect = new Rect(left, 1, Math.Max(1, right - left), Math.Max(0, Bounds.Height - 2));
         context.FillRectangle(SelectionBrush, selectionRect, 4);
         context.DrawRectangle(null, SelectionPen, selectionRect, 4);
-        context.FillRectangle(SelectionHandleBrush, new Rect(left - 3, 0, 6, Bounds.Height), 2);
-        context.FillRectangle(SelectionHandleBrush, new Rect(right - 3, 0, 6, Bounds.Height), 2);
-    }
-
-    private void DrawHoverPreview(DrawingContext context, double pointerX)
-    {
-        if (HoverImage is null)
-        {
-            return;
-        }
-
-        const double width = 168;
-        const double height = 94;
-        var left = Math.Clamp(pointerX - (width / 2), 2, Math.Max(2, Bounds.Width - width - 2));
-        var top = Math.Max(2, TrackTop + ((TrackHeight - height) / 2));
-        var destination = new Rect(left, top, width, Math.Min(height, Bounds.Height - top - 2));
-        context.FillRectangle(Brushes.Black, destination, 5);
-        context.DrawImage(
-            HoverImage,
-            CreateCoverSourceRect(HoverImage.PixelSize.Width, HoverImage.PixelSize.Height, destination.Width, destination.Height),
-            destination);
-        context.DrawRectangle(null, HoverBorderPen, destination, 5);
+        context.DrawLine(SelectionPen, new Point(left, 0), new Point(left, Bounds.Height));
+        context.DrawLine(SelectionPen, new Point(right, 0), new Point(right, Bounds.Height));
+        context.FillRectangle(SelectionHandleBrush, new Rect(left - 5, 0, 10, TrackTop - 3), 3);
+        context.FillRectangle(SelectionHandleBrush, new Rect(right - 5, 0, 10, TrackTop - 3), 3);
     }
 
     private void ApplyTrim(double pointerDeltaX)
@@ -613,6 +579,64 @@ public sealed class SequenceTimelineCanvas : Control
             ? Clips[^1]
             : null);
 
+    private TimelineTrimHit? FindTrimHit(Point point)
+    {
+        if (point.Y < TrackTop)
+        {
+            return null;
+        }
+
+        var clips = Clips ?? [];
+        if (SelectedClip is not null)
+        {
+            var selectedHit = GetTrimHit(SelectedClip, point.X);
+            if (selectedHit is not null)
+            {
+                return selectedHit;
+            }
+        }
+
+        TimelineTrimHit? nearest = null;
+        var nearestDistance = double.MaxValue;
+        foreach (var clip in clips)
+        {
+            if (ReferenceEquals(clip, SelectedClip))
+            {
+                continue;
+            }
+
+            var leftDistance = Math.Abs(point.X - TimeToX(clip.TimelineStartSeconds));
+            if (leftDistance <= EdgeHitWidth && leftDistance < nearestDistance)
+            {
+                nearest = new TimelineTrimHit(clip, SequenceTimelineDragMode.TrimStart);
+                nearestDistance = leftDistance;
+            }
+
+            var rightDistance = Math.Abs(point.X - TimeToX(clip.TimelineEndSeconds));
+            if (rightDistance <= EdgeHitWidth && rightDistance < nearestDistance)
+            {
+                nearest = new TimelineTrimHit(clip, SequenceTimelineDragMode.TrimEnd);
+                nearestDistance = rightDistance;
+            }
+        }
+
+        return nearest;
+    }
+
+    private TimelineTrimHit? GetTrimHit(VideoClipViewModel clip, double pointerX)
+    {
+        var leftDistance = Math.Abs(pointerX - TimeToX(clip.TimelineStartSeconds));
+        var rightDistance = Math.Abs(pointerX - TimeToX(clip.TimelineEndSeconds));
+        if (leftDistance > EdgeHitWidth && rightDistance > EdgeHitWidth)
+        {
+            return null;
+        }
+
+        return leftDistance <= rightDistance
+            ? new TimelineTrimHit(clip, SequenceTimelineDragMode.TrimStart)
+            : new TimelineTrimHit(clip, SequenceTimelineDragMode.TrimEnd);
+    }
+
     private double TimeToX(double seconds) =>
         ((seconds - EffectiveViewportStart) / EffectiveViewportDuration) * Bounds.Width;
 
@@ -658,6 +682,10 @@ public sealed class SequenceTimelineCanvas : Control
         return new Rect(0, (sourceHeight - height) / 2, sourceWidth, height);
     }
 }
+
+internal readonly record struct TimelineTrimHit(
+    VideoClipViewModel Clip,
+    SequenceTimelineDragMode Mode);
 
 internal enum SequenceTimelineDragMode
 {
