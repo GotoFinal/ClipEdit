@@ -1276,14 +1276,62 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return false;
         }
 
-        var replacements = new List<VideoClipViewModel>(VideoClips.Count);
+        var timelineRemovals = new List<MediaRange>();
         foreach (var clip in VideoClips)
         {
             var overlapStart = Max(selection.Start, clip.TimelineStart);
             var overlapEnd = Min(selection.End, clip.TimelineEnd);
             if (overlapEnd <= overlapStart)
             {
-                replacements.Add(clip);
+                continue;
+            }
+
+            if (clip.TimelineStart < overlapStart)
+            {
+                timelineRemovals.Add(new MediaRange(clip.TimelineStart, overlapStart));
+            }
+
+            if (overlapEnd < clip.TimelineEnd)
+            {
+                timelineRemovals.Add(new MediaRange(overlapEnd, clip.TimelineEnd));
+            }
+        }
+
+        var mergedRemovals = MergeTimelineRanges(timelineRemovals);
+        MediaTime RippleTime(MediaTime time)
+        {
+            var removed = MediaTime.Zero;
+            foreach (var range in mergedRemovals)
+            {
+                if (range.Start >= time)
+                {
+                    break;
+                }
+
+                var removedEnd = Min(range.End, time);
+                if (removedEnd > range.Start)
+                {
+                    removed += removedEnd - range.Start;
+                }
+            }
+
+            var rippled = time - removed;
+            return rippled < MediaTime.Zero ? MediaTime.Zero : rippled;
+        }
+
+        var replacements = new List<VideoClipViewModel>(VideoClips.Count);
+        Guid? firstTouchedClipId = null;
+        Guid? selectedTouchedClipId = null;
+        foreach (var clip in VideoClips)
+        {
+            var overlapStart = Max(selection.Start, clip.TimelineStart);
+            var overlapEnd = Min(selection.End, clip.TimelineEnd);
+            if (overlapEnd <= overlapStart)
+            {
+                var moved = clip.Model.MoveTo(RippleTime(clip.TimelineStart));
+                replacements.Add(ReferenceEquals(moved, clip.Model)
+                    ? clip
+                    : clip.CreateSibling(moved));
                 continue;
             }
 
@@ -1292,17 +1340,56 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 clip.SourceStart + (overlapEnd - clip.TimelineStart));
             if (clip.Model.KeepOnly(sourceSelection) is { } kept)
             {
+                firstTouchedClipId ??= clip.Id;
+                if (clip.Id == SelectedVideoClip?.Id)
+                {
+                    selectedTouchedClipId = clip.Id;
+                }
+
                 replacements.Add(clip.CreateSibling(
-                    kept.MoveTo(overlapStart)));
+                    kept.MoveTo(RippleTime(overlapStart))));
             }
         }
 
-        ReplaceVideoClips(replacements, SelectedVideoClip?.Id);
-        CollapseSequenceSelection(selection.Start);
-        StatusText = "Trimmed the clips touched by the selection; unrelated clips were left unchanged";
+        var preferredClipId = selectedTouchedClipId ?? firstTouchedClipId;
+        if (preferredClipId is null)
+        {
+            return false;
+        }
+
+        var collapsedAt = replacements.First(clip => clip.Id == preferredClipId).TimelineStart;
+        ReplaceVideoClips(replacements, preferredClipId);
+        CollapseSequenceSelection(collapsedAt);
+        StatusText = "Kept the selected content, closed the trimmed gaps, and selected the remaining clip";
         MarkProjectDirty();
         StartSequenceTimelineAnalysis(debounce: false);
         return true;
+    }
+
+    private static IReadOnlyList<MediaRange> MergeTimelineRanges(IEnumerable<MediaRange> ranges)
+    {
+        var ordered = ranges.OrderBy(range => range.Start).ToArray();
+        if (ordered.Length < 2)
+        {
+            return ordered;
+        }
+
+        var merged = new List<MediaRange>(ordered.Length);
+        var current = ordered[0];
+        foreach (var next in ordered.Skip(1))
+        {
+            if (next.Start <= current.End)
+            {
+                current = new MediaRange(current.Start, Max(current.End, next.End));
+                continue;
+            }
+
+            merged.Add(current);
+            current = next;
+        }
+
+        merged.Add(current);
+        return merged;
     }
 
     public bool SplitSelectedVideoClip()

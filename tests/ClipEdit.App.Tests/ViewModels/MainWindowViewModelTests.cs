@@ -460,6 +460,9 @@ public sealed class MainWindowViewModelTests
 
         var clip = Assert.Single(viewModel.VideoClips);
         Assert.Equal(new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)), clip.Model.SourceRange);
+        Assert.Equal(MediaTime.Zero, clip.TimelineStart);
+        Assert.Same(clip, viewModel.SelectedVideoClip);
+        Assert.Equal(7, viewModel.SequenceDurationSeconds);
         Assert.True(clip.HasHeadHandle);
         Assert.True(clip.HasTailHandle);
 
@@ -467,11 +470,11 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(3.003, clip.SourceStart.TotalSeconds, precision: 3);
         Assert.Equal(new MediaTime(12, 1), clip.SourceEnd);
-        Assert.Equal(12, viewModel.SequenceDurationSeconds);
+        Assert.Equal(8.997, viewModel.SequenceDurationSeconds, precision: 3);
     }
 
     [Fact]
-    public async Task Keep_selection_trims_only_intersecting_clips_and_preserves_the_rest()
+    public async Task Keep_selection_trims_only_intersecting_clips_and_ripples_the_rest()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
         await viewModel.ImportFilesAsync(
@@ -489,12 +492,46 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(
             new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
             viewModel.VideoClips[0].Model.SourceRange);
-        Assert.Equal(new MediaTime(5, 1), viewModel.VideoClips[0].TimelineStart);
+        Assert.Equal(MediaTime.Zero, viewModel.VideoClips[0].TimelineStart);
         Assert.Equal(clipsBefore[1].Id, viewModel.VideoClips[1].Id);
-        Assert.Equal(clipsBefore[1].Model, viewModel.VideoClips[1].Model);
-        Assert.Equal(120, viewModel.SequenceDurationSeconds);
-        Assert.Equal(5, viewModel.SequenceSelectionStartSeconds);
-        Assert.Equal(5, viewModel.SequenceSelectionEndSeconds);
+        Assert.Equal(clipsBefore[1].Model.SourceRange, viewModel.VideoClips[1].Model.SourceRange);
+        Assert.Equal(new MediaTime(7, 1), viewModel.VideoClips[1].TimelineStart);
+        Assert.Same(viewModel.VideoClips[0], viewModel.SelectedVideoClip);
+        Assert.Equal(67, viewModel.SequenceDurationSeconds);
+        Assert.Equal(0, viewModel.SequenceSelectionStartSeconds);
+        Assert.Equal(0, viewModel.SequenceSelectionEndSeconds);
+    }
+
+    [Fact]
+    public async Task Keep_selection_closes_both_sides_of_a_middle_clip_and_selects_it()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync(
+        [
+            Path.Combine(Path.GetTempPath(), "sequence-keep-before.mkv"),
+            Path.Combine(Path.GetTempPath(), "sequence-keep-middle.mkv"),
+            Path.Combine(Path.GetTempPath(), "sequence-keep-after.mkv"),
+        ]);
+        var untouchedFirst = viewModel.VideoClips[0].Model;
+        var untouchedLast = viewModel.VideoClips[2].Model;
+        viewModel.SequenceSelectionStartSeconds = 65;
+        viewModel.SequenceSelectionEndSeconds = 72;
+
+        Assert.True(viewModel.KeepSequenceSelectionOnly());
+
+        Assert.Equal(3, viewModel.VideoClips.Count);
+        Assert.Equal(untouchedFirst, viewModel.VideoClips[0].Model);
+        Assert.Equal(new MediaTime(60, 1), viewModel.VideoClips[1].TimelineStart);
+        Assert.Equal(
+            new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
+            viewModel.VideoClips[1].Model.SourceRange);
+        Assert.Equal(untouchedLast.Id, viewModel.VideoClips[2].Id);
+        Assert.Equal(untouchedLast.SourceRange, viewModel.VideoClips[2].Model.SourceRange);
+        Assert.Equal(new MediaTime(67, 1), viewModel.VideoClips[2].TimelineStart);
+        Assert.Same(viewModel.VideoClips[1], viewModel.SelectedVideoClip);
+        Assert.Equal(127, viewModel.SequenceDurationSeconds);
+        Assert.Equal(60, viewModel.SequenceSelectionStartSeconds);
+        Assert.Equal(60, viewModel.SequenceSelectionEndSeconds);
     }
 
     [Fact]
@@ -543,7 +580,9 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(
             new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
             viewModel.VideoClips[0].Model.SourceRange);
-        Assert.Equal(originalModels[1], viewModel.VideoClips[1].Model);
+        Assert.Equal(originalModels[1].Id, viewModel.VideoClips[1].Id);
+        Assert.Equal(originalModels[1].SourceRange, viewModel.VideoClips[1].Model.SourceRange);
+        Assert.Equal(new MediaTime(7, 1), viewModel.VideoClips[1].TimelineStart);
     }
 
     [Fact]
