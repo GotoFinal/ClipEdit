@@ -593,7 +593,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var preset = viewModel.SelectedExportPreset;
+        var preset = viewModel.GetEffectiveExportPreset();
         var destination = await StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
             {

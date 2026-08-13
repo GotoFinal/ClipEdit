@@ -28,6 +28,7 @@ public sealed class FfprobeJsonParserTests
               "field_order": "progressive",
               "r_frame_rate": "24000/1001",
               "avg_frame_rate": "24000/1001",
+              "bit_rate": "7900000",
               "time_base": "1/1000",
               "start_pts": 0,
               "duration_ts": 1420063,
@@ -42,6 +43,7 @@ public sealed class FfprobeJsonParserTests
               "profile": "LC",
               "sample_fmt": "fltp",
               "sample_rate": "44100",
+              "bit_rate": "192000",
               "channels": 2,
               "channel_layout": "stereo",
               "time_base": "1/1000",
@@ -103,6 +105,7 @@ public sealed class FfprobeJsonParserTests
         Assert.Equal(new FrameRate(24_000, 1_001), video.AverageFrameRate);
         Assert.Equal(new MediaTime(1_420_063, 1_000), video.Duration);
         Assert.Equal("bt709", video.ColorSpace);
+        Assert.Equal(7_900_000, video.BitRateBitsPerSecond);
     }
 
     [Fact]
@@ -113,6 +116,7 @@ public sealed class FfprobeJsonParserTests
         var audio = Assert.IsType<AudioStreamInfo>(result.Streams[1]);
         Assert.Equal("jpn", audio.Language);
         Assert.Equal("Main audio", audio.Title);
+        Assert.Equal(192_000, audio.BitRateBitsPerSecond);
         Assert.Equal(44_100, audio.SampleRate);
         Assert.Equal(2, audio.ChannelCount);
         Assert.Equal("stereo", audio.ChannelLayout);

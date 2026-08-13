@@ -39,6 +39,10 @@ public sealed record ExportPlan
         }
 
         ArgumentNullException.ThrowIfNull(preset);
+        if (preset.ParameterMode != ExportParameterMode.Fixed)
+        {
+            throw new ExportPlanException("A source-matching export intent must be resolved before planning.");
+        }
         if (!Path.IsPathFullyQualified(sourcePath))
         {
             throw new ArgumentException("The export source path must be absolute.", nameof(sourcePath));
@@ -104,6 +108,10 @@ public sealed record ExportPlan
 
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
         ArgumentNullException.ThrowIfNull(preset);
+        if (preset.ParameterMode != ExportParameterMode.Fixed)
+        {
+            throw new ExportPlanException("A source-matching export intent must be resolved before planning.");
+        }
         if (!Path.IsPathFullyQualified(destinationPath))
         {
             throw new ArgumentException("The export destination path must be absolute.", nameof(destinationPath));

@@ -19,7 +19,8 @@ public sealed record AudioStreamInfo : MediaStreamInfo
         int? sampleRate,
         int? channelCount,
         string? channelLayout,
-        string? sampleFormat)
+        string? sampleFormat,
+        long? bitRateBitsPerSecond = null)
         : base(
             index,
             MediaStreamKind.Audio,
@@ -44,10 +45,16 @@ public sealed record AudioStreamInfo : MediaStreamInfo
             throw new ArgumentOutOfRangeException(nameof(channelCount));
         }
 
+        if (bitRateBitsPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bitRateBitsPerSecond));
+        }
+
         SampleRate = sampleRate;
         ChannelCount = channelCount;
         ChannelLayout = channelLayout;
         SampleFormat = sampleFormat;
+        BitRateBitsPerSecond = bitRateBitsPerSecond;
     }
 
     public int? SampleRate { get; }
@@ -57,4 +64,6 @@ public sealed record AudioStreamInfo : MediaStreamInfo
     public string? ChannelLayout { get; }
 
     public string? SampleFormat { get; }
+
+    public long? BitRateBitsPerSecond { get; }
 }

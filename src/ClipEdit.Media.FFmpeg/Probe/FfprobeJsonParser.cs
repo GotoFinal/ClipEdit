@@ -121,7 +121,8 @@ internal static class FfprobeJsonParser
                 GetOptionalString(stream, "color_space"),
                 GetOptionalString(stream, "color_transfer"),
                 GetOptionalString(stream, "color_primaries"),
-                GetOptionalString(stream, "field_order")),
+                GetOptionalString(stream, "field_order"),
+                ParseNullableLong(stream, "bit_rate")),
             MediaStreamKind.Audio => new AudioStreamInfo(
                 index,
                 codecName,
@@ -137,7 +138,8 @@ internal static class FfprobeJsonParser
                 ParseNullableInt32(stream, "sample_rate"),
                 ParseNullableInt32(stream, "channels"),
                 GetOptionalString(stream, "channel_layout"),
-                GetOptionalString(stream, "sample_fmt")),
+                GetOptionalString(stream, "sample_fmt"),
+                ParseNullableLong(stream, "bit_rate")),
             _ => new OtherStreamInfo(
                 index,
                 kind,

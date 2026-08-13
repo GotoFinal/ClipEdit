@@ -1,9 +1,12 @@
+using ClipEdit.Domain.Timeline;
+
 namespace ClipEdit.Media.Export;
 
 public enum ExportContainer
 {
     Mp4,
     WebM,
+    Matroska,
 }
 
 public enum VideoCodecFamily
@@ -16,6 +19,12 @@ public enum AudioCodecFamily
 {
     Aac,
     Opus,
+}
+
+public enum ExportParameterMode
+{
+    Fixed,
+    MatchInput,
 }
 
 /// <summary>
@@ -31,11 +40,28 @@ public sealed record ExportPreset
         ExportContainer container,
         VideoCodecFamily videoCodec,
         AudioCodecFamily audioCodec,
-        bool requiresEvenDimensions)
+        bool requiresEvenDimensions,
+        ExportParameterMode parameterMode = ExportParameterMode.Fixed,
+        FrameRate? frameRate = null,
+        long? videoBitRateBitsPerSecond = null,
+        long? audioBitRateBitsPerSecond = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileExtension);
+
+        if (frameRate is { IsZero: true })
+        {
+            throw new ArgumentOutOfRangeException(nameof(frameRate));
+        }
+        if (videoBitRateBitsPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(videoBitRateBitsPerSecond));
+        }
+        if (audioBitRateBitsPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(audioBitRateBitsPerSecond));
+        }
 
         Id = id;
         DisplayName = displayName;
@@ -44,6 +70,10 @@ public sealed record ExportPreset
         VideoCodec = videoCodec;
         AudioCodec = audioCodec;
         RequiresEvenDimensions = requiresEvenDimensions;
+        ParameterMode = parameterMode;
+        FrameRate = frameRate;
+        VideoBitRateBitsPerSecond = videoBitRateBitsPerSecond;
+        AudioBitRateBitsPerSecond = audioBitRateBitsPerSecond;
     }
 
     public string Id { get; }
@@ -59,4 +89,12 @@ public sealed record ExportPreset
     public AudioCodecFamily AudioCodec { get; }
 
     public bool RequiresEvenDimensions { get; }
+
+    public ExportParameterMode ParameterMode { get; }
+
+    public FrameRate? FrameRate { get; }
+
+    public long? VideoBitRateBitsPerSecond { get; }
+
+    public long? AudioBitRateBitsPerSecond { get; }
 }

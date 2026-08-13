@@ -76,7 +76,7 @@ public sealed partial class MainWindowViewModel
     }
 
     public string CanvasCropSizeText => $"{CanvasCrop.Width} × {CanvasCrop.Height}";
-    public int CropSizeStep => SelectedExportPreset.RequiresEvenDimensions ? 2 : 1;
+    public int CropSizeStep => GetEffectiveExportPreset().RequiresEvenDimensions ? 2 : 1;
 
 
     public string CanvasSizeText => $"{CanvasSize.Width} × {CanvasSize.Height} canvas";

@@ -151,7 +151,7 @@
           <ComboBox
               Width="154"
               ItemsSource="{Binding ExportPresets}"
-              SelectedItem="{Binding SelectedExportPreset}">
+              SelectedItem="{Binding SelectedExportPreset}" ToolTip.Tip="{Binding ExportPlanSummary}">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="mediaExport:ExportPreset">
                 <TextBlock Text="{Binding DisplayName}" />

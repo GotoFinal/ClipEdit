@@ -508,6 +508,32 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Match_input_resolves_from_the_first_exported_source_and_explains_fallbacks()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "matched-source.mkv")]);
+
+        viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
+
+        var effective = viewModel.GetEffectiveExportPreset();
+        Assert.Equal(ExportParameterMode.Fixed, effective.ParameterMode);
+        Assert.Equal(ExportContainer.Matroska, effective.Container);
+        Assert.Equal(VideoCodecFamily.H264, effective.VideoCodec);
+        Assert.Equal(AudioCodecFamily.Aac, effective.AudioCodec);
+        Assert.Equal(new FrameRate(24_000, 1_001), effective.FrameRate);
+        Assert.Equal("matched-source-clip.mkv", viewModel.GetSuggestedExportFileName());
+        Assert.Contains("fallback", viewModel.StatusText, StringComparison.OrdinalIgnoreCase);
+
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "matched-output.mkv"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(effective, renderer.Plan!.Preset);
+    }
+
+    [Fact]
     public async Task Export_automatically_uses_the_active_timeline_selection()
     {
         var renderer = new RecordingExportRenderer();

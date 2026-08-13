@@ -28,7 +28,8 @@ public sealed record VideoStreamInfo : MediaStreamInfo
         string? colorSpace,
         string? colorTransfer,
         string? colorPrimaries,
-        string? fieldOrder)
+        string? fieldOrder,
+        long? bitRateBitsPerSecond = null)
         : base(
             index,
             MediaStreamKind.Video,
@@ -43,6 +44,10 @@ public sealed record VideoStreamInfo : MediaStreamInfo
             startTime,
             duration)
     {
+        if (bitRateBitsPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bitRateBitsPerSecond));
+        }
         EncodedSize = encodedSize;
         RotationDegrees = NormalizeRotation(rotationDegrees);
         NominalFrameRate = nominalFrameRate;
@@ -55,6 +60,7 @@ public sealed record VideoStreamInfo : MediaStreamInfo
         ColorTransfer = colorTransfer;
         ColorPrimaries = colorPrimaries;
         FieldOrder = fieldOrder;
+        BitRateBitsPerSecond = bitRateBitsPerSecond;
     }
 
     public PixelSize EncodedSize { get; }
@@ -85,6 +91,8 @@ public sealed record VideoStreamInfo : MediaStreamInfo
     public string? ColorPrimaries { get; }
 
     public string? FieldOrder { get; }
+
+    public long? BitRateBitsPerSecond { get; }
 
     private static int NormalizeRotation(int value)
     {

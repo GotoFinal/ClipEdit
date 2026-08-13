@@ -218,6 +218,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public IReadOnlyList<ExportPreset> ExportPresets => BuiltInExportPresets.All;
 
+    public ExportPreset GetEffectiveExportPreset()
+    {
+        var slices = GetSequenceExportSlices();
+        return ResolveMatchInput(slices)?.Preset ?? SelectedExportPreset;
+    }
+
+    private MatchInputExportResolution? ResolveMatchInput(IReadOnlyList<SequenceExportSlice> slices)
+    {
+        if (SelectedExportPreset.ParameterMode != ExportParameterMode.MatchInput || slices.Count == 0)
+        {
+            return null;
+        }
+
+        return MatchInputExportPresetResolver.Resolve(slices[0].Clip.Source.Media!.Probe);
+    }
+
+    private ExportPreset ResolveSelectedExportPreset(IReadOnlyList<SequenceExportSlice> slices) =>
+        ResolveMatchInput(slices)?.Preset ?? SelectedExportPreset;
+
     public ExportPreset SelectedExportPreset
     {
         get => _selectedExportPreset;
@@ -229,6 +248,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(CropSizeStep));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
+                if (ResolveMatchInput(GetSequenceExportSlices()) is { } resolution)
+                {
+                    StatusText = resolution.Explanation;
+                }
             }
         }
     }
@@ -589,11 +612,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 return "The timeline selection contains no video";
             }
 
+            var preset = ResolveSelectedExportPreset(slices);
             var outputSize = CanvasCrop.ExportSize;
-            if (SelectedExportPreset.RequiresEvenDimensions &&
+            if (preset.RequiresEvenDimensions &&
                 (((outputSize.Width & 1) != 0) || ((outputSize.Height & 1) != 0)))
             {
-                return $"{SelectedExportPreset.DisplayName} requires even output dimensions; current crop is {outputSize.Width} × {outputSize.Height}";
+                return $"{preset.DisplayName} requires even output dimensions; current crop is {outputSize.Width} × {outputSize.Height}";
             }
 
             return "Ready to export";
@@ -610,11 +634,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 return SelectedExportPreset.DisplayName;
             }
 
+            var preset = ResolveSelectedExportPreset(slices);
             var outputSize = CanvasCrop.ExportSize;
             var duration = HasSequenceSelection
                 ? NormalizedSequenceSelection().Duration
                 : NonNegativeTimelineTime(SequenceDurationSeconds);
-            return $"{SelectedExportPreset.DisplayName} · exact sequence re-encode · " +
+            return $"{preset.DisplayName} · exact sequence re-encode · " +
                    $"{outputSize.Width} × {outputSize.Height} · {FormatSequenceTimestamp(duration)}";
         }
     }
@@ -801,7 +826,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var sourceName = SelectedMedia is null
             ? "clip"
             : Path.GetFileNameWithoutExtension(SelectedMedia.DisplayName);
-        return $"{sourceName}-clip{SelectedExportPreset.FileExtension}";
+        return $"{sourceName}-clip{GetEffectiveExportPreset().FileExtension}";
     }
 
     public async Task<ExportResult?> ExportAsync(
@@ -817,6 +842,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return null;
         }
 
+        var exportPreset = ResolveSelectedExportPreset(slices);
         _exportCancellation?.Cancel();
         _exportCancellation?.Dispose();
         _exportCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -866,7 +892,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 videoSegments,
                 CanvasCrop.ExportSize,
                 destinationPath,
-                SelectedExportPreset,
+                exportPreset,
                 replaceExistingDestination,
                 externalAudio,
                 selectionStart,

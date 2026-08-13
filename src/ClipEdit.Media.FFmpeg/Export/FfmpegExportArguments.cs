@@ -402,13 +402,29 @@ internal static class FfmpegExportArguments
             ],
             _ => throw new ExportPlanException($"Unsupported video codec family: {plan.Preset.VideoCodec}."),
         };
+        if (plan.Preset.VideoBitRateBitsPerSecond is { } videoBitRate)
+        {
+            RemoveOption(arguments, "-crf");
+            RemoveOption(arguments, "-b:v");
+            arguments.Add("-b:v");
+            arguments.Add(videoBitRate.ToString(CultureInfo.InvariantCulture));
+        }
+        if (plan.Preset.FrameRate is { } frameRate)
+        {
+            arguments.Add("-r");
+            arguments.Add($"{frameRate.Numerator}/{frameRate.Denominator}");
+        }
+
+        var audioBitRate = (plan.Preset.AudioBitRateBitsPerSecond ??
+                            (plan.Preset.AudioCodec == AudioCodecFamily.Aac ? 192_000 : 160_000))
+            .ToString(CultureInfo.InvariantCulture);
 
         if (HasAnyAudio(plan))
         {
             arguments.AddRange(plan.Preset.AudioCodec switch
             {
-                AudioCodecFamily.Aac => ["-c:a", "aac", "-b:a", "192k"],
-                AudioCodecFamily.Opus => ["-c:a", "libopus", "-b:a", "160k"],
+                AudioCodecFamily.Aac => ["-c:a", "aac", "-b:a", audioBitRate],
+                AudioCodecFamily.Opus => ["-c:a", "libopus", "-b:a", audioBitRate],
                 _ => throw new ExportPlanException($"Unsupported audio codec family: {plan.Preset.AudioCodec}."),
             });
         }
@@ -422,10 +438,23 @@ internal static class FfmpegExportArguments
         return arguments;
     }
 
+    private static void RemoveOption(List<string> arguments, string option)
+    {
+        var index = arguments.IndexOf(option);
+        if (index < 0)
+        {
+            return;
+        }
+
+        arguments.RemoveAt(index);
+        arguments.RemoveAt(index);
+    }
+
     private static string GetMuxer(ExportContainer container) => container switch
     {
         ExportContainer.Mp4 => "mp4",
         ExportContainer.WebM => "webm",
+        ExportContainer.Matroska => "matroska",
         _ => throw new ArgumentOutOfRangeException(nameof(container), container, "Unsupported output container."),
     };
 

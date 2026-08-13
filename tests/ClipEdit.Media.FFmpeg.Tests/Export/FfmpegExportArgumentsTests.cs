@@ -238,6 +238,43 @@ public sealed class FfmpegExportArgumentsTests
             graph);
     }
 
+    [Fact]
+    public void Matched_parameters_use_bitrate_mode_rational_frame_rate_and_matroska_muxing()
+    {
+        var preset = new ExportPreset(
+            "resolved-match",
+            "Match input — MKV",
+            ".mkv",
+            ExportContainer.Matroska,
+            VideoCodecFamily.H264,
+            AudioCodecFamily.Aac,
+            requiresEvenDimensions: true,
+            frameRate: new FrameRate(24_000, 1_001),
+            videoBitRateBitsPerSecond: 7_500_000,
+            audioBitRateBitsPerSecond: 192_000);
+        var plan = CreatePlan(
+            "C:\\source.mkv",
+            "C:\\matched.mkv",
+            audioStreamIndex: 2,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
+            preset);
+
+        var arguments = FfmpegExportArguments.Create(plan, "C:\\.matched.partial");
+
+        Assert.DoesNotContain("-crf", arguments);
+        Assert.Equal("7500000", ValueAfter(arguments, "-b:v"));
+        Assert.Equal("24000/1001", ValueAfter(arguments, "-r"));
+        Assert.Equal("192000", ValueAfter(arguments, "-b:a"));
+        Assert.Equal("matroska", ValueAfter(arguments, "-f"));
+    }
+
+    private static string ValueAfter(IReadOnlyList<string> arguments, string option)
+    {
+        var index = arguments.ToList().IndexOf(option);
+        Assert.True(index >= 0 && index + 1 < arguments.Count);
+        return arguments[index + 1];
+    }
+
     private static ExportPlan CreatePlan(
         string sourcePath,
         string destinationPath,

@@ -39,7 +39,7 @@ public sealed partial class MainWindowViewModel
     private bool TryGetCompatibleOutputSize(out PixelSize compatibleSize)
     {
         compatibleSize = default;
-        if (!SelectedExportPreset.RequiresEvenDimensions)
+        if (!GetEffectiveExportPreset().RequiresEvenDimensions)
         {
             return false;
         }

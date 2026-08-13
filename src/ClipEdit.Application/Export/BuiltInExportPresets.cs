@@ -22,5 +22,15 @@ public static class BuiltInExportPresets
         AudioCodecFamily.Opus,
         requiresEvenDimensions: true);
 
-    public static IReadOnlyList<ExportPreset> All { get; } = [Mp4Compatible, WebM];
+    public static ExportPreset MatchInput { get; } = new(
+        "match-input-v1",
+        "Match input",
+        ".mkv",
+        ExportContainer.Matroska,
+        VideoCodecFamily.H264,
+        AudioCodecFamily.Aac,
+        requiresEvenDimensions: true,
+        parameterMode: ExportParameterMode.MatchInput);
+
+    public static IReadOnlyList<ExportPreset> All { get; } = [Mp4Compatible, WebM, MatchInput];
 }
