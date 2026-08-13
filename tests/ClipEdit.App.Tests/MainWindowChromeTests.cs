@@ -244,6 +244,45 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Window_routes_control_z_and_control_y_to_project_history()
+    {
+        var viewModel = new MainWindowViewModel(null);
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+        };
+        var keyTarget = window.FindControl<Button>("ExportButton");
+        Assert.NotNull(keyTarget);
+        window.Show();
+        viewModel.ExportScalePercent = 75;
+        Assert.True(viewModel.CanUndo);
+
+        var undo = new KeyEventArgs
+        {
+            RoutedEvent = InputElement.KeyDownEvent,
+            Key = Key.Z,
+            KeyModifiers = KeyModifiers.Control,
+        };
+        keyTarget.RaiseEvent(undo);
+
+        Assert.True(undo.Handled);
+        Assert.Equal(100, viewModel.ExportScalePercent);
+        Assert.True(viewModel.CanRedo);
+
+        var redo = new KeyEventArgs
+        {
+            RoutedEvent = InputElement.KeyDownEvent,
+            Key = Key.Y,
+            KeyModifiers = KeyModifiers.Control,
+        };
+        keyTarget.RaiseEvent(redo);
+
+        Assert.True(redo.Handled);
+        Assert.Equal(75, viewModel.ExportScalePercent);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Project_menu_exposes_windows_file_association_setup_when_available()
     {
         var association = new FakeProjectFileAssociationService();

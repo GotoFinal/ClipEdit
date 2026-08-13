@@ -69,6 +69,11 @@ public sealed partial class MainWindow : Window
 
         DragDrop.AddDragOverHandler(this, OnDragOver);
         DragDrop.AddDropHandler(this, OnDrop);
+        AddHandler(
+            KeyDownEvent,
+            OnWindowKeyDown,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
         SizeChanged += OnWindowSizeChanged;
         Closed += OnClosed;
     }
@@ -282,6 +287,28 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         ViewModel?.Redo();
+    }
+
+    private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        _ = sender;
+        if (!eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control) ||
+            eventArgs.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            return;
+        }
+
+        var handled = eventArgs.Key switch
+        {
+            Key.Z when eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) => ViewModel?.Redo() == true,
+            Key.Z => ViewModel?.Undo() == true,
+            Key.Y => ViewModel?.Redo() == true,
+            _ => false,
+        };
+        if (handled)
+        {
+            eventArgs.Handled = true;
+        }
     }
 
     private async Task<bool> OpenProjectFromUserActionAsync(string projectPath)
