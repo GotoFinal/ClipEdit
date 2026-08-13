@@ -521,7 +521,16 @@ public sealed partial class MainWindow : Window
         _ = eventArgs;
         if (sender is Control { DataContext: AudioTrackViewModel track })
         {
-            track.RemoveSelection();
+            track.SilenceTimelineSelection();
+        }
+    }
+
+    private static void AudioTimeline_DeleteRequested(object? sender, EventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is Control { DataContext: AudioTrackViewModel track })
+        {
+            track.SilenceTimelineSelection();
         }
     }
 

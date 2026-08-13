@@ -77,6 +77,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private double _sequenceTimelineViewportStart;
     private bool _isSequenceTimelineFreeMode;
     private bool _isSequencePlayheadInGap;
+    private bool _isSynchronizingAudioTimeline;
 
     public MainWindowViewModel(
         IMediaProbe? mediaProbe,
@@ -339,6 +340,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(SequencePlayheadText));
             OnPropertyChanged(nameof(CanSplitSelectedVideoClip));
             SyncSourcePreviewToSequenceTime(next, selectClip: true);
+            SynchronizeAudioTimelineState(refreshWaveforms: false);
         }
     }
 
@@ -951,6 +953,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(AudioMixerButtonText));
         if (ShowAudioMixer)
         {
+            RefreshAudioTimelineSegments(refreshWaveforms: false);
             foreach (var track in AudioTracks)
             {
                 StartWaveformAnalysis(track, debounce: false);
@@ -1823,8 +1826,92 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     }
 
+    private void RefreshAudioTimelineSegments(bool refreshWaveforms)
+    {
+        foreach (var track in AudioTracks)
+        {
+            var segments = CreateAudioTimelineSegments(track);
+            track.SetTimelineSegments(segments);
+        }
+
+        SynchronizeAudioTimelineState(refreshWaveforms);
+    }
+
+    private IReadOnlyList<AudioTimelineSegmentViewModel> CreateAudioTimelineSegments(
+        AudioTrackViewModel track)
+    {
+        if (track.IsExternal)
+        {
+            return
+            [
+                new AudioTimelineSegmentViewModel(
+                    null,
+                    track.DisplayName,
+                    track.TimelineOffset,
+                    new MediaRange(MediaTime.Zero, track.Edit.SourceDuration)),
+            ];
+        }
+
+        return VideoClips
+            .Where(clip => PathComparer.Equals(clip.SourcePath, track.SourcePath))
+            .OrderBy(clip => clip.TimelineStart)
+            .Select((clip, index) => new AudioTimelineSegmentViewModel(
+                clip,
+                $"{index + 1}. {clip.DisplayName}",
+                clip.TimelineStart,
+                clip.Model.SourceRange))
+            .ToArray();
+    }
+
+    private void SynchronizeAudioTimelineState(bool refreshWaveforms)
+    {
+        if (_isSynchronizingAudioTimeline)
+        {
+            return;
+        }
+
+        _isSynchronizingAudioTimeline = true;
+        try
+        {
+            foreach (var track in AudioTracks)
+            {
+                var timelineDuration = SequenceDurationSeconds > 0
+                    ? SequenceDurationSeconds
+                    : track.TimelineSegments
+                        .Select(segment => segment.TimelineEndSeconds)
+                        .DefaultIfEmpty(track.DurationSeconds)
+                        .Max();
+                track.SynchronizeTimelineState(
+                    timelineDuration,
+                    SequencePlayheadSeconds,
+                    SequenceSelectionStartSeconds,
+                    SequenceSelectionEndSeconds,
+                    SequenceTimelineZoom,
+                    SequenceTimelineViewportStart,
+                    IsSequenceTimelineFreeMode);
+            }
+        }
+        finally
+        {
+            _isSynchronizingAudioTimeline = false;
+        }
+
+        if (refreshWaveforms && ShowAudioMixer)
+        {
+            foreach (var track in AudioTracks)
+            {
+                StartWaveformAnalysis(track, debounce: true);
+            }
+        }
+    }
+
     private void OnAudioTrackPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
+        if (sender is not AudioTrackViewModel track)
+        {
+            return;
+        }
+
         if (eventArgs.PropertyName is nameof(AudioTrackViewModel.Edit) or
             nameof(AudioTrackViewModel.GainDb) or
             nameof(AudioTrackViewModel.IsMuted) or
@@ -1835,10 +1922,41 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(PreviewAudioTracks));
         }
 
+        if (eventArgs.PropertyName == nameof(AudioTrackViewModel.TimelineOffset))
+        {
+            RefreshAudioTimelineSegments(refreshWaveforms: true);
+        }
+
+        if (_isSynchronizingAudioTimeline)
+        {
+            return;
+        }
+
         if (eventArgs.PropertyName is nameof(AudioTrackViewModel.TimelineZoom) or
             nameof(AudioTrackViewModel.TimelineViewportStart))
         {
-            StartWaveformAnalysis((AudioTrackViewModel)sender!, debounce: true);
+            _sequenceTimelineZoom = track.TimelineZoom;
+            _sequenceTimelineViewportStart = track.TimelineViewportStart;
+            RaiseSequenceViewportChanged();
+            StartSequenceTimelineAnalysis(debounce: true);
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(AudioTrackViewModel.TimelinePlayheadSeconds))
+        {
+            SequencePlayheadSeconds = track.TimelinePlayheadSeconds;
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(AudioTrackViewModel.TimelineSelectionStartSeconds))
+        {
+            SequenceSelectionStartSeconds = track.TimelineSelectionStartSeconds;
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(AudioTrackViewModel.TimelineSelectionEndSeconds))
+        {
+            SequenceSelectionEndSeconds = track.TimelineSelectionEndSeconds;
         }
     }
 
@@ -1871,6 +1989,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         RaiseWorkspaceStateChanged();
+        RefreshAudioTimelineSegments(refreshWaveforms: false);
         if (ShowAudioMixer)
         {
             foreach (var track in AudioTracks.Where(track => !track.HasWaveform))
@@ -2017,6 +2136,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             _sequenceTimelineViewportStart,
             IsSequenceTimelineFreeMode);
         RaiseSequenceStateChanged();
+        RefreshAudioTimelineSegments(refreshWaveforms: ShowAudioMixer);
     }
 
 
@@ -2129,6 +2249,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasSequenceSelection));
         OnPropertyChanged(nameof(CanRemoveSequenceSelection));
         OnPropertyChanged(nameof(CanKeepSequenceSelection));
+        SynchronizeAudioTimelineState(refreshWaveforms: false);
         RaiseExportStateChanged();
     }
 
@@ -2144,6 +2265,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanZoomSequenceTimelineOut));
         OnPropertyChanged(nameof(IsSequenceTimelineFreeMode));
         OnPropertyChanged(nameof(SequenceTimelineModeText));
+        SynchronizeAudioTimelineState(refreshWaveforms: true);
     }
 
     private void RaiseSequenceStateChanged()
@@ -2986,8 +3108,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         CancellationTokenSource request,
         bool debounce)
     {
+        const int maximumRenderedSegments = 48;
         var cancellationToken = request.Token;
-        TimelineBitmapVisual? visual = null;
+        var visuals = new List<TimelineBitmapVisual>();
         try
         {
             if (debounce)
@@ -2995,38 +3118,76 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 await Task.Delay(TimeSpan.FromMilliseconds(220), cancellationToken);
             }
 
-            var start = track.TimelineViewportStart;
-            var end = track.TimelineViewportEndSeconds;
-            if (end <= start)
+            var viewportStart = track.TimelineViewportStart;
+            var viewportEnd = track.TimelineViewportEndSeconds;
+            if (viewportEnd <= viewportStart)
             {
                 return;
             }
 
+            var visibleSegments = track.TimelineSegments
+                .Select(segment => (
+                    Segment: segment,
+                    Start: Math.Max(segment.TimelineStartSeconds, viewportStart),
+                    End: Math.Min(segment.TimelineEndSeconds, viewportEnd)))
+                .Where(item => item.End > item.Start)
+                .ToList();
+            track.IsWaveformDecimated = visibleSegments.Count > maximumRenderedSegments;
+            if (visibleSegments.Count > maximumRenderedSegments)
+            {
+                var original = visibleSegments;
+                visibleSegments = Enumerable.Range(0, maximumRenderedSegments)
+                    .Select(index => original[(int)((long)index * original.Count / maximumRenderedSegments)])
+                    .Distinct()
+                    .ToList();
+            }
+
             track.IsWaveformLoading = true;
             track.WaveformErrorText = null;
-            await _analysisSlots.WaitAsync(cancellationToken);
-            WaveformImage image;
-            try
+            var renderTasks = visibleSegments.Select(async visible =>
             {
-                image = await _waveformRenderer!.RenderAsync(
-                    track.SourcePath,
-                    track.StreamIndex,
-                    new MediaRange(ToMediaTime(start), ToMediaTime(end)),
-                    new PixelSize(1_600, 72),
-                    cancellationToken);
-            }
-            finally
-            {
-                _analysisSlots.Release();
-            }
-            await using var stream = new MemoryStream(image.EncodedImage.ToArray(), writable: false);
-            cancellationToken.ThrowIfCancellationRequested();
-            visual = new TimelineBitmapVisual(start, end, new Bitmap(stream));
+                var sourceStart = visible.Segment.SourceStartSeconds +
+                                  (visible.Start - visible.Segment.TimelineStartSeconds);
+                var sourceEnd = visible.Segment.SourceStartSeconds +
+                                (visible.End - visible.Segment.TimelineStartSeconds);
+                var pixelWidth = Math.Clamp(
+                    (int)Math.Ceiling(
+                        1_600 * (visible.End - visible.Start) /
+                        Math.Max(0.000001, viewportEnd - viewportStart)),
+                    32,
+                    1_600);
+                await _analysisSlots.WaitAsync(cancellationToken);
+                WaveformImage image;
+                try
+                {
+                    image = await _waveformRenderer!.RenderAsync(
+                        track.SourcePath,
+                        track.StreamIndex,
+                        new MediaRange(ToMediaTime(sourceStart), ToMediaTime(sourceEnd)),
+                        new PixelSize(pixelWidth, 72),
+                        cancellationToken);
+                }
+                finally
+                {
+                    _analysisSlots.Release();
+                }
+
+                await using var stream = new MemoryStream(image.EncodedImage.ToArray(), writable: false);
+                cancellationToken.ThrowIfCancellationRequested();
+                var visual = new TimelineBitmapVisual(visible.Start, visible.End, new Bitmap(stream));
+                lock (visuals)
+                {
+                    visuals.Add(visual);
+                }
+            });
+            await Task.WhenAll(renderTasks);
+
             if (_waveformCancellations.TryGetValue(track, out var activeRequest) &&
                 ReferenceEquals(activeRequest, request))
             {
-                track.SetWaveform(visual);
-                visual = null;
+                track.SetWaveform(null);
+                track.SetWaveforms(visuals.OrderBy(visual => visual.Start).ToArray());
+                visuals.Clear();
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -3051,7 +3212,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         finally
         {
-            visual?.Dispose();
+            foreach (var visual in visuals)
+            {
+                visual.Dispose();
+            }
+
             if (_waveformCancellations.TryGetValue(track, out var activeRequest) &&
                 ReferenceEquals(activeRequest, request))
             {

@@ -37,6 +37,15 @@ public sealed class SourceRangeCanvas : Control
 
     public static readonly StyledProperty<double> ViewportStartProperty =
         AvaloniaProperty.Register<SourceRangeCanvas, double>(nameof(ViewportStart));
+    public static readonly StyledProperty<IReadOnlyList<TimelineBitmapVisual>?> WaveformsProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, IReadOnlyList<TimelineBitmapVisual>?>(nameof(Waveforms));
+
+    public static readonly StyledProperty<IReadOnlyList<AudioTimelineSegmentViewModel>?> TimelineSegmentsProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, IReadOnlyList<AudioTimelineSegmentViewModel>?>(nameof(TimelineSegments));
+
+    public static readonly StyledProperty<bool> FreeViewportProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, bool>(nameof(FreeViewport));
+
 
     public static readonly StyledProperty<IReadOnlyList<TimelineThumbnailFrame>?> ThumbnailFramesProperty =
         AvaloniaProperty.Register<SourceRangeCanvas, IReadOnlyList<TimelineThumbnailFrame>?>(nameof(ThumbnailFrames));
@@ -51,6 +60,8 @@ public sealed class SourceRangeCanvas : Control
     private static readonly IPen SelectionPen = new Pen(0xFFD8CCFF, 1).ToImmutable();
     private static readonly IPen PlayheadPen = new Pen(0xFFF4F5FA, 2).ToImmutable();
     private static readonly IBrush EdgeHandleBrush = new ImmutableSolidColorBrush(0xFFF4F5FA);
+    private static readonly IPen SegmentBoundaryPen = new Pen(0xFF52CAE7, 1.5).ToImmutable();
+    private static readonly IBrush SegmentGainBrush = new ImmutableSolidColorBrush(0xAA52CAE7);
     private const double EdgeHitWidth = 12;
     private const double EdgeHandleWidth = 4;
 
@@ -74,7 +85,10 @@ public sealed class SourceRangeCanvas : Control
             ZoomProperty,
             ViewportStartProperty,
             ThumbnailFramesProperty,
-            WaveformProperty);
+            WaveformProperty,
+            WaveformsProperty,
+            TimelineSegmentsProperty,
+            FreeViewportProperty);
     }
 
     public SourceRangeCanvas()
@@ -94,6 +108,8 @@ public sealed class SourceRangeCanvas : Control
         get => GetValue(DurationProperty);
         set => SetValue(DurationProperty, value);
     }
+    public event EventHandler? DeleteRequested;
+
 
     public double Playhead
     {
@@ -143,6 +159,24 @@ public sealed class SourceRangeCanvas : Control
         set => SetValue(WaveformProperty, value);
     }
 
+    public IReadOnlyList<TimelineBitmapVisual>? Waveforms
+    {
+        get => GetValue(WaveformsProperty);
+        set => SetValue(WaveformsProperty, value);
+    }
+
+    public IReadOnlyList<AudioTimelineSegmentViewModel>? TimelineSegments
+    {
+        get => GetValue(TimelineSegmentsProperty);
+        set => SetValue(TimelineSegmentsProperty, value);
+    }
+
+    public bool FreeViewport
+    {
+        get => GetValue(FreeViewportProperty);
+        set => SetValue(FreeViewportProperty, value);
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -169,6 +203,7 @@ public sealed class SourceRangeCanvas : Control
             context.FillRectangle(KeptBrush, new Rect(left, 0, right - left, Bounds.Height), 5);
         }
 
+        DrawTimelineSegments(context);
         DrawRemovedRanges(context);
 
         var selectionLeft = TimeToX(Math.Min(SelectionStart, SelectionEnd));
@@ -206,7 +241,7 @@ public sealed class SourceRangeCanvas : Control
     {
         base.OnPointerPressed(eventArgs);
         var point = eventArgs.GetCurrentPoint(this);
-        if (point.Properties.IsMiddleButtonPressed && Duration > 0 && EffectiveZoom > 1)
+        if (point.Properties.IsMiddleButtonPressed && Duration > 0 && (EffectiveZoom > 1 || FreeViewport))
         {
             Focus();
             _isPanning = true;
@@ -296,7 +331,7 @@ public sealed class SourceRangeCanvas : Control
             return;
         }
 
-        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) && EffectiveZoom > 1)
+        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) && (EffectiveZoom > 1 || FreeViewport))
         {
             SetCurrentValue(
                 ViewportStartProperty,
@@ -308,7 +343,7 @@ public sealed class SourceRangeCanvas : Control
             var anchor = XToTime(pointerX);
             var requestedZoom = Math.Clamp(
                 EffectiveZoom * Math.Pow(1.25, eventArgs.Delta.Y),
-                1,
+                FreeViewport ? TimelineViewportMath.MinimumFreeZoom : 1,
                 TimelineViewportMath.MaximumZoom);
             var relative = Math.Clamp(pointerX / Math.Max(1, Bounds.Width), 0, 1);
             var newDuration = Duration / requestedZoom;
@@ -321,6 +356,13 @@ public sealed class SourceRangeCanvas : Control
 
     protected override void OnKeyDown(KeyEventArgs eventArgs)
     {
+        if (eventArgs.Key == Key.Delete)
+        {
+            DeleteRequested?.Invoke(this, EventArgs.Empty);
+            eventArgs.Handled = true;
+            return;
+        }
+
         base.OnKeyDown(eventArgs);
         var step = Math.Max(0.000001, Step) *
                    (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 10 : 1);
@@ -418,9 +460,11 @@ public sealed class SourceRangeCanvas : Control
                (Math.Clamp(x / Math.Max(1, Bounds.Width), 0, 1) * EffectiveViewportDuration);
     }
 
-    private double EffectiveZoom => Math.Clamp(double.IsFinite(Zoom) ? Zoom : 1, 1, TimelineViewportMath.MaximumZoom);
+    private double EffectiveZoom => TimelineViewportMath.ClampZoom(Zoom, FreeViewport);
 
-    private double EffectiveViewportDuration => Duration / EffectiveZoom;
+    private double EffectiveViewportDuration => Duration <= 0
+        ? 1
+        : TimelineViewportMath.VisibleDuration(Duration, EffectiveZoom, FreeViewport);
 
     private double EffectiveViewportStart => ClampViewportStart(ViewportStart);
 
@@ -431,11 +475,7 @@ public sealed class SourceRangeCanvas : Control
 
     private double ClampViewportStart(double start, double? zoom = null)
     {
-        var effectiveZoom = Math.Clamp(zoom ?? EffectiveZoom, 1, TimelineViewportMath.MaximumZoom);
-        return Math.Clamp(
-            double.IsFinite(start) ? start : 0,
-            0,
-            Math.Max(0, Duration - (Duration / effectiveZoom)));
+        return TimelineViewportMath.ClampStart(Duration, zoom ?? EffectiveZoom, start, FreeViewport);
     }
 
     private void DrawAnalysisVisuals(DrawingContext context)
@@ -444,6 +484,11 @@ public sealed class SourceRangeCanvas : Control
         if (Waveform is { } waveform)
         {
             DrawBitmapRange(context, waveform.Image, waveform.Start, waveform.End);
+        }
+
+        foreach (var timelineWaveform in Waveforms ?? [])
+        {
+            DrawBitmapRange(context, timelineWaveform.Image, timelineWaveform.Start, timelineWaveform.End);
         }
 
         foreach (var thumbnail in ThumbnailFrames ?? [])
@@ -489,6 +534,33 @@ public sealed class SourceRangeCanvas : Control
                 0,
                 TimeToX(visibleEnd) - TimeToX(visibleStart),
                 Bounds.Height));
+    }
+
+    private void DrawTimelineSegments(DrawingContext context)
+    {
+        foreach (var segment in TimelineSegments ?? [])
+        {
+            var start = Math.Max(segment.TimelineStartSeconds, EffectiveViewportStart);
+            var end = Math.Min(segment.TimelineEndSeconds, EffectiveViewportEnd);
+            if (end <= start)
+            {
+                continue;
+            }
+
+            var rect = new Rect(
+                TimeToX(start),
+                1,
+                Math.Max(1, TimeToX(end) - TimeToX(start)),
+                Math.Max(0, Bounds.Height - 2));
+            context.DrawRectangle(null, SegmentBoundaryPen, rect, 3);
+            if (segment.IsGainAdjustable && Math.Abs(segment.GainDb) > 0.05)
+            {
+                context.FillRectangle(
+                    SegmentGainBrush,
+                    new Rect(rect.Left + 3, rect.Top + 3, 3, Math.Max(0, rect.Height - 6)),
+                    1);
+            }
+        }
     }
 
     private void DrawRemovedRanges(DrawingContext context)

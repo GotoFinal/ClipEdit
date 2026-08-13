@@ -20,6 +20,16 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private double _timelineZoom = 1;
     private double _timelineViewportStart;
     private TimelineBitmapVisual? _waveform;
+    private IReadOnlyList<TimelineBitmapVisual> _waveforms = [];
+    private IReadOnlyList<AudioTimelineSegmentViewModel> _timelineSegments = [];
+    private IReadOnlyList<AudioTimelineSegmentViewModel> _adjustableTimelineSegments = [];
+    private ImmutableArray<MediaRange> _timelineKeptRanges = [];
+    private MediaTime _timelinePlayhead;
+    private MediaTime _timelineSelectionStart;
+    private MediaTime _timelineSelectionEnd;
+    private double _timelineDurationSeconds;
+    private bool _timelineFreeViewport;
+    private bool _isWaveformDecimated;
     private bool _isWaveformLoading;
     private string? _waveformErrorText;
 
@@ -66,6 +76,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(HasRangeEdits));
                 OnPropertyChanged(nameof(CanRemoveSelection));
                 OnPropertyChanged(nameof(OutputDurationText));
+                RebuildTimelineKeptRanges();
             }
         }
     }
@@ -142,6 +153,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _isMuted, value))
             {
                 OnPropertyChanged(nameof(IsEdited));
+                RebuildTimelineKeptRanges();
             }
         }
     }
@@ -180,12 +192,78 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public string OutputDurationText => $"Audible {FormatTimestamp(Edit.OutputDuration)}";
 
+    public double TimelineDurationSeconds => _timelineDurationSeconds;
+
+    public IReadOnlyList<AudioTimelineSegmentViewModel> TimelineSegments => _timelineSegments;
+
+    public IReadOnlyList<AudioTimelineSegmentViewModel> AdjustableTimelineSegments =>
+        _adjustableTimelineSegments;
+
+    public ImmutableArray<MediaRange> TimelineKeptRanges => _timelineKeptRanges;
+
+    public bool TimelineFreeViewport => _timelineFreeViewport;
+
+    public double TimelinePlayheadSeconds
+    {
+        get => _timelinePlayhead.TotalSeconds;
+        set
+        {
+            if (SetProperty(ref _timelinePlayhead, QuantizeTimeline(value)))
+            {
+                OnPropertyChanged(nameof(TimelinePlayheadText));
+            }
+        }
+    }
+
+    public string TimelinePlayheadText => FormatTimestamp(_timelinePlayhead);
+
+    public double TimelineSelectionStartSeconds
+    {
+        get => _timelineSelectionStart.TotalSeconds;
+        set
+        {
+            if (SetProperty(ref _timelineSelectionStart, QuantizeTimeline(value)))
+            {
+                RaiseTimelineSelectionChanged();
+            }
+        }
+    }
+
+    public double TimelineSelectionEndSeconds
+    {
+        get => _timelineSelectionEnd.TotalSeconds;
+        set
+        {
+            if (SetProperty(ref _timelineSelectionEnd, QuantizeTimeline(value)))
+            {
+                RaiseTimelineSelectionChanged();
+            }
+        }
+    }
+
+    public bool CanSilenceTimelineSelection =>
+        _timelineSelectionStart < _timelineSelectionEnd &&
+        TimelineKeptRanges.Any(range =>
+            _timelineSelectionStart < range.End && _timelineSelectionEnd > range.Start);
+
+    public string TimelineSelectionText =>
+        $"{FormatTimestamp(_timelineSelectionStart)} – {FormatTimestamp(_timelineSelectionEnd)}";
+
+    public string TimelineViewportLabel => "Synced to video timeline";
+
+    public bool IsWaveformDecimated
+    {
+        get => _isWaveformDecimated;
+        internal set => SetProperty(ref _isWaveformDecimated, value);
+    }
+
+
     public double TimelineZoom
     {
         get => _timelineZoom;
         set
         {
-            var zoom = TimelineViewportMath.ClampZoom(value);
+            var zoom = TimelineViewportMath.ClampZoom(value, TimelineFreeViewport);
             if (!SetProperty(ref _timelineZoom, zoom))
             {
                 return;
@@ -206,7 +284,11 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         get => _timelineViewportStart;
         set
         {
-            var start = TimelineViewportMath.ClampStart(DurationSeconds, TimelineZoom, value);
+            var start = TimelineViewportMath.ClampStart(
+                TimelineDurationSeconds,
+                TimelineZoom,
+                value,
+                TimelineFreeViewport);
             if (SetProperty(ref _timelineViewportStart, start))
             {
                 OnPropertyChanged(nameof(TimelineViewportEndSeconds));
@@ -214,12 +296,168 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
             }
         }
     }
+    public bool SilenceTimelineSelection()
+    {
+        if (!CanSilenceTimelineSelection)
+        {
+            return false;
+        }
+
+        var edit = Edit;
+        foreach (var segment in TimelineSegments)
+        {
+            var overlapStart = Max(_timelineSelectionStart, segment.TimelineStart);
+            var overlapEnd = Min(_timelineSelectionEnd, segment.TimelineEnd);
+            if (overlapEnd <= overlapStart)
+            {
+                continue;
+            }
+
+            var sourceStart = segment.SourceRange.Start + (overlapStart - segment.TimelineStart);
+            var sourceEnd = segment.SourceRange.Start + (overlapEnd - segment.TimelineStart);
+            var removal = new MediaRange(
+                Quantize(sourceStart.TotalSeconds),
+                Quantize(sourceEnd.TotalSeconds));
+            if (!removal.IsEmpty)
+            {
+                edit = edit.Remove(removal);
+            }
+        }
+
+        if (ReferenceEquals(edit, Edit) || edit == Edit)
+        {
+            return false;
+        }
+
+        Edit = edit;
+        return true;
+    }
+
+    internal void SetTimelineSegments(IReadOnlyList<AudioTimelineSegmentViewModel> segments)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        var previous = _timelineSegments;
+        _timelineSegments = segments;
+        _adjustableTimelineSegments = segments.Where(segment => segment.IsGainAdjustable).ToArray();
+        foreach (var segment in previous)
+        {
+            segment.Dispose();
+        }
+
+        OnPropertyChanged(nameof(TimelineSegments));
+        OnPropertyChanged(nameof(AdjustableTimelineSegments));
+        RebuildTimelineKeptRanges();
+    }
+
+    internal void SynchronizeTimelineState(
+        double durationSeconds,
+        double playheadSeconds,
+        double selectionStartSeconds,
+        double selectionEndSeconds,
+        double zoom,
+        double viewportStart,
+        bool freeViewport)
+    {
+        var duration = double.IsFinite(durationSeconds) ? Math.Max(0, durationSeconds) : 0;
+        var freeChanged = SetProperty(ref _timelineFreeViewport, freeViewport, nameof(TimelineFreeViewport));
+        var durationChanged = SetProperty(
+            ref _timelineDurationSeconds,
+            duration,
+            nameof(TimelineDurationSeconds));
+        if (freeChanged || durationChanged)
+        {
+            OnPropertyChanged(nameof(TimelineViewportDurationSeconds));
+            OnPropertyChanged(nameof(TimelineViewportEndSeconds));
+            OnPropertyChanged(nameof(CanZoomTimelineOut));
+        }
+
+        TimelineZoom = zoom;
+        TimelineViewportStart = viewportStart;
+        TimelinePlayheadSeconds = playheadSeconds;
+        TimelineSelectionStartSeconds = selectionStartSeconds;
+        TimelineSelectionEndSeconds = selectionEndSeconds;
+    }
+
+    private void RebuildTimelineKeptRanges()
+    {
+        if (IsMuted)
+        {
+            _timelineKeptRanges = [];
+            OnPropertyChanged(nameof(TimelineKeptRanges));
+            OnPropertyChanged(nameof(CanSilenceTimelineSelection));
+            return;
+        }
+        var mapped = new List<MediaRange>();
+        foreach (var segment in TimelineSegments)
+        {
+            foreach (var kept in KeptRanges)
+            {
+                var sourceStart = Max(segment.SourceRange.Start, kept.Start);
+                var sourceEnd = Min(segment.SourceRange.End, kept.End);
+                if (sourceEnd <= sourceStart)
+                {
+                    continue;
+                }
+
+                var timelineStart = segment.TimelineStart + (sourceStart - segment.SourceRange.Start);
+                mapped.Add(new MediaRange(
+                    timelineStart,
+                    timelineStart + (sourceEnd - sourceStart)));
+            }
+        }
+
+        var merged = ImmutableArray.CreateBuilder<MediaRange>();
+        foreach (var range in mapped.OrderBy(range => range.Start))
+        {
+            if (merged.Count == 0 || range.Start > merged[^1].End)
+            {
+                merged.Add(range);
+                continue;
+            }
+
+            if (range.End > merged[^1].End)
+            {
+                merged[^1] = new MediaRange(merged[^1].Start, range.End);
+            }
+        }
+
+        _timelineKeptRanges = merged.ToImmutable();
+        OnPropertyChanged(nameof(TimelineKeptRanges));
+        OnPropertyChanged(nameof(CanSilenceTimelineSelection));
+    }
+
+    private void RaiseTimelineSelectionChanged()
+    {
+        OnPropertyChanged(nameof(TimelineSelectionStartSeconds));
+        OnPropertyChanged(nameof(TimelineSelectionEndSeconds));
+        OnPropertyChanged(nameof(TimelineSelectionText));
+        OnPropertyChanged(nameof(CanSilenceTimelineSelection));
+    }
+
+    private MediaTime QuantizeTimeline(double seconds)
+    {
+        var bounded = Math.Clamp(
+            double.IsFinite(seconds) ? seconds : 0,
+            0,
+            TimelineDurationSeconds);
+        return new MediaTime(
+            checked((long)Math.Round(bounded * 1_000_000, MidpointRounding.AwayFromZero)),
+            1_000_000);
+    }
+
+    private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;
+
+    private static MediaTime Max(MediaTime left, MediaTime right) => left >= right ? left : right;
+
 
     public double TimelineViewportDurationSeconds =>
-        TimelineViewportMath.VisibleDuration(DurationSeconds, TimelineZoom);
+        TimelineDurationSeconds <= 0
+            ? 0
+            : TimelineViewportMath.VisibleDuration(
+                TimelineDurationSeconds, TimelineZoom, TimelineFreeViewport);
 
     public double TimelineViewportEndSeconds =>
-        Math.Min(DurationSeconds, TimelineViewportStart + TimelineViewportDurationSeconds);
+        TimelineViewportStart + TimelineViewportDurationSeconds;
 
     public string TimelineZoomText => $"{TimelineZoom:0.#}×";
 
@@ -229,7 +467,8 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public bool CanZoomTimelineIn => TimelineZoom < TimelineViewportMath.MaximumZoom;
 
-    public bool CanZoomTimelineOut => TimelineZoom > 1;
+    public bool CanZoomTimelineOut =>
+        TimelineZoom > (TimelineFreeViewport ? TimelineViewportMath.MinimumFreeZoom : 1);
 
     public TimelineBitmapVisual? Waveform
     {
@@ -245,7 +484,32 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public bool HasWaveform => Waveform is not null;
+    public IReadOnlyList<TimelineBitmapVisual> Waveforms
+    {
+        get => _waveforms;
+        private set
+        {
+            var previous = _waveforms;
+            if (!SetProperty(ref _waveforms, value))
+            {
+                return;
+            }
+
+            foreach (var visual in previous)
+            {
+                visual.Dispose();
+            }
+
+            OnPropertyChanged(nameof(HasWaveform));
+        }
+    }
+
+    public bool HasWaveform => Waveform is not null || Waveforms.Count > 0;
+    internal void SetWaveforms(IReadOnlyList<TimelineBitmapVisual> waveforms)
+    {
+        Waveforms = waveforms ?? throw new ArgumentNullException(nameof(waveforms));
+    }
+
 
     public bool IsWaveformLoading
     {
@@ -301,11 +565,12 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
                          ? PlayheadSeconds
                          : TimelineViewportStart + (TimelineViewportDurationSeconds / 2));
         var viewport = TimelineViewportMath.ZoomAround(
-            DurationSeconds,
+            TimelineDurationSeconds,
             TimelineZoom,
             TimelineViewportStart,
             TimelineZoom * factor,
-            anchor);
+            anchor,
+            TimelineFreeViewport);
         TimelineZoom = viewport.Zoom;
         TimelineViewportStart = viewport.Start;
     }
@@ -313,7 +578,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     public void FitTimeline()
     {
         TimelineZoom = 1;
-        TimelineViewportStart = 0;
+        TimelineViewportStart = TimelineViewportMath.ClampStart(TimelineDurationSeconds, 1, 0, TimelineFreeViewport);
     }
 
     internal void SetWaveform(TimelineBitmapVisual? waveform)
@@ -323,6 +588,13 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        SetWaveforms([]);
+        foreach (var segment in _timelineSegments)
+        {
+            segment.Dispose();
+        }
+        _timelineSegments = [];
+        _adjustableTimelineSegments = [];
         SetWaveform(null);
     }
 

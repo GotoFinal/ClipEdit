@@ -671,7 +671,7 @@
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
-                      <TextBlock Classes="muted" FontSize="10" Text="External placement uses timeline time" />
+                      <TextBlock Classes="muted" FontSize="10" Text="Waveforms, cuts, selection and playhead share the video timeline" />
                     </StackPanel>
                     <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding AudioTrackCountText}" />
                   </Grid>
@@ -680,7 +680,7 @@
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:AudioTrackViewModel">
                           <Border Margin="0,0,0,7" Padding="9" Background="#20242D" CornerRadius="6">
-                            <Grid RowDefinitions="Auto,Auto,64,Auto" RowSpacing="7">
+                            <Grid RowDefinitions="Auto,Auto,Auto,64,Auto" RowSpacing="7">
                               <Grid ColumnDefinitions="*,Auto,72,Auto,150,58" ColumnSpacing="8">
                                 <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" IsVisible="{Binding IsExternal}" Text="Start (s)" />
@@ -694,31 +694,55 @@
                                   <TextBlock Classes="muted" FontSize="9" Text="{Binding TimelineViewportText}" />
                                   <TextBlock Classes="muted" FontSize="9" IsVisible="{Binding IsWaveformLoading}" Text="Generating waveform…" />
                                   <TextBlock Foreground="#E88E8E" FontSize="9" IsVisible="{Binding HasWaveformError}" Text="Waveform unavailable" ToolTip.Tip="{Binding WaveformErrorText}" />
+                                  <TextBlock Classes="muted" FontSize="9" IsVisible="{Binding IsWaveformDecimated}" Text="Waveform sampled at this zoom" />
                                 </StackPanel>
                                 <Button Grid.Column="1" Padding="8,1" Classes="secondary" Click="AudioTimelineZoomOut_Click" Content="−" IsEnabled="{Binding CanZoomTimelineOut}" ToolTip.Tip="Zoom waveform out" />
                                 <TextBlock Grid.Column="2" MinWidth="35" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" Text="{Binding TimelineZoomText}" />
                                 <Button Grid.Column="3" Padding="8,1" Classes="secondary" Click="AudioTimelineZoomIn_Click" Content="+" IsEnabled="{Binding CanZoomTimelineIn}" ToolTip.Tip="Zoom waveform in" />
                                 <Button Grid.Column="4" Padding="8,1" Classes="secondary" Click="AudioTimelineFit_Click" Content="Fit" IsEnabled="{Binding CanZoomTimelineOut}" />
                               </Grid>
+                              <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding AdjustableTimelineSegments}">
+                                  <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                      <StackPanel Orientation="Horizontal" Spacing="6" />
+                                    </ItemsPanelTemplate>
+                                  </ItemsControl.ItemsPanel>
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:AudioTimelineSegmentViewModel">
+                                      <Border Padding="6,3" Background="#292E39" CornerRadius="4" ToolTip.Tip="Adjust this clip segment without changing its siblings">
+                                        <Grid ColumnDefinitions="90,84,48" ColumnSpacing="6">
+                                          <TextBlock VerticalAlignment="Center" FontSize="9" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                                          <Slider Grid.Column="1" Minimum="-60" Maximum="12" Value="{Binding GainDb, Mode=TwoWay}" />
+                                          <TextBlock Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="9" Text="{Binding GainText}" />
+                                        </Grid>
+                                      </Border>
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                              </ScrollViewer>
                               <controls:SourceRangeCanvas
-                                  Grid.Row="2"
+                                  Grid.Row="3"
                                   AutomationProperties.Name="Audio audible ranges and silence selection"
-                                  AutomationProperties.HelpText="Wheel zooms the waveform around the pointer. Shift wheel or middle drag pans."
-                                  Duration="{Binding DurationSeconds}"
-                                  KeptRanges="{Binding KeptRanges}"
-                                  Playhead="{Binding PlayheadSeconds, Mode=TwoWay}"
-                                  SelectionEnd="{Binding SelectionEndSeconds, Mode=TwoWay}"
-                                  SelectionStart="{Binding SelectionStartSeconds, Mode=TwoWay}"
+                                  AutomationProperties.HelpText="Uses the shared video timeline viewport. Delete silences the selected range on this track."
+                                  DeleteRequested="AudioTimeline_DeleteRequested"
+                                  Duration="{Binding TimelineDurationSeconds}"
+                                  FreeViewport="{Binding TimelineFreeViewport}"
+                                  KeptRanges="{Binding TimelineKeptRanges}"
+                                  Playhead="{Binding TimelinePlayheadSeconds, Mode=TwoWay}"
+                                  SelectionEnd="{Binding TimelineSelectionEndSeconds, Mode=TwoWay}"
+                                  SelectionStart="{Binding TimelineSelectionStartSeconds, Mode=TwoWay}"
                                   Step="{Binding FrameStepSeconds}"
+                                  TimelineSegments="{Binding TimelineSegments}"
                                   ViewportStart="{Binding TimelineViewportStart, Mode=TwoWay}"
-                                  Waveform="{Binding Waveform}"
+                                  Waveforms="{Binding Waveforms}"
                                   Zoom="{Binding TimelineZoom, Mode=TwoWay}" />
-                              <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                              <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
                                 <Button
                                     Classes="secondary"
                                     Click="RemoveAudioSelection_Click"
-                                    Content="Silence selected range"
-                                    IsEnabled="{Binding CanRemoveSelection}" />
+                                    Content="Silence selection"
+                                    IsEnabled="{Binding CanSilenceTimelineSelection}" />
                                 <Button Grid.Column="1" Classes="secondary" Click="ResetAudioTrack_Click" Content="Reset" IsEnabled="{Binding IsEdited}" />
                                 <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding OutputDurationText}" />
                               </Grid>

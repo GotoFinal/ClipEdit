@@ -832,6 +832,55 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(new MediaTime(15, 1), renderer.Ranges[1].Start);
         Assert.Equal(new MediaTime(45, 1), renderer.Ranges[1].End);
     }
+    [Fact]
+    public async Task Mixer_mirrors_sequence_cuts_gaps_viewport_and_segment_gain()
+    {
+        using var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "synced-mixer.mkv")]);
+        var track = Assert.Single(viewModel.AudioTracks);
+        viewModel.SequencePlayheadSeconds = 30;
+
+        Assert.True(viewModel.SplitSelectedVideoClip());
+        var secondClip = viewModel.VideoClips[1];
+        Assert.True(viewModel.MoveVideoClipTo(secondClip, 40));
+        viewModel.IsSequenceTimelineFreeMode = true;
+        viewModel.ZoomSequenceTimeline(0.5, anchor: 35);
+        viewModel.SequenceSelectionStartSeconds = 42;
+        viewModel.SequenceSelectionEndSeconds = 44;
+        viewModel.SequencePlayheadSeconds = 43;
+
+        Assert.Equal(70, track.TimelineDurationSeconds);
+        Assert.True(track.TimelineFreeViewport);
+        Assert.Equal(viewModel.SequenceTimelineZoom, track.TimelineZoom);
+        Assert.Equal(viewModel.SequenceTimelineViewportStart, track.TimelineViewportStart);
+        Assert.Equal(43, track.TimelinePlayheadSeconds);
+        Assert.Equal(42, track.TimelineSelectionStartSeconds);
+        Assert.Equal(44, track.TimelineSelectionEndSeconds);
+        Assert.Collection(
+            track.TimelineSegments,
+            first =>
+            {
+                Assert.Equal(MediaTime.Zero, first.TimelineStart);
+                Assert.Equal(new MediaTime(30, 1), first.TimelineEnd);
+            },
+            second =>
+            {
+                Assert.Equal(new MediaTime(40, 1), second.TimelineStart);
+                Assert.Equal(new MediaTime(70, 1), second.TimelineEnd);
+            });
+
+        var adjustable = track.AdjustableTimelineSegments[1];
+        adjustable.GainDb = -3.5;
+        Assert.Equal(-3.5, secondClip.AudioGainDb);
+        Assert.True(track.SilenceTimelineSelection());
+        Assert.Contains(
+            new MediaRange(new MediaTime(40, 1), new MediaTime(42, 1)),
+            track.TimelineKeptRanges);
+        Assert.Contains(
+            new MediaRange(new MediaTime(44, 1), new MediaTime(70, 1)),
+            track.TimelineKeptRanges);
+    }
+
 
     private sealed class StubProbe(string? failingPath = null) : IMediaProbe
     {

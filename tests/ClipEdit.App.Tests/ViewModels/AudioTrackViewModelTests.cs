@@ -25,6 +25,43 @@ public sealed class AudioTrackViewModelTests
         Assert.True(track.IsEdited);
     }
 
+    [Fact]
+    public void Timeline_selection_is_mapped_through_segment_placement_to_source_silence()
+    {
+        var track = CreateTrack();
+        track.SetTimelineSegments(
+        [
+            new AudioTimelineSegmentViewModel(
+                null,
+                "Placed audio",
+                new MediaTime(20, 1),
+                new MediaRange(new MediaTime(2, 1), new MediaTime(8, 1))),
+        ]);
+        track.SynchronizeTimelineState(
+            durationSeconds: 30,
+            playheadSeconds: 23,
+            selectionStartSeconds: 22,
+            selectionEndSeconds: 25,
+            zoom: 1,
+            viewportStart: 0,
+            freeViewport: false);
+
+        Assert.True(track.SilenceTimelineSelection());
+
+        Assert.Equal(
+            [
+                new MediaRange(MediaTime.Zero, new MediaTime(4, 1)),
+                new MediaRange(new MediaTime(7, 1), new MediaTime(10, 1)),
+            ],
+            track.KeptRanges);
+        Assert.Equal(
+            [
+                new MediaRange(new MediaTime(20, 1), new MediaTime(22, 1)),
+                new MediaRange(new MediaTime(25, 1), new MediaTime(26, 1)),
+            ],
+            track.TimelineKeptRanges);
+    }
+
     [Theory]
     [InlineData(-100, -60)]
     [InlineData(20, 12)]
