@@ -97,6 +97,8 @@ public sealed class MainWindowChromeTests
         Assert.Equal(30, settings.Height);
         Assert.Equal(24, settings.Width);
         Assert.True(settings.IsEnabled);
+        var flyout = Assert.IsType<Flyout>(settings.Flyout);
+        Assert.True(flyout.OverlayDismissEventPassThrough);
 
         window.Close();
     }

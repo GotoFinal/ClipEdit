@@ -267,7 +267,9 @@
                   ToolTip.Tip="{Binding ExportSettingsSummary}">
                 <PathIcon Width="9" Height="6" Data="M1,1 L4.5,4.5 L8,1 Z" />
                 <Button.Flyout>
-                  <Flyout Placement="BottomEdgeAlignedRight">
+                  <Flyout
+                      Placement="BottomEdgeAlignedRight"
+                      OverlayDismissEventPassThrough="True">
                     <Border
                         Width="430"
                         Padding="10"
