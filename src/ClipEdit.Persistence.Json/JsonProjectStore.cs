@@ -241,7 +241,9 @@ public sealed class JsonProjectStore : IProjectStore
                 clip.AvailableStartDenominator <= 0 ||
                 clip.AvailableEndDenominator <= 0 ||
                 (document.SchemaVersion >= 5 &&
-                 (clip.TimelineStartNumerator < 0 || clip.TimelineStartDenominator <= 0)))
+                 (clip.TimelineStartNumerator < 0 || clip.TimelineStartDenominator <= 0)) ||
+                (document.SchemaVersion >= 6 &&
+                 (!double.IsFinite(clip.AudioGainDb) || clip.AudioGainDb is < -60 or > 12)))
             {
                 throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "A saved video clip is invalid.");
             }
@@ -262,7 +264,10 @@ public sealed class JsonProjectStore : IProjectStore
                     clip.SourceMediaId,
                     sourceRange,
                     availableRange,
-                    timelineStart);
+                    timelineStart,
+                    document.SchemaVersion >= 6
+                        ? clip.AudioGainDb
+                        : 0);
                 _ = new CropRegion(
                     new PixelSize(media.SourceWidth, media.SourceHeight),
                     clip.SourceWindowX,

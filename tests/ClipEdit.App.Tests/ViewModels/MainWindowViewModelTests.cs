@@ -491,6 +491,7 @@ public sealed class MainWindowViewModelTests
         viewModel.SequenceSelectionEndSeconds = 10;
         Assert.Single(viewModel.AudioTracks).GainDb = -3;
         viewModel.SelectedExportPreset = BuiltInExportPresets.WebM;
+        viewModel.SelectedVideoClip!.AudioGainDb = -2;
         var destination = Path.Combine(Path.GetTempPath(), "rendered clip.webm");
 
         var result = await viewModel.ExportAsync(destination, replaceExistingDestination: false);
@@ -502,7 +503,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(viewModel.CanvasSize, segment.CanvasSize);
         Assert.Equal(viewModel.CanvasCrop, segment.CanvasCrop);
         Assert.Equal(viewModel.SelectedVideoClip!.CanvasTransform, segment.CanvasTransform);
-        Assert.Equal(-3, Assert.Single(segment.AudioTracks).GainDb);
+        Assert.Equal(-5, Assert.Single(segment.AudioTracks).GainDb);
         Assert.Equal(destination, renderer.Plan.DestinationPath);
         Assert.Equal("source-clip.webm", viewModel.GetSuggestedExportFileName());
     }
@@ -591,6 +592,8 @@ public sealed class MainWindowViewModelTests
         var previewTrack = Assert.Single(viewModel.PreviewAudioTracks);
         Assert.Equal(track.StreamIndex, previewTrack.StreamIndex);
         Assert.Equal(-7.5, previewTrack.GainDb);
+        viewModel.SelectedVideoClip!.AudioGainDb = 2.5;
+        Assert.Equal(-5, Assert.Single(viewModel.PreviewAudioTracks).GainDb);
         Assert.True(previewTrack.IsMuted);
         Assert.False(previewTrack.IsExternal);
     }
@@ -710,6 +713,7 @@ public sealed class MainWindowViewModelTests
             audioTrack.IsMuted = true;
             var externalTrack = Assert.Single(original.AudioTracks, track => track.IsExternal);
             externalTrack.TimelineOffsetSeconds = 3.25;
+            original.SelectedVideoClip!.AudioGainDb = -6.25;
             original.SelectedExportPreset = BuiltInExportPresets.WebM;
             Assert.True(await original.SaveProjectAsync(projectPath));
             Assert.False(original.IsProjectDirty);
@@ -727,6 +731,7 @@ public sealed class MainWindowViewModelTests
             Assert.Equal<MediaRange>(audioTrack.KeptRanges, restoredAudio.KeptRanges);
             var restoredExternal = Assert.Single(restored.AudioTracks, track => track.IsExternal);
             Assert.Equal(new MediaTime(13, 4), restoredExternal.TimelineOffset);
+            Assert.Equal(-6.25, restored.SelectedVideoClip!.AudioGainDb);
             Assert.False(restored.IsProjectDirty);
 
             using var recovered = new MainWindowViewModel(new StubProbe(), projectStore: store);

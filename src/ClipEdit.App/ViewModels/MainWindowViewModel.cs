@@ -313,6 +313,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             OnPropertyChanged(nameof(CanDeleteSelectedVideoClip));
+            OnPropertyChanged(nameof(PreviewAudioTracks));
             OnPropertyChanged(nameof(CanSplitSelectedVideoClip));
             OnPropertyChanged(nameof(CanApplyCropPreset));
             OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
@@ -703,7 +704,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     track.Edit)
                 : new PreviewAudioTrack(
                     track.StreamIndex,
-                    track.GainDb,
+                    CombineAudioGain(track.GainDb, SelectedVideoClip?.AudioGainDb ?? 0),
                     track.IsMuted || track.Edit.IsEmpty,
                     track.Edit))
             .ToArray();
@@ -861,7 +862,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         PathComparer.Equals(track.SourcePath, slice.Clip.SourcePath))
                     .Select(track => new ExportAudioTrackPlan(
                         track.StreamIndex,
-                        track.GainDb,
+                        CombineAudioGain(track.GainDb, slice.Clip.AudioGainDb),
                         track.Edit))
                     .ToImmutableArray();
                 return new ExportVideoSegmentPlan(
@@ -1942,6 +1943,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             MarkProjectDirty();
         }
 
+        if (eventArgs.PropertyName == nameof(VideoClipViewModel.AudioGainDb))
+        {
+            MarkProjectDirty();
+            RaiseExportStateChanged();
+            OnPropertyChanged(nameof(PreviewAudioTracks));
+        }
+
         if (eventArgs.PropertyName is nameof(VideoClipViewModel.SourceWindow) or
             nameof(VideoClipViewModel.CanvasTransform))
         {
@@ -2460,7 +2468,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             transform.ScaleX,
             transform.ScaleY,
             clip.TimelineStart.Numerator,
-            clip.TimelineStart.Denominator);
+            clip.TimelineStart.Denominator,
+            clip.AudioGainDb);
     }
 
     private void RestoreVideoSequence(ProjectDocument document, ICollection<string> warnings)
@@ -2524,7 +2533,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                             new MediaTime(savedClip.AvailableEndNumerator, savedClip.AvailableEndDenominator)),
                         document.SchemaVersion >= 5
                             ? new MediaTime(savedClip.TimelineStartNumerator, savedClip.TimelineStartDenominator)
-                            : legacyTimelineCursor);
+                            : legacyTimelineCursor,
+                        document.SchemaVersion >= 6
+                            ? savedClip.AudioGainDb
+                            : 0);
                     var window = new CropRegion(
                         source.VideoSize,
                         savedClip.SourceWindowX,
@@ -3064,6 +3076,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var microseconds = checked((long)Math.Round(Math.Max(0, seconds) * 1_000_000));
         return new MediaTime(microseconds, 1_000_000);
     }
+
+    private static double CombineAudioGain(double trackGainDb, double clipGainDb) =>
+        Math.Clamp(trackGainDb + clipGainDb, -60, 12);
 
     private int GetSelectedVideoIndex()
     {

@@ -92,6 +92,29 @@ public sealed class SequenceClipTests
         Assert.Equal(clip.AvailableRange, moved.AvailableRange);
         Assert.Throws<ArgumentOutOfRangeException>(() => clip.MoveTo(Seconds(-1)));
     }
+    [Fact]
+    public void Audio_gain_is_bounded_and_survives_non_destructive_clip_operations()
+    {
+        var clip = new SequenceClip(
+            Guid.NewGuid(),
+            _sourceId,
+            Range(2, 12),
+            Range(0, 20),
+            Seconds(4),
+            audioGainDb: -5.5);
+
+        var (left, right) = clip.Split(Seconds(7), Guid.NewGuid());
+
+        Assert.Equal(-5.5, left.AudioGainDb);
+        Assert.Equal(-5.5, right.AudioGainDb);
+        Assert.Equal(-5.5, clip.TrimStart(Seconds(3)).AudioGainDb);
+        Assert.Equal(-5.5, clip.TrimEnd(Seconds(14)).AudioGainDb);
+        Assert.Equal(-5.5, clip.MoveTo(Seconds(20)).AudioGainDb);
+        Assert.Equal(8.25, clip.WithAudioGain(8.25).AudioGainDb);
+        Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithAudioGain(12.1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithAudioGain(double.NaN));
+    }
+
 
     private SequenceClip CreateClip(
         int start,

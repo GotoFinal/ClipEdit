@@ -13,7 +13,8 @@ public sealed record SequenceClip
         Guid sourceId,
         MediaRange sourceRange,
         MediaRange availableRange,
-        MediaTime timelineStart = default)
+        MediaTime timelineStart = default,
+        double audioGainDb = 0)
     {
         if (id == Guid.Empty)
         {
@@ -44,9 +45,15 @@ public sealed record SequenceClip
             throw new ArgumentOutOfRangeException(nameof(timelineStart));
         }
 
+        if (!double.IsFinite(audioGainDb) || audioGainDb is < -60 or > 12)
+        {
+            throw new ArgumentOutOfRangeException(nameof(audioGainDb));
+        }
+
         Id = id;
         SourceId = sourceId;
         SourceRange = sourceRange;
+        AudioGainDb = audioGainDb;
         AvailableRange = availableRange;
         TimelineStart = timelineStart;
     }
@@ -58,6 +65,8 @@ public sealed record SequenceClip
     public MediaRange SourceRange { get; }
 
     public MediaRange AvailableRange { get; }
+
+    public double AudioGainDb { get; }
 
     public MediaTime TimelineStart { get; }
 
@@ -86,7 +95,8 @@ public sealed record SequenceClip
                 SourceId,
                 new MediaRange(sourceTime, SourceRange.End),
                 AvailableRange,
-                TimelineStart + (sourceTime - SourceRange.Start)));
+                TimelineStart + (sourceTime - SourceRange.Start),
+                AudioGainDb));
     }
 
     public IReadOnlyList<SequenceClip> Remove(MediaRange removal, Guid rightClipId)
@@ -115,7 +125,8 @@ public sealed record SequenceClip
                     SourceId,
                     new MediaRange(end, SourceRange.End),
                     AvailableRange,
-                    TimelineStart + (end - SourceRange.Start)),
+                    TimelineStart + (end - SourceRange.Start),
+                    AudioGainDb),
             ];
         }
 
@@ -158,14 +169,21 @@ public sealed record SequenceClip
     {
         return timelineStart == TimelineStart
             ? this
-            : new SequenceClip(Id, SourceId, SourceRange, AvailableRange, timelineStart);
+            : new SequenceClip(Id, SourceId, SourceRange, AvailableRange, timelineStart, AudioGainDb);
+    }
+
+    public SequenceClip WithAudioGain(double audioGainDb)
+    {
+        return audioGainDb == AudioGainDb
+            ? this
+            : new SequenceClip(Id, SourceId, SourceRange, AvailableRange, TimelineStart, audioGainDb);
     }
 
     private SequenceClip WithRange(MediaRange range)
     {
         var proposedTimelineStart = TimelineStart + (range.Start - SourceRange.Start);
         var timelineStart = proposedTimelineStart < MediaTime.Zero ? MediaTime.Zero : proposedTimelineStart;
-        return new SequenceClip(Id, SourceId, range, AvailableRange, timelineStart);
+        return new SequenceClip(Id, SourceId, range, AvailableRange, timelineStart, AudioGainDb);
     }
 
     private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;

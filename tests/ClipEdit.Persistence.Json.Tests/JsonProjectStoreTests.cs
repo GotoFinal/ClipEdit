@@ -165,7 +165,10 @@ public sealed class JsonProjectStoreTests
                     1,
                     0,
                     1.25,
-                    0.75),
+                    0.75,
+                    TimelineStartNumerator: 3,
+                    TimelineStartDenominator: 2,
+                    AudioGainDb: -5.5),
             ],
             new ProjectCropSettingsDocument("1-1", true),
             new ProjectCanvasDocument(1_920, 1_080, 420, 0, 1_080, 1_080));

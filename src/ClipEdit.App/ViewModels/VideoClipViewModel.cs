@@ -186,6 +186,22 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
             CanvasTransform.RotationDegrees);
     }
 
+    public double AudioGainDb
+    {
+        get => Model.AudioGainDb;
+        set
+        {
+            var bounded = Math.Clamp(double.IsFinite(value) ? value : 0, -60, 12);
+            if (bounded != Model.AudioGainDb)
+            {
+                ReplaceModel(Model.WithAudioGain(bounded));
+            }
+        }
+    }
+
+    public string AudioGainText =>
+        AudioGainDb <= -59.95 ? "−∞ dB" : $"{AudioGainDb:+0.0;-0.0;0.0} dB";
+
     public int CanvasRotationDegrees
     {
         get => CanvasTransform.RotationDegrees;
@@ -358,6 +374,8 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(PlaybackRanges));
         OnPropertyChanged(nameof(IsTrimmed));
         OnPropertyChanged(nameof(SourceRangeText));
+        OnPropertyChanged(nameof(AudioGainDb));
+        OnPropertyChanged(nameof(AudioGainText));
     }
 
     private MediaTime QuantizeSeconds(double seconds)
