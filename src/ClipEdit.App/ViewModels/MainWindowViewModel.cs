@@ -1241,7 +1241,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var overlapEnd = Min(selection.End, clip.TimelineEnd);
             if (overlapEnd <= overlapStart)
             {
-                replacements.Add(clip);
+                if (clip.TimelineStart >= selection.End)
+                {
+                    replacements.Add(clip.CreateSibling(
+                        clip.Model.MoveTo(clip.TimelineStart - selection.Duration)));
+                }
+                else
+                {
+                    replacements.Add(clip);
+                }
+
                 continue;
             }
 
@@ -1262,7 +1271,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         ReplaceVideoClips(replacements, preferredClipId: null);
         CollapseSequenceSelection(selection.Start);
-        StatusText = "Removed the selected timeline range; affected clips were split and source handles remain recoverable";
+        StatusText = "Removed the selected timeline range and ripple-closed the gap; source handles remain recoverable";
         MarkProjectDirty();
         StartSequenceTimelineAnalysis(debounce: false);
         return true;

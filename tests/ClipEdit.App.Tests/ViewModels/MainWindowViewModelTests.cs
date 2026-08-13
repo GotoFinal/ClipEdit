@@ -449,6 +449,29 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Removing_a_sequence_range_ripples_unrelated_later_clips_left()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync(
+        [
+            Path.Combine(Path.GetTempPath(), "sequence-remove-first.mkv"),
+            Path.Combine(Path.GetTempPath(), "sequence-remove-later.mkv"),
+        ]);
+        var laterClip = viewModel.VideoClips[1];
+        viewModel.SequenceSelectionStartSeconds = 10;
+        viewModel.SequenceSelectionEndSeconds = 20;
+
+        Assert.True(viewModel.RemoveSequenceSelection());
+
+        Assert.Equal(3, viewModel.VideoClips.Count);
+        Assert.Equal(new MediaTime(10, 1), viewModel.VideoClips[1].TimelineStart);
+        Assert.Equal(laterClip.Id, viewModel.VideoClips[2].Id);
+        Assert.Equal(laterClip.Model.SourceRange, viewModel.VideoClips[2].Model.SourceRange);
+        Assert.Equal(new MediaTime(50, 1), viewModel.VideoClips[2].TimelineStart);
+        Assert.Equal(110, viewModel.SequenceDurationSeconds);
+    }
+
+    [Fact]
     public async Task Keep_only_hides_outer_sections_and_trim_edges_can_restore_them()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
