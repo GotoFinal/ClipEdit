@@ -1011,18 +1011,57 @@ public sealed partial class MainWindow : Window
 
             if (file.Length > viewModel.ClipboardExportMaximumBytes)
             {
-                var message = discardOnFailure
-                    ? $"Clipboard export is {FormatFileSize(file.Length)}, above the " +
-                      $"{viewModel.ClipboardExportMaximumMegabytes} MB limit; the cached output was discarded"
-                    : $"Exported {file.Name}, but its {FormatFileSize(file.Length)} size is above the " +
-                      $"{viewModel.ClipboardExportMaximumMegabytes} MB clipboard limit";
-                if (discardOnFailure)
+                if (!discardOnFailure)
                 {
-                    TryDeleteFile(destinationPath);
+                    viewModel.ReportClipboardExportStatus(
+                        $"Exported {file.Name}, but its {FormatFileSize(file.Length)} size is above the " +
+                        $"{viewModel.ClipboardExportMaximumMegabytes} MB clipboard limit");
+                    return;
                 }
 
-                viewModel.ReportClipboardExportStatus(message);
-                return;
+                while (true)
+                {
+                    var choice = await new ClipboardSizeLimitDialog(
+                            file.Name,
+                            FormatFileSize(file.Length),
+                            viewModel.ClipboardExportMaximumMegabytes)
+                        .ShowDialog<ClipboardSizeLimitChoice>(this);
+                    if (choice == ClipboardSizeLimitChoice.CopyAnyway)
+                    {
+                        break;
+                    }
+
+                    if (choice == ClipboardSizeLimitChoice.SaveToFile)
+                    {
+                        try
+                        {
+                            if (await SaveRenderedClipboardExportAsync(viewModel, destinationPath))
+                            {
+                                return;
+                            }
+
+                            continue;
+                        }
+                        catch (Exception exception) when (
+                            exception is IOException or UnauthorizedAccessException or ArgumentException)
+                        {
+                            var copyAnyway = await new ConfirmActionDialog(
+                                    "Could not save export",
+                                    $"{exception.Message}\n\nCopy the completed export to the clipboard anyway?",
+                                    "Copy anyway")
+                                .ShowDialog<bool>(this);
+                            if (copyAnyway)
+                            {
+                                break;
+                            }
+                        }
+                    }
+
+                    TryDeleteFile(destinationPath);
+                    viewModel.ReportClipboardExportStatus(
+                        "Clipboard export canceled; the cached output was discarded");
+                    return;
+                }
             }
 
             if (Clipboard is null)
@@ -1065,6 +1104,107 @@ public sealed partial class MainWindow : Window
             viewModel.ReportClipboardExportStatus($"Could not copy export to clipboard: {exception.Message}");
         }
     }
+
+    private async Task<bool> SaveRenderedClipboardExportAsync(
+        MainWindowViewModel viewModel,
+        string sourcePath)
+    {
+        var preset = viewModel.GetEffectiveExportPreset();
+        var destination = await StorageProvider.SaveFilePickerAsync(
+            new FilePickerSaveOptions
+            {
+                Title = "Save completed export",
+                SuggestedFileName = viewModel.GetSuggestedExportFileName(),
+                DefaultExtension = preset.FileExtension.TrimStart('.'),
+                ShowOverwritePrompt = true,
+                FileTypeChoices =
+                [
+                    new FilePickerFileType(preset.DisplayName)
+                    {
+                        Patterns = [$"*{preset.FileExtension}"],
+                    },
+                ],
+            });
+        if (destination?.Path is not { IsFile: true } destinationUri)
+        {
+            return false;
+        }
+
+        var destinationPath = destinationUri.LocalPath;
+        if (!destinationPath.EndsWith(preset.FileExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            destinationPath = Path.ChangeExtension(destinationPath, preset.FileExtension);
+        }
+
+        await CopyFileAtomicallyAsync(
+            sourcePath,
+            destinationPath,
+            _lifetimeCancellation.Token);
+        if (!PathsEqual(sourcePath, destinationPath))
+        {
+            TryDeleteFile(sourcePath);
+        }
+
+        viewModel.ReportClipboardExportStatus(
+            $"Saved completed export as {Path.GetFileName(destinationPath)}");
+        return true;
+    }
+
+    private static async Task CopyFileAtomicallyAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        if (PathsEqual(sourcePath, destinationPath))
+        {
+            return;
+        }
+
+        var destinationDirectory = Path.GetDirectoryName(destinationPath);
+        if (string.IsNullOrWhiteSpace(destinationDirectory))
+        {
+            throw new IOException("The selected destination directory is unavailable.");
+        }
+
+        var stagingPath = Path.Combine(
+            destinationDirectory,
+            $".{Path.GetFileName(destinationPath)}.{Guid.NewGuid():N}.saving");
+        try
+        {
+            await using (var source = new FileStream(
+                             sourcePath,
+                             FileMode.Open,
+                             FileAccess.Read,
+                             FileShare.Read,
+                             128 * 1_024,
+                             FileOptions.Asynchronous | FileOptions.SequentialScan))
+            await using (var staging = new FileStream(
+                             stagingPath,
+                             FileMode.CreateNew,
+                             FileAccess.Write,
+                             FileShare.None,
+                             128 * 1_024,
+                             FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                await source.CopyToAsync(staging, cancellationToken);
+                await staging.FlushAsync(cancellationToken);
+            }
+
+            File.Move(stagingPath, destinationPath, overwrite: true);
+        }
+        finally
+        {
+            TryDeleteFile(stagingPath);
+        }
+    }
+
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(
+            Path.GetFullPath(left),
+            Path.GetFullPath(right),
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
 
     private static void CleanupPreviousClipboardExports(string currentPath)
     {

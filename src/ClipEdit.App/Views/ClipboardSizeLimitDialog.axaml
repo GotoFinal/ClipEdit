@@ -1,0 +1,52 @@
+<Window
+    x:Class="ClipEdit.App.Views.ClipboardSizeLimitDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="500"
+    Height="220"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner"
+    Title="Clipboard size limit"
+    Background="#181B22">
+  <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="12">
+    <StackPanel Spacing="3">
+      <TextBlock FontSize="17" FontWeight="SemiBold" Foreground="#F2F3F7" Text="Export exceeds the clipboard limit" />
+      <TextBlock Classes="muted" FontSize="11" Text="The export has finished, so you can still use the rendered file." />
+    </StackPanel>
+
+    <TextBlock
+        x:Name="MessageText"
+        Grid.Row="1"
+        VerticalAlignment="Center"
+        FontSize="13"
+        Foreground="#D8DAE2"
+        TextWrapping="Wrap" />
+
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+      <Button
+          x:Name="SaveToFileButton"
+          MinWidth="104"
+          Padding="12,6"
+          Classes="primary"
+          Click="SaveToFile_Click"
+          Content="Save to file" />
+      <Button
+          x:Name="CancelButton"
+          Grid.Column="2"
+          MinWidth="72"
+          Padding="12,6"
+          Classes="secondary"
+          Click="Cancel_Click"
+          Content="Cancel" />
+      <Button
+          x:Name="CopyAnywayButton"
+          Grid.Column="3"
+          MinWidth="104"
+          Padding="12,6"
+          Classes="secondary"
+          Click="CopyAnyway_Click"
+          Content="Copy anyway" />
+    </Grid>
+  </Grid>
+</Window>
