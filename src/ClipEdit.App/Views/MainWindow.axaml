@@ -28,6 +28,12 @@
       <Setter Property="Padding" Value="12,7" />
       <Setter Property="CornerRadius" Value="6" />
     </Style>
+    <Style Selector="Button.command-bar">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="9,4" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
     <Style Selector="Button.icon">
       <Setter Property="Width" Value="30" />
       <Setter Property="Height" Value="28" />
@@ -125,20 +131,23 @@
 
         <StackPanel x:Name="ProjectActionButtons" Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <Button
+              x:Name="NewProjectButton"
               Height="30"
-              Classes="secondary"
+              Classes="secondary command-bar"
               Click="NewProject_Click"
               Content="New"
               IsEnabled="{Binding CanNewProject}" />
           <Button
+              x:Name="OpenProjectButton"
               Height="30"
-              Classes="secondary"
+              Classes="secondary command-bar"
               Click="OpenProject_Click"
               Content="Open"
               IsEnabled="{Binding CanOpenProject}" />
           <Button
+              x:Name="SaveProjectButton"
               Height="30"
-              Classes="secondary"
+              Classes="secondary command-bar"
               Click="SaveProject_Click"
               Content="Save"
               IsEnabled="{Binding CanSaveProject}" />
@@ -227,15 +236,17 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
           <Button
+              x:Name="ExportButton"
               Height="30"
-              Classes="primary"
+              Classes="primary command-bar"
               Click="Export_Click"
               Content="Export"
               IsEnabled="{Binding CanExport}"
               ToolTip.Tip="{Binding ExportAvailabilityText}" />
           <Button
+              x:Name="CancelExportButton"
               Height="30"
-              Classes="secondary"
+              Classes="secondary command-bar"
               Click="CancelExport_Click"
               Content="Cancel"
               IsVisible="{Binding CanCancelExport}" />

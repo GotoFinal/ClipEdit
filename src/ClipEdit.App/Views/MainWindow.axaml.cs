@@ -40,7 +40,8 @@ public sealed partial class MainWindow : Window
 
         if (OperatingSystem.IsWindows())
         {
-            WindowDecorations = WindowDecorations.BorderOnly;
+            WindowDecorations = WindowDecorations.None;
+            ExtendClientAreaToDecorationsHint = true;
             WindowsCaptionButtons.IsVisible = true;
         }
 

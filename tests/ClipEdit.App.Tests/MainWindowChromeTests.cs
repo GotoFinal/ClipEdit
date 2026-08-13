@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Chrome;
 using Avalonia.Headless.XUnit;
+using Avalonia.Layout;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using ClipEdit.App.Views;
@@ -24,7 +26,9 @@ public sealed class MainWindowChromeTests
 
         if (OperatingSystem.IsWindows())
         {
-            Assert.Equal(WindowDecorations.BorderOnly, window.WindowDecorations);
+            Assert.Equal(WindowDecorations.None, window.WindowDecorations);
+            Assert.True(window.ExtendClientAreaToDecorationsHint);
+            Assert.True(window.CanResize);
             Assert.True(captionButtons.IsVisible);
             AssertCaptionRole(window, "MinimizeCaptionButton", WindowDecorationsElementRole.MinimizeButton);
             AssertCaptionRole(window, "MaximizeCaptionButton", WindowDecorationsElementRole.MaximizeButton);
@@ -33,7 +37,34 @@ public sealed class MainWindowChromeTests
         else
         {
             Assert.Equal(WindowDecorations.Full, window.WindowDecorations);
+            Assert.False(window.ExtendClientAreaToDecorationsHint);
             Assert.False(captionButtons.IsVisible);
+        }
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Command_bar_buttons_fit_the_compact_thirty_pixel_height()
+    {
+        var window = new MainWindow();
+        var buttonNames = new[]
+        {
+            "NewProjectButton",
+            "OpenProjectButton",
+            "SaveProjectButton",
+            "ExportButton",
+            "CancelExportButton",
+        };
+
+        foreach (var buttonName in buttonNames)
+        {
+            var button = window.FindControl<Button>(buttonName);
+            Assert.NotNull(button);
+            Assert.Equal(30, button.Height);
+            Assert.Equal(new Thickness(9, 4), button.Padding);
+            Assert.Equal(HorizontalAlignment.Center, button.HorizontalContentAlignment);
+            Assert.Equal(VerticalAlignment.Center, button.VerticalContentAlignment);
         }
 
         window.Close();
