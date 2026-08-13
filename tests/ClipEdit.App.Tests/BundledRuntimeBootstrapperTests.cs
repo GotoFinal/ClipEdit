@@ -19,7 +19,9 @@ public sealed class BundledRuntimeBootstrapperTests
             var toolDirectory = Directory.CreateDirectory(Path.Combine(root, "tools", "ffmpeg"));
             var ffmpegPath = WriteEmptyFile(toolDirectory.FullName, ffmpegName);
             var ffprobePath = WriteEmptyFile(toolDirectory.FullName, ffprobeName);
-            var libMpvPath = WriteEmptyFile(root, libMpvName);
+            var libMpvPath = WriteEmptyFile(
+                isWindows ? toolDirectory.FullName : root,
+                libMpvName);
 
             var layout = BundledRuntimeBootstrapper.Discover(root, isWindows);
 
@@ -44,6 +46,27 @@ public sealed class BundledRuntimeBootstrapperTests
             Assert.Null(layout.FfmpegPath);
             Assert.Null(layout.FfprobePath);
             Assert.Null(layout.LibMpvPath);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Windows_development_layout_keeps_root_libmpv_fallback()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var toolDirectory = Directory.CreateDirectory(Path.Combine(root, "tools", "ffmpeg"));
+            _ = WriteEmptyFile(toolDirectory.FullName, "ffmpeg.exe");
+            _ = WriteEmptyFile(toolDirectory.FullName, "ffprobe.exe");
+            var libMpvPath = WriteEmptyFile(root, "libmpv-2.dll");
+
+            var layout = BundledRuntimeBootstrapper.Discover(root, isWindows: true);
+
+            Assert.Equal(libMpvPath, layout.LibMpvPath);
         }
         finally
         {

@@ -30,10 +30,16 @@ internal static class BundledRuntimeBootstrapper
         ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
 
         var executableSuffix = isWindows ? ".exe" : string.Empty;
+        var toolDirectory = Path.Combine(baseDirectory, "tools", "ffmpeg");
+        var libMpvName = isWindows ? "libmpv-2.dll" : "libmpv.so.2";
+        var libMpvPath = isWindows
+            ? ExistingFile(Path.Combine(toolDirectory, libMpvName)) ??
+              ExistingFile(Path.Combine(baseDirectory, libMpvName))
+            : ExistingFile(Path.Combine(baseDirectory, libMpvName));
         return new BundledRuntimeLayout(
-            ExistingFile(Path.Combine(baseDirectory, "tools", "ffmpeg", $"ffmpeg{executableSuffix}")),
-            ExistingFile(Path.Combine(baseDirectory, "tools", "ffmpeg", $"ffprobe{executableSuffix}")),
-            ExistingFile(Path.Combine(baseDirectory, isWindows ? "libmpv-2.dll" : "libmpv.so.2")));
+            ExistingFile(Path.Combine(toolDirectory, $"ffmpeg{executableSuffix}")),
+            ExistingFile(Path.Combine(toolDirectory, $"ffprobe{executableSuffix}")),
+            libMpvPath);
     }
 
     private static string? ExistingFile(string path) =>

@@ -41,7 +41,7 @@ if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
 
 if ([string]::IsNullOrWhiteSpace($NativePayloadPath)) {
     $NativePayloadPath = if ($RuntimeId -eq 'win-x64') {
-        Join-Path $workspaceRoot 'packages/native/release/win-x64/ffmpeg-9.0.1-full-shared/payload'
+        Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v1/payload'
     }
     else {
         Join-Path $workspaceRoot "packages/native/release/$RuntimeId/payload"
@@ -62,7 +62,7 @@ $executableSuffix = if ($RuntimeId -eq 'win-x64') { '.exe' } else { '' }
 $requiredPayload = @(
     "tools/ffmpeg/ffmpeg$executableSuffix",
     "tools/ffmpeg/ffprobe$executableSuffix",
-    $(if ($RuntimeId -eq 'win-x64') { 'libmpv-2.dll' } else { 'libmpv.so.2' }),
+    $(if ($RuntimeId -eq 'win-x64') { 'tools/ffmpeg/libmpv-2.dll' } else { 'libmpv.so.2' }),
     'LICENSE.txt',
     'licenses/THIRD_PARTY_NOTICES.md',
     'licenses/07-native-dependencies.md'
@@ -76,7 +76,8 @@ if ($RuntimeId -eq 'win-x64') {
         'tools/ffmpeg/avformat-63.dll',
         'tools/ffmpeg/avutil-61.dll',
         'tools/ffmpeg/swresample-7.dll',
-        'tools/ffmpeg/swscale-10.dll'
+        'tools/ffmpeg/swscale-10.dll',
+        'tools/ffmpeg/vulkan-1.dll'
     )
 }
 
@@ -158,7 +159,7 @@ try {
         includesManagedRuntime = $true
         compressionEnabled = $compressionEnabled
         nativeMediaProfile = if ($RuntimeId -eq 'win-x64') {
-            'ffmpeg-9.0.1-full-shared+libmpv-self-contained'
+            'ffmpeg-9.0.1-shared+libmpv-shared-libav-v1'
         } else {
             'ffmpeg-9.0.1-source-built+libmpv'
         }

@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = if ($RuntimeId -eq 'win-x64') {
-        Join-Path $workspaceRoot 'packages/native/release/win-x64/ffmpeg-9.0.1-full-shared/payload'
+        Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v1/payload'
     }
     else {
         Join-Path $workspaceRoot "packages/native/release/$RuntimeId/payload"
@@ -57,35 +57,33 @@ if ($RuntimeId -eq 'linux-x64') {
     return
 }
 
-$ffmpegVersion = '9.0.1'
-$mpvReleaseTag = '2026-08-11-f4d13e1c2c'
-$ffmpegRoot = Join-Path $workspaceRoot "packages/native/ffmpeg/win-x64/$ffmpegVersion/shared/runtime/ffmpeg-$ffmpegVersion-full_build-shared"
-$mpvRoot = Join-Path $workspaceRoot "packages/native/libmpv/win-x64/$mpvReleaseTag/runtime"
-$ffmpegPath = Join-Path $ffmpegRoot 'bin/ffmpeg.exe'
-$ffprobePath = Join-Path $ffmpegRoot 'bin/ffprobe.exe'
-$libMpvPath = Join-Path $mpvRoot 'libmpv-2.dll'
-$sharedLibraryNames = @(
+$nativeStackRoot = Join-Path $workspaceRoot 'packages/native/media-stack/win-x64/mpv-f4d13-ffmpeg-9.0.1-shared/runtime'
+$nativeBinPath = Join-Path $nativeStackRoot 'bin'
+$nativeNames = @(
+    'ffmpeg.exe',
+    'ffprobe.exe',
+    'libmpv-2.dll',
     'avcodec-63.dll',
     'avdevice-63.dll',
     'avfilter-12.dll',
     'avformat-63.dll',
     'avutil-61.dll',
     'swresample-7.dll',
-    'swscale-10.dll'
+    'swscale-10.dll',
+    'vulkan-1.dll'
 )
-$sharedLibraryPaths = @($sharedLibraryNames | ForEach-Object { Join-Path $ffmpegRoot "bin/$_" })
+$nativePaths = @($nativeNames | ForEach-Object { Join-Path $nativeBinPath $_ })
 
-$missingFfmpegFiles = @(@($ffmpegPath, $ffprobePath) + $sharedLibraryPaths | Where-Object {
+$missingNativeFiles = @($nativePaths | Where-Object {
     -not (Test-Path -LiteralPath $_ -PathType Leaf)
 })
-if ($missingFfmpegFiles.Count -gt 0) {
-    & (Join-Path $PSScriptRoot 'Get-FFmpeg.ps1') -Linkage Shared
+if ($missingNativeFiles.Count -gt 0) {
+    & (Join-Path $PSScriptRoot 'Build-WindowsSharedMediaStack.ps1') -OutputPath $nativeStackRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "The Windows shared media stack build failed with exit code $LASTEXITCODE."
+    }
 }
-
-if (-not (Test-Path -LiteralPath $libMpvPath -PathType Leaf)) {
-    & (Join-Path $PSScriptRoot 'Get-LibMpv.ps1')
-}
-foreach ($requiredPath in @(@($ffmpegPath, $ffprobePath, $libMpvPath) + $sharedLibraryPaths)) {
+foreach ($requiredPath in $nativePaths) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "The Windows release payload source is missing $requiredPath."
     }
@@ -98,17 +96,16 @@ try {
     [System.IO.Directory]::CreateDirectory($toolPath) | Out-Null
     [System.IO.Directory]::CreateDirectory($licensePath) | Out-Null
 
-    Copy-Item -LiteralPath $ffmpegPath -Destination (Join-Path $toolPath 'ffmpeg.exe')
-    Copy-Item -LiteralPath $ffprobePath -Destination (Join-Path $toolPath 'ffprobe.exe')
-    foreach ($libraryPath in $sharedLibraryPaths) {
-        Copy-Item -LiteralPath $libraryPath -Destination (Join-Path $toolPath (Split-Path -Leaf $libraryPath))
+    foreach ($nativePath in $nativePaths) {
+        Copy-Item -LiteralPath $nativePath -Destination (Join-Path $toolPath (Split-Path -Leaf $nativePath))
     }
-    Copy-Item -LiteralPath $libMpvPath -Destination (Join-Path $stagingPath 'libmpv-2.dll')
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'LICENSE') -Destination (Join-Path $stagingPath 'LICENSE.txt')
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'THIRD_PARTY_NOTICES.md') -Destination $licensePath
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'docs/07-native-dependencies.md') -Destination $licensePath
-    Copy-Item -LiteralPath (Join-Path $ffmpegRoot 'LICENSE') -Destination (Join-Path $licensePath 'FFmpeg-GPL-3.0.txt')
-    Copy-Item -LiteralPath (Join-Path $ffmpegRoot 'README.txt') -Destination (Join-Path $licensePath 'FFmpeg-build-README.txt')
+    Copy-Item -Path (Join-Path $nativeStackRoot 'licenses/*') -Destination $licensePath
+    Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'SOURCE-LOCK.tsv') -Destination $licensePath
+    Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'BUILDER-PACKAGES.txt') -Destination $licensePath
+    Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'NATIVE-STACK.txt') -Destination $licensePath
 
     $checksums = Get-ChildItem -LiteralPath $stagingPath -Recurse -File |
         Sort-Object FullName |
