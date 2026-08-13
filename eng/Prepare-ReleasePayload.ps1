@@ -1,9 +1,11 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('win-x64')]
+    [ValidateSet('win-x64', 'linux-x64')]
     [string]$RuntimeId = 'win-x64',
 
-    [string]$OutputPath
+    [string]$OutputPath,
+
+    [string]$WslDistribution = 'Ubuntu'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,6 +18,38 @@ if ([string]::IsNullOrWhiteSpace($OutputPath)) {
 $fullOutputPath = [System.IO.Path]::GetFullPath($OutputPath)
 if (Test-Path -LiteralPath $fullOutputPath) {
     throw "The payload output path already exists: $fullOutputPath"
+}
+
+if ($RuntimeId -eq 'linux-x64') {
+    $linuxScript = Join-Path $PSScriptRoot 'Prepare-LinuxReleasePayload.sh'
+    if (-not (Test-Path -LiteralPath $linuxScript -PathType Leaf)) {
+        throw "Linux payload script is missing: $linuxScript"
+    }
+
+    $hostIsLinux = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Linux)
+    if ($hostIsLinux) {
+        & bash $linuxScript $fullOutputPath
+    }
+    else {
+        $linuxWorkspace = (& wsl.exe -d $WslDistribution -- wslpath -a $workspaceRoot).Trim()
+        $linuxOutput = (& wsl.exe -d $WslDistribution -- wslpath -a $fullOutputPath).Trim()
+        if ($LASTEXITCODE -ne 0 -or
+            [string]::IsNullOrWhiteSpace($linuxWorkspace) -or
+            [string]::IsNullOrWhiteSpace($linuxOutput)) {
+            throw "Could not map the workspace into WSL distribution '$WslDistribution'."
+        }
+
+        & wsl.exe -d $WslDistribution -- bash `
+            "$linuxWorkspace/eng/Prepare-LinuxReleasePayload.sh" `
+            $linuxOutput
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Linux payload preparation failed with exit code $LASTEXITCODE."
+    }
+
+    return
 }
 
 $ffmpegVersion = '9.0.1'

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('win-x64')]
+    [ValidateSet('win-x64', 'linux-x64')]
     [string]$RuntimeId = 'win-x64',
 
     [ValidateSet('SingleFile', 'Directory')]
@@ -15,7 +15,9 @@ param(
 
     [string]$OutputPath,
 
-    [switch]$SkipPayloadPreparation
+    [switch]$SkipPayloadPreparation,
+
+    [switch]$DisableCompression
 )
 
 $ErrorActionPreference = 'Stop'
@@ -84,6 +86,7 @@ $stagingPath = Join-Path $stagingRoot ([Guid]::NewGuid().ToString('N'))
 
 try {
     $singleFile = $BundleMode -eq 'SingleFile'
+    $compressionEnabled = $singleFile -and -not $DisableCompression
     $singleFileValue = $singleFile.ToString().ToLowerInvariant()
     $publishArguments = @(
         'publish',
@@ -98,6 +101,7 @@ try {
         "-p:PublishSingleFile=$singleFileValue",
         "-p:IncludeNativeLibrariesForSelfExtract=$singleFileValue",
         "-p:IncludeAllContentForSelfExtract=$singleFileValue",
+        "-p:EnableCompressionInSingleFile=$($compressionEnabled.ToString().ToLowerInvariant())",
         '-p:PublishTrimmed=false',
         '-p:DebugSymbols=false',
         '-p:DebugType=None'
@@ -135,6 +139,7 @@ try {
         executable = $executableName
         sha256 = $hash
         includesManagedRuntime = $true
+        compressionEnabled = $compressionEnabled
         includesFFmpeg = $true
         includesLibMpv = $true
         publiclyRedistributable = $false

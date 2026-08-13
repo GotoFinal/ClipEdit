@@ -6,16 +6,19 @@ internal static class BundledRuntimeBootstrapper
     internal const string FfprobeEnvironmentVariable = "CLIPEDIT_FFPROBE_PATH";
     internal const string LibMpvEnvironmentVariable = "CLIPEDIT_LIBMPV_PATH";
 
-    public static void Prepare(string baseDirectory)
+    public static void Prepare(string baseDirectory) =>
+        Prepare(baseDirectory, OperatingSystem.IsWindows(), OperatingSystem.IsLinux());
+
+    internal static void Prepare(string baseDirectory, bool isWindows, bool isLinux)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
 
-        var layout = Discover(baseDirectory, OperatingSystem.IsWindows());
+        var layout = Discover(baseDirectory, isWindows);
         SetBundledDefault(FfmpegEnvironmentVariable, layout.FfmpegPath);
         SetBundledDefault(FfprobeEnvironmentVariable, layout.FfprobePath);
         SetBundledDefault(LibMpvEnvironmentVariable, layout.LibMpvPath);
 
-        if (OperatingSystem.IsLinux())
+        if (isLinux && OperatingSystem.IsLinux())
         {
             EnsureExecutable(layout.FfmpegPath);
             EnsureExecutable(layout.FfprobePath);

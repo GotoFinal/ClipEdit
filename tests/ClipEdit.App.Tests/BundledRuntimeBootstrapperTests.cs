@@ -51,6 +51,55 @@ public sealed class BundledRuntimeBootstrapperTests
         }
     }
 
+    [Fact]
+    public void Bundled_payload_sets_defaults_without_overriding_explicit_paths()
+    {
+        var root = CreateTemporaryDirectory();
+        var variables = new[]
+        {
+            BundledRuntimeBootstrapper.FfmpegEnvironmentVariable,
+            BundledRuntimeBootstrapper.FfprobeEnvironmentVariable,
+            BundledRuntimeBootstrapper.LibMpvEnvironmentVariable,
+        };
+        var priorValues = variables.ToDictionary(
+            variable => variable,
+            Environment.GetEnvironmentVariable);
+        try
+        {
+            var toolDirectory = Directory.CreateDirectory(Path.Combine(root, "tools", "ffmpeg"));
+            var ffmpegPath = WriteEmptyFile(toolDirectory.FullName, "ffmpeg.exe");
+            var ffprobePath = WriteEmptyFile(toolDirectory.FullName, "ffprobe.exe");
+            _ = WriteEmptyFile(root, "libmpv-2.dll");
+            const string explicitLibMpvPath = "explicit-libmpv.dll";
+            Environment.SetEnvironmentVariable(BundledRuntimeBootstrapper.FfmpegEnvironmentVariable, null);
+            Environment.SetEnvironmentVariable(BundledRuntimeBootstrapper.FfprobeEnvironmentVariable, null);
+            Environment.SetEnvironmentVariable(
+                BundledRuntimeBootstrapper.LibMpvEnvironmentVariable,
+                explicitLibMpvPath);
+
+            BundledRuntimeBootstrapper.Prepare(root, isWindows: true, isLinux: false);
+
+            Assert.Equal(
+                ffmpegPath,
+                Environment.GetEnvironmentVariable(BundledRuntimeBootstrapper.FfmpegEnvironmentVariable));
+            Assert.Equal(
+                ffprobePath,
+                Environment.GetEnvironmentVariable(BundledRuntimeBootstrapper.FfprobeEnvironmentVariable));
+            Assert.Equal(
+                explicitLibMpvPath,
+                Environment.GetEnvironmentVariable(BundledRuntimeBootstrapper.LibMpvEnvironmentVariable));
+        }
+        finally
+        {
+            foreach (var variable in variables)
+            {
+                Environment.SetEnvironmentVariable(variable, priorValues[variable]);
+            }
+
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTemporaryDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), $"ClipEdit.Tests-{Guid.NewGuid():N}");
