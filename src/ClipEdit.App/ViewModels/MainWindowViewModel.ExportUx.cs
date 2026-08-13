@@ -13,10 +13,17 @@ public sealed partial class MainWindowViewModel
             var next = Math.Clamp(value, 10, 100);
             if (SetProperty(ref _exportScalePercent, next))
             {
+                OnPropertyChanged(nameof(ExportScaleSliderValue));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
             }
         }
+    }
+
+    public double ExportScaleSliderValue
+    {
+        get => ExportScalePercent;
+        set => ExportScalePercent = (int)Math.Round(value, MidpointRounding.AwayFromZero);
     }
 
     public int ExportQuality
@@ -27,10 +34,17 @@ public sealed partial class MainWindowViewModel
             var next = Math.Clamp(value, 1, 100);
             if (SetProperty(ref _exportQuality, next))
             {
+                OnPropertyChanged(nameof(ExportQualitySliderValue));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
             }
         }
+    }
+
+    public double ExportQualitySliderValue
+    {
+        get => ExportQuality;
+        set => ExportQuality = (int)Math.Round(value, MidpointRounding.AwayFromZero);
     }
 
     public int GifFrameRate
@@ -41,10 +55,17 @@ public sealed partial class MainWindowViewModel
             var next = Math.Clamp(value, 1, 60);
             if (SetProperty(ref _gifFrameRate, next))
             {
+                OnPropertyChanged(nameof(GifFrameRateSliderValue));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
             }
         }
+    }
+
+    public double GifFrameRateSliderValue
+    {
+        get => GifFrameRate;
+        set => GifFrameRate = (int)Math.Round(value, MidpointRounding.AwayFromZero);
     }
 
     public bool IsGifExport => GetEffectiveExportPreset().VideoCodec == VideoCodecFamily.Gif;

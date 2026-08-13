@@ -882,6 +882,27 @@ public sealed partial class MainWindow : Window
         ViewModel?.MakeExportCropCompatible();
     }
 
+    private void SaveExportPreset_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SaveCustomExportPreset();
+    }
+
+    private void LoadExportPreset_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.LoadSelectedCustomExportPreset();
+    }
+
+    private void DeleteExportPreset_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.DeleteSelectedCustomExportPreset();
+    }
+
     private async void Export_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

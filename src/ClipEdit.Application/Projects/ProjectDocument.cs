@@ -1,3 +1,5 @@
+using ClipEdit.Media.Export;
+
 namespace ClipEdit.Application.Projects;
 
 public sealed record ProjectDocument(
@@ -10,13 +12,18 @@ public sealed record ProjectDocument(
     ProjectCanvasDocument? Canvas = null,
     ProjectExportSettingsDocument? ExportSettings = null)
 {
-    public const int CurrentSchemaVersion = 8;
+    public const int CurrentSchemaVersion = 9;
 }
 
 public sealed record ProjectExportSettingsDocument(
     int Quality,
     int ScalePercent,
-    int GifFrameRate);
+    int GifFrameRate,
+    ExportContainer CustomContainer = ExportContainer.Mp4,
+    VideoCodecFamily CustomVideoCodec = VideoCodecFamily.H264,
+    AudioCodecFamily CustomAudioCodec = AudioCodecFamily.Aac,
+    bool CustomUseSourceFrameRate = true,
+    int CustomFrameRate = 30);
 
 public sealed record ProjectMediaDocument(
     string SourcePath,

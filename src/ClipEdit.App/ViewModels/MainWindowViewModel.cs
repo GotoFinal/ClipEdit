@@ -248,7 +248,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public ExportPreset GetEffectiveExportPreset()
     {
         var slices = GetSequenceExportSlices();
-        return ResolveMatchInput(slices)?.Preset ?? SelectedExportPreset;
+        return ResolveSelectedExportPreset(slices);
     }
 
     private MatchInputExportResolution? ResolveMatchInput(IReadOnlyList<SequenceExportSlice> slices)
@@ -261,8 +261,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         return MatchInputExportPresetResolver.Resolve(slices[0].Clip.Source.Media!.Probe);
     }
 
-    private ExportPreset ResolveSelectedExportPreset(IReadOnlyList<SequenceExportSlice> slices) =>
-        ResolveMatchInput(slices)?.Preset ?? SelectedExportPreset;
+    private ExportPreset ResolveSelectedExportPreset(IReadOnlyList<SequenceExportSlice> slices)
+    {
+        if (ResolveMatchInput(slices) is { } match)
+        {
+            return match.Preset;
+        }
+
+        return IsCustomExport ? CreateCustomExportPreset() : SelectedExportPreset;
+    }
 
     public ExportPreset SelectedExportPreset
     {
@@ -273,6 +280,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _selectedExportPreset, value))
             {
                 OnPropertyChanged(nameof(CropSizeStep));
+                OnPropertyChanged(nameof(IsCustomExport));
                 OnPropertyChanged(nameof(IsGifExport));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
@@ -1736,10 +1744,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             ClearProjectContent();
             _projectId = Guid.NewGuid();
             ProjectPath = null;
-            SelectedExportPreset = BuiltInExportPresets.Mp4Compatible;
-            ExportScalePercent = ExportEncodingSettings.DefaultScalePercent;
-            ExportQuality = ExportEncodingSettings.DefaultQuality;
-            GifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
             _selectedCropAspectPreset = BuiltInCropAspectPresets.Custom;
             _isCropAspectLocked = false;
             ResetProjectCanvasState();
@@ -2272,6 +2276,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                                    BuiltInExportPresets.Mp4Compatible;
             if (document.SchemaVersion >= 8 && document.ExportSettings is { } exportSettings)
             {
+                if (document.SchemaVersion >= 9)
+                {
+                    ApplyCustomExportSettings(
+                        exportSettings.CustomContainer,
+                        exportSettings.CustomVideoCodec,
+                        exportSettings.CustomAudioCodec,
+                        exportSettings.CustomUseSourceFrameRate,
+                        exportSettings.CustomFrameRate);
+                }
                 ExportQuality = exportSettings.Quality;
                 ExportScalePercent = exportSettings.ScalePercent;
                 GifFrameRate = exportSettings.GifFrameRate;
@@ -2398,7 +2411,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             new ProjectExportSettingsDocument(
                 ExportQuality,
                 ExportScalePercent,
-                GifFrameRate));
+                GifFrameRate,
+                CustomExportContainer.Value,
+                CustomVideoCodec.Value,
+                CustomAudioCodec.Value,
+                CustomUseSourceFrameRate,
+                CustomFrameRate));
     }
 
     public void Dispose()

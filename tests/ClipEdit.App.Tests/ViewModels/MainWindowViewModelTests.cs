@@ -676,6 +676,63 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Custom_export_builds_the_selected_compatible_format()
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "custom-export.mkv")]);
+        viewModel.SelectedExportPreset = BuiltInExportPresets.Custom;
+        viewModel.CustomExportContainer = ExportContainerChoice.Matroska;
+        viewModel.CustomVideoCodec = VideoCodecChoice.Vp9;
+        viewModel.CustomAudioCodec = AudioCodecChoice.Opus;
+        viewModel.CustomUseSourceFrameRate = false;
+        viewModel.CustomFrameRate = 48;
+
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "custom-output.mkv"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(ExportContainer.Matroska, renderer.Plan!.Preset.Container);
+        Assert.Equal(VideoCodecFamily.Vp9, renderer.Plan.Preset.VideoCodec);
+        Assert.Equal(AudioCodecFamily.Opus, renderer.Plan.Preset.AudioCodec);
+        Assert.Equal(new FrameRate(48, 1), renderer.Plan.Preset.FrameRate);
+        Assert.Equal("custom-export-clip.mkv", viewModel.GetSuggestedExportFileName());
+    }
+
+    [Fact]
+    public void Named_custom_export_presets_can_be_saved_loaded_and_deleted()
+    {
+        using var viewModel = new MainWindowViewModel(new StubProbe());
+        viewModel.SelectedExportPreset = BuiltInExportPresets.Custom;
+        viewModel.CustomExportContainer = ExportContainerChoice.Matroska;
+        viewModel.CustomVideoCodec = VideoCodecChoice.Vp9;
+        viewModel.CustomAudioCodec = AudioCodecChoice.None;
+        viewModel.CustomUseSourceFrameRate = false;
+        viewModel.CustomFrameRate = 60;
+        viewModel.ExportScalePercent = 55;
+        viewModel.ExportQuality = 64;
+        viewModel.CustomPresetName = "Small silent VP9";
+
+        Assert.True(viewModel.SaveCustomExportPreset());
+        var saved = Assert.Single(viewModel.SavedExportPresets);
+        Assert.Equal("Small silent VP9", saved.Name);
+
+        viewModel.CustomExportContainer = ExportContainerChoice.Mp4;
+        viewModel.ExportScalePercent = 100;
+        Assert.True(viewModel.LoadSelectedCustomExportPreset());
+
+        Assert.Same(ExportContainerChoice.Matroska, viewModel.CustomExportContainer);
+        Assert.Same(VideoCodecChoice.Vp9, viewModel.CustomVideoCodec);
+        Assert.Same(AudioCodecChoice.None, viewModel.CustomAudioCodec);
+        Assert.Equal(60, viewModel.CustomFrameRate);
+        Assert.Equal(55, viewModel.ExportScalePercent);
+        Assert.Equal(64, viewModel.ExportQuality);
+        Assert.True(viewModel.DeleteSelectedCustomExportPreset());
+        Assert.Empty(viewModel.SavedExportPresets);
+    }
+
+    [Fact]
     public async Task Match_input_resolves_from_the_first_exported_source_and_explains_fallbacks()
     {
         var renderer = new RecordingExportRenderer();
@@ -881,7 +938,12 @@ public sealed class MainWindowViewModelTests
             var externalTrack = Assert.Single(original.AudioTracks, track => track.IsExternal);
             externalTrack.TimelineOffsetSeconds = 3.25;
             original.SelectedVideoClip!.AudioGainDb = -6.25;
-            original.SelectedExportPreset = BuiltInExportPresets.WebM;
+            original.SelectedExportPreset = BuiltInExportPresets.Custom;
+            original.CustomExportContainer = ExportContainerChoice.Matroska;
+            original.CustomVideoCodec = VideoCodecChoice.Vp9;
+            original.CustomAudioCodec = AudioCodecChoice.Opus;
+            original.CustomUseSourceFrameRate = false;
+            original.CustomFrameRate = 48;
             original.ExportScalePercent = 43;
             original.ExportQuality = 58;
             original.GifFrameRate = 21;
@@ -891,7 +953,12 @@ public sealed class MainWindowViewModelTests
             using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
             Assert.True(await restored.OpenProjectAsync(projectPath));
 
-            Assert.Equal(BuiltInExportPresets.WebM, restored.SelectedExportPreset);
+            Assert.Equal(BuiltInExportPresets.Custom, restored.SelectedExportPreset);
+            Assert.Same(ExportContainerChoice.Matroska, restored.CustomExportContainer);
+            Assert.Same(VideoCodecChoice.Vp9, restored.CustomVideoCodec);
+            Assert.Same(AudioCodecChoice.Opus, restored.CustomAudioCodec);
+            Assert.False(restored.CustomUseSourceFrameRate);
+            Assert.Equal(48, restored.CustomFrameRate);
             Assert.Equal(43, restored.ExportScalePercent);
             Assert.Equal(58, restored.ExportQuality);
             Assert.Equal(21, restored.GifFrameRate);

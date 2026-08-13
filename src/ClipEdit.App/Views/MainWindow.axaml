@@ -35,6 +35,20 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+    <Style Selector="Button.export-menu">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="#6546D7" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderBrush" Value="#927CF0" />
+      <Setter Property="BorderThickness" Value="1,0,0,0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.export-menu:pointerover">
+      <Setter Property="Background" Value="#7657EA" />
+    </Style>
     <Style Selector="Button.icon">
       <Setter Property="Width" Value="30" />
       <Setter Property="Height" Value="28" />
@@ -231,66 +245,234 @@
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-          <Button
-              Width="30"
-              Height="30"
-              Padding="6"
-              Classes="secondary"
-              AutomationProperties.Name="Export settings"
-              ToolTip.Tip="{Binding ExportSettingsSummary}">
-            <PathIcon Width="14" Height="14" Data="M2,3 H6 M10,3 H14 M8,1 V5 M2,8 H9 M13,8 H14 M11,6 V10 M2,13 H4 M8,13 H14 M6,11 V15" />
-            <Button.Flyout>
-              <Flyout Placement="BottomEdgeAlignedRight">
-                <Border Width="270" Padding="12" Background="#20242D" CornerRadius="7">
-                  <StackPanel Spacing="10">
-                    <TextBlock FontSize="12" FontWeight="SemiBold" Text="Export settings" />
-                    <Grid ColumnDefinitions="*,110" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="9">
-                      <TextBlock VerticalAlignment="Center" Text="Scale" />
-                      <NumericUpDown
-                          Grid.Column="1"
-                          MinWidth="110"
-                          Minimum="10"
-                          Maximum="100"
-                          Increment="1"
-                          FormatString="0'%'"
-                          Value="{Binding ExportScalePercent, Mode=TwoWay}" />
-                      <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Quality" />
-                      <NumericUpDown
-                          Grid.Row="1"
-                          Grid.Column="1"
-                          Minimum="1"
-                          Maximum="100"
-                          Increment="1"
-                          FormatString="0'%'"
-                          Value="{Binding ExportQuality, Mode=TwoWay}" />
-                      <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="GIF frame rate" IsVisible="{Binding IsGifExport}" />
-                      <NumericUpDown
-                          Grid.Row="2"
-                          Grid.Column="1"
-                          Minimum="1"
-                          Maximum="60"
-                          Increment="1"
-                          Value="{Binding GifFrameRate, Mode=TwoWay}"
-                          IsVisible="{Binding IsGifExport}" />
-                    </Grid>
-                    <StackPanel Orientation="Horizontal" Spacing="5">
-                      <TextBlock Classes="muted" FontSize="10" Text="Output" />
-                      <TextBlock FontSize="10" Text="{Binding ExportOutputSizeText}" />
-                    </StackPanel>
-                    <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="Quality changes compression for every lossy export. GIF quality controls palette size." />
-                  </StackPanel>
-                </Border>
-              </Flyout>
-            </Button.Flyout>
-          </Button>
-          <Button
-              x:Name="ExportButton"
-              Height="30"
-              Classes="primary command-bar"
-              Click="Export_Click"
-              Content="Export"
-              IsEnabled="{Binding CanExport}"
-              ToolTip.Tip="{Binding ExportAvailabilityText}" />
+          <Border Height="30" CornerRadius="6" ClipToBounds="True">
+            <Grid ColumnDefinitions="Auto,24">
+              <Button
+                  x:Name="ExportButton"
+                  Height="30"
+                  MinWidth="66"
+                  Classes="primary command-bar"
+                  CornerRadius="0"
+                  Click="Export_Click"
+                  Content="Export"
+                  IsEnabled="{Binding CanExport}"
+                  ToolTip.Tip="{Binding ExportAvailabilityText}" />
+              <Button
+                  x:Name="ExportSettingsButton"
+                  Grid.Column="1"
+                  Width="24"
+                  Height="30"
+                  Classes="export-menu"
+                  AutomationProperties.Name="Export settings"
+                  ToolTip.Tip="{Binding ExportSettingsSummary}">
+                <PathIcon Width="9" Height="6" Data="M1,1 L4.5,4.5 L8,1 Z" />
+                <Button.Flyout>
+                  <Flyout Placement="BottomEdgeAlignedRight">
+                    <Border
+                        Width="430"
+                        Padding="16"
+                        Background="#222630"
+                        BorderBrush="#3D4352"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                      <ScrollViewer MaxHeight="560" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                      <StackPanel Margin="0,0,6,0" Spacing="15">
+                        <StackPanel Spacing="3">
+                          <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="#F5F5F8" Text="Export settings" />
+                          <TextBlock Classes="muted" FontSize="11" Text="Adjust output size and compression before exporting." />
+                        </StackPanel>
+
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,84" ColumnSpacing="12" RowSpacing="5">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Scale" />
+                          <NumericUpDown
+                              Grid.Column="1"
+                              Height="30"
+                              Minimum="10"
+                              Maximum="100"
+                              Increment="1"
+                              FormatString="0'%'"
+                              Background="#151820"
+                              BorderBrush="#555C6C"
+                              Foreground="#F5F5F8"
+                              Value="{Binding ExportScalePercent, Mode=TwoWay}" />
+                          <Slider
+                              Grid.Row="1"
+                              Grid.ColumnSpan="2"
+                              Height="24"
+                              Minimum="10"
+                              Maximum="100"
+                              SmallChange="1"
+                              LargeChange="5"
+                              TickFrequency="1"
+                              IsSnapToTickEnabled="True"
+                              Value="{Binding ExportScaleSliderValue, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,84" ColumnSpacing="12" RowSpacing="5">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Quality" />
+                          <NumericUpDown
+                              Grid.Column="1"
+                              Height="30"
+                              Minimum="1"
+                              Maximum="100"
+                              Increment="1"
+                              FormatString="0'%'"
+                              Background="#151820"
+                              BorderBrush="#555C6C"
+                              Foreground="#F5F5F8"
+                              Value="{Binding ExportQuality, Mode=TwoWay}" />
+                          <Slider
+                              Grid.Row="1"
+                              Grid.ColumnSpan="2"
+                              Height="24"
+                              Minimum="1"
+                              Maximum="100"
+                              SmallChange="1"
+                              LargeChange="5"
+                              TickFrequency="1"
+                              IsSnapToTickEnabled="True"
+                              Value="{Binding ExportQualitySliderValue, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid
+                            RowDefinitions="Auto,Auto"
+                            ColumnDefinitions="*,84"
+                            ColumnSpacing="12"
+                            RowSpacing="5"
+                            IsVisible="{Binding IsGifExport}">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="GIF frame rate" />
+                          <NumericUpDown
+                              Grid.Column="1"
+                              Height="30"
+                              Minimum="1"
+                              Maximum="60"
+                              Increment="1"
+                              Background="#151820"
+                              BorderBrush="#555C6C"
+                              Foreground="#F5F5F8"
+                              Value="{Binding GifFrameRate, Mode=TwoWay}" />
+                          <Slider
+                              Grid.Row="1"
+                              Grid.ColumnSpan="2"
+                              Height="24"
+                              Minimum="1"
+                              Maximum="60"
+                              SmallChange="1"
+                              LargeChange="5"
+                              TickFrequency="1"
+                              IsSnapToTickEnabled="True"
+                              Value="{Binding GifFrameRateSliderValue, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Border
+                            Padding="12"
+                            Background="#1B1E26"
+                            BorderBrush="#3A4050"
+                            BorderThickness="1"
+                            CornerRadius="7"
+                            IsVisible="{Binding IsCustomExport}">
+                          <StackPanel Spacing="11">
+                            <StackPanel Spacing="2">
+                              <TextBlock FontWeight="SemiBold" Foreground="#D8D0FF" Text="Custom format" />
+                              <TextBlock Classes="muted" FontSize="10" Text="Only compatible codec combinations are shown." />
+                            </StackPanel>
+                            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+                              <TextBlock VerticalAlignment="Center" Text="Container" />
+                              <ComboBox Grid.Column="1" ItemsSource="{Binding CustomExportContainerChoices}" SelectedItem="{Binding CustomExportContainer}">
+                                <ComboBox.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:ExportContainerChoice">
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                  </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                              </ComboBox>
+                              <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Video codec" />
+                              <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding CustomVideoCodecChoices}" SelectedItem="{Binding CustomVideoCodec}">
+                                <ComboBox.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:VideoCodecChoice">
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                  </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                              </ComboBox>
+                              <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Audio codec" />
+                              <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding CustomAudioCodecChoices}" SelectedItem="{Binding CustomAudioCodec}">
+                                <ComboBox.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:AudioCodecChoice">
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                  </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                              </ComboBox>
+                            </Grid>
+                            <CheckBox
+                                Content="Use source frame rate"
+                                IsChecked="{Binding CustomUseSourceFrameRate, Mode=TwoWay}"
+                                IsVisible="{Binding CustomCanSetFrameRate}" />
+                            <Grid
+                                RowDefinitions="Auto,Auto"
+                                ColumnDefinitions="*,84"
+                                ColumnSpacing="12"
+                                RowSpacing="5"
+                                IsVisible="{Binding CustomUsesFixedFrameRate}">
+                              <TextBlock VerticalAlignment="Center" Text="Frame rate" />
+                              <NumericUpDown
+                                  Grid.Column="1"
+                                  Height="30"
+                                  Minimum="1"
+                                  Maximum="120"
+                                  Increment="1"
+                                  Background="#151820"
+                                  BorderBrush="#555C6C"
+                                  Foreground="#F5F5F8"
+                                  Value="{Binding CustomFrameRate, Mode=TwoWay}" />
+                              <Slider
+                                  Grid.Row="1"
+                                  Grid.ColumnSpan="2"
+                                  Height="24"
+                                  Minimum="1"
+                                  Maximum="120"
+                                  SmallChange="1"
+                                  LargeChange="5"
+                                  TickFrequency="1"
+                                  IsSnapToTickEnabled="True"
+                                  Value="{Binding CustomFrameRateSliderValue, Mode=TwoWay}" />
+                            </Grid>
+
+                            <Separator Background="#3A4050" />
+                            <TextBlock FontSize="11" FontWeight="SemiBold" Text="Saved presets" />
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                              <ComboBox ItemsSource="{Binding SavedExportPresets}" SelectedItem="{Binding SelectedSavedExportPreset}" PlaceholderText="Choose a preset">
+                                <ComboBox.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:SavedExportPresetViewModel">
+                                    <TextBlock Text="{Binding Name}" />
+                                  </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                              </ComboBox>
+                              <Button Grid.Column="1" Height="30" Padding="8,4" Classes="secondary" Click="LoadExportPreset_Click" Content="Load" IsEnabled="{Binding HasSelectedSavedExportPreset}" />
+                              <Button Grid.Column="2" Width="30" Height="30" Padding="7" Classes="secondary" Click="DeleteExportPreset_Click" IsEnabled="{Binding HasSelectedSavedExportPreset}" ToolTip.Tip="Delete selected preset">
+                                <PathIcon Width="12" Height="12" Data="M3,4 H13 M5,4 V14 H11 V4 M6,2 H10 L11,4 H5 Z" />
+                              </Button>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                              <TextBox MaxLength="60" PlaceholderText="Preset name" Text="{Binding CustomPresetName, Mode=TwoWay}" />
+                              <Button Grid.Column="1" Height="30" Padding="10,4" Classes="secondary" Click="SaveExportPreset_Click" Content="Save preset" IsEnabled="{Binding CanSaveCustomExportPreset}" />
+                            </Grid>
+                          </StackPanel>
+                        </Border>
+
+                        <Border Padding="10,8" Background="#171A21" BorderBrush="#353A47" BorderThickness="1" CornerRadius="6">
+                          <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="muted" FontSize="11" Text="Final output size" />
+                            <TextBlock Grid.Column="1" FontWeight="SemiBold" Foreground="#BBAEFF" Text="{Binding ExportOutputSizeText}" />
+                          </Grid>
+                        </Border>
+                        <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="Lower scale and quality reduce file size. GIF quality controls the color palette." />
+                      </StackPanel>
+                      </ScrollViewer>
+                    </Border>
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+            </Grid>
+          </Border>
           <Button
               x:Name="CancelExportButton"
               Height="30"

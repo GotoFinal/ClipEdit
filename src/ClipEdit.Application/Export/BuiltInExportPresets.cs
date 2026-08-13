@@ -6,7 +6,7 @@ public static class BuiltInExportPresets
 {
     public static ExportPreset Mp4Compatible { get; } = new(
         "mp4-compatible-v1",
-        "MP4 — compatible",
+        "MP4",
         ".mp4",
         ExportContainer.Mp4,
         VideoCodecFamily.H264,
@@ -34,12 +34,22 @@ public static class BuiltInExportPresets
 
     public static ExportPreset Gif { get; } = new(
         "gif-v1",
-        "Animated GIF",
+        "GIF",
         ".gif",
         ExportContainer.Gif,
         VideoCodecFamily.Gif,
         AudioCodecFamily.None,
         requiresEvenDimensions: false);
 
-    public static IReadOnlyList<ExportPreset> All { get; } = [Mp4Compatible, WebM, MatchInput, Gif];
+    public static ExportPreset Custom { get; } = new(
+        "custom-v1",
+        "Custom",
+        ".mp4",
+        ExportContainer.Mp4,
+        VideoCodecFamily.H264,
+        AudioCodecFamily.Aac,
+        requiresEvenDimensions: true);
+
+    public static IReadOnlyList<ExportPreset> All { get; } =
+        [Mp4Compatible, WebM, MatchInput, Gif, Custom];
 }

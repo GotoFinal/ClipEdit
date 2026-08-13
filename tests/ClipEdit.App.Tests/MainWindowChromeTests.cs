@@ -85,6 +85,23 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Export_settings_are_a_narrow_joined_sub_button()
+    {
+        var window = new MainWindow();
+        var export = window.FindControl<Button>("ExportButton");
+        var settings = window.FindControl<Button>("ExportSettingsButton");
+
+        Assert.NotNull(export);
+        Assert.NotNull(settings);
+        Assert.Equal(30, export.Height);
+        Assert.Equal(30, settings.Height);
+        Assert.Equal(24, settings.Width);
+        Assert.True(settings.IsEnabled);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Timeline_tool_style_includes_toggle_buttons_without_clipping()
     {
         var window = new MainWindow();

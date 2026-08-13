@@ -12,6 +12,14 @@ namespace ClipEdit.Application.Tests.Export;
 public sealed class SingleSourceExportPlannerTests
 {
     [Fact]
+    public void Built_in_export_names_are_compact()
+    {
+        Assert.Equal("MP4", BuiltInExportPresets.Mp4Compatible.DisplayName);
+        Assert.Equal("GIF", BuiltInExportPresets.Gif.DisplayName);
+        Assert.Equal("Custom", BuiltInExportPresets.Custom.DisplayName);
+    }
+
+    [Fact]
     public void Planner_preserves_kept_ranges_crop_streams_and_match_crop_output()
     {
         var sourcePath = Path.GetFullPath("source.mkv");

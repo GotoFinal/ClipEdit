@@ -4,6 +4,7 @@ using ClipEdit.Application.Projects;
 using ClipEdit.Domain.Editing;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
+using ClipEdit.Media.Export;
 
 namespace ClipEdit.Persistence.Json;
 
@@ -224,8 +225,38 @@ public sealed class JsonProjectStore : IProjectStore
                 "The saved export settings are invalid.");
         }
 
+        if (document.SchemaVersion >= 9 && document.ExportSettings is { } customSettings &&
+            (!Enum.IsDefined(customSettings.CustomContainer) ||
+             !Enum.IsDefined(customSettings.CustomVideoCodec) ||
+             !Enum.IsDefined(customSettings.CustomAudioCodec) ||
+             customSettings.CustomFrameRate is < 1 or > 120 ||
+             !IsCompatibleCustomExport(customSettings)))
+        {
+            throw new ProjectStoreException(
+                ProjectStoreFailure.InvalidDocument,
+                "The saved custom export format is invalid.");
+        }
+
         return document;
     }
+
+    private static bool IsCompatibleCustomExport(ProjectExportSettingsDocument settings) =>
+        settings.CustomContainer switch
+        {
+            ExportContainer.Mp4 =>
+                settings.CustomVideoCodec == VideoCodecFamily.H264 &&
+                settings.CustomAudioCodec is AudioCodecFamily.Aac or AudioCodecFamily.None,
+            ExportContainer.WebM =>
+                settings.CustomVideoCodec == VideoCodecFamily.Vp9 &&
+                settings.CustomAudioCodec is AudioCodecFamily.Opus or AudioCodecFamily.None,
+            ExportContainer.Matroska =>
+                settings.CustomVideoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Vp9 &&
+                settings.CustomAudioCodec is AudioCodecFamily.Aac or AudioCodecFamily.Opus or AudioCodecFamily.None,
+            ExportContainer.Gif =>
+                settings.CustomVideoCodec == VideoCodecFamily.Gif &&
+                settings.CustomAudioCodec == AudioCodecFamily.None,
+            _ => false,
+        };
 
     private static void ValidateSequence(ProjectDocument document)
     {
