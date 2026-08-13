@@ -14,13 +14,36 @@ public sealed class CanvasInteractionSettingsStoreTests
             var store = new CanvasInteractionSettingsStore(path);
 
             Assert.Equal(CanvasInteractionSettings.Default, store.Load());
-            Assert.True(store.Save(new CanvasInteractionSettings(500, 0)));
+            Assert.True(store.Save(new CanvasInteractionSettings(500, 0, 10_000)));
 
-            Assert.Equal(new CanvasInteractionSettings(50, 1), store.Load());
+            Assert.Equal(new CanvasInteractionSettings(50, 1, 4_096), store.Load());
         }
         finally
         {
             Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Settings_from_before_the_clipboard_limit_use_the_new_default()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, """
+                {
+                  "wheelZoomPercent": 12,
+                  "wheelRotationDegrees": 2
+                }
+                """);
+
+            Assert.Equal(
+                new CanvasInteractionSettings(12, 2, 100),
+                new CanvasInteractionSettingsStore(path).Load());
+        }
+        finally
+        {
+            File.Delete(path);
         }
     }
 
@@ -40,5 +63,17 @@ public sealed class CanvasInteractionSettingsStoreTests
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void View_model_exposes_the_normalized_clipboard_limit_in_bytes()
+    {
+        using var viewModel = new ClipEdit.App.ViewModels.MainWindowViewModel(mediaProbe: null);
+
+        viewModel.ClipboardExportMaximumMegabytes = 250;
+        Assert.Equal(250L * 1_024 * 1_024, viewModel.ClipboardExportMaximumBytes);
+
+        viewModel.ClipboardExportMaximumMegabytes = 10_000;
+        Assert.Equal(4_096, viewModel.ClipboardExportMaximumMegabytes);
     }
 }

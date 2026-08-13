@@ -254,7 +254,7 @@
                   Classes="primary command-bar"
                   CornerRadius="0"
                   Click="Export_Click"
-                  Content="Export"
+                  Content="{Binding ExportActionText}"
                   IsEnabled="{Binding CanExport}"
                   ToolTip.Tip="{Binding ExportAvailabilityText}" />
               <Button
@@ -281,6 +281,25 @@
                           <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="#F5F5F8" Text="Export settings" />
                           <TextBlock Classes="muted" FontSize="11" Text="Adjust output size and compression before exporting." />
                         </StackPanel>
+
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Destination" />
+                          <ComboBox
+                              Grid.Column="1"
+                              ItemsSource="{Binding ExportDestinationChoices}"
+                              SelectedItem="{Binding SelectedExportDestination}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:ExportDestinationChoice">
+                                <TextBlock Text="{Binding DisplayName}" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </Grid>
+                        <TextBlock
+                            Classes="muted"
+                            FontSize="10"
+                            Text="Clipboard exports are copied as files. Their size limit is in the bottom cog settings."
+                            TextWrapping="Wrap" />
 
                         <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,72" ColumnSpacing="8" RowSpacing="2">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Scale" />
@@ -1217,31 +1236,54 @@
         BorderBrush="#292D38"
         BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="Auto,*,180,Auto" ColumnSpacing="10" VerticalAlignment="Center">
-        <Button Width="24" Height="22" Padding="4" Classes="secondary" ToolTip.Tip="Canvas control settings">
+        <Button Width="24" Height="22" Padding="4" Classes="secondary" ToolTip.Tip="Controls and limits">
           <PathIcon Width="13" Height="13" Data="M8,1 L9.2,2.8 L11.4,2.6 L12.2,4.7 L14.2,5.7 L13.6,7.8 L15,9.5 L13.6,11.2 L14.2,13.3 L12.2,14.3 L11.4,16.4 L9.2,16.2 L8,18 L6.8,16.2 L4.6,16.4 L3.8,14.3 L1.8,13.3 L2.4,11.2 L1,9.5 L2.4,7.8 L1.8,5.7 L3.8,4.7 L4.6,2.6 L6.8,2.8 Z M8,6 A3.5,3.5 0 1 0 8,13 A3.5,3.5 0 1 0 8,6 Z" />
           <Button.Flyout>
             <Flyout Placement="TopEdgeAlignedLeft">
-              <Border Width="310" Padding="12" Background="#20242D" CornerRadius="7">
-                <StackPanel Spacing="9">
-                  <TextBlock FontSize="12" FontWeight="SemiBold" Text="Canvas controls" />
-                  <Grid ColumnDefinitions="*,112" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+              <Border Width="310" Padding="10" Background="#20242D" CornerRadius="7">
+                <StackPanel Spacing="7">
+                  <TextBlock FontSize="12" FontWeight="SemiBold" Text="Controls and limits" />
+                  <Grid ColumnDefinitions="*,96" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
                     <TextBlock VerticalAlignment="Center" Text="Wheel zoom (%)" />
                     <NumericUpDown
                         Grid.Column="1"
-                        MinWidth="112"
+                        Height="26"
+                        Padding="6,0"
                         Minimum="1"
                         Maximum="50"
                         Increment="1"
+                        ShowButtonSpinner="False"
+                        HorizontalContentAlignment="Right"
                         Value="{Binding ClipWheelZoomPercent, Mode=TwoWay}" />
                     <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Shift+wheel rotate (°)" />
                     <NumericUpDown
                         Grid.Row="1"
                         Grid.Column="1"
-                        MinWidth="112"
+                        Height="26"
+                        Padding="6,0"
                         Minimum="1"
                         Maximum="45"
                         Increment="1"
+                        ShowButtonSpinner="False"
+                        HorizontalContentAlignment="Right"
                         Value="{Binding ClipWheelRotationDegrees, Mode=TwoWay}" />
+                    <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Clipboard export limit" />
+                    <NumericUpDown
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        Height="26"
+                        Padding="6,0"
+                        Minimum="1"
+                        Maximum="4096"
+                        Increment="10"
+                        FormatString="0"
+                        ShowButtonSpinner="False"
+                        HorizontalContentAlignment="Right"
+                        Value="{Binding ClipboardExportMaximumMegabytes, Mode=TwoWay}">
+                      <NumericUpDown.InnerRightContent>
+                        <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="MB" />
+                      </NumericUpDown.InnerRightContent>
+                    </NumericUpDown>
                   </Grid>
                   <TextBlock Classes="muted" FontSize="10" Text="Handle resize keeps aspect · Ctrl stretches one axis" />
                   <Button

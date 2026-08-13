@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -913,36 +914,205 @@ public sealed partial class MainWindow : Window
         }
 
         var preset = viewModel.GetEffectiveExportPreset();
-        var destination = await StorageProvider.SaveFilePickerAsync(
-            new FilePickerSaveOptions
+        var clipboardOnly = viewModel.ExportDestination == ExportDestinationMode.Clipboard;
+        string destinationPath;
+        if (clipboardOnly)
+        {
+            try
             {
-                Title = "Export clip",
-                SuggestedFileName = viewModel.GetSuggestedExportFileName(),
-                DefaultExtension = preset.FileExtension.TrimStart('.'),
-                ShowOverwritePrompt = true,
-                FileTypeChoices =
-                [
-                    new FilePickerFileType(preset.DisplayName)
-                    {
-                        Patterns = [$"*{preset.FileExtension}"],
-                    },
-                ],
-            });
-        if (destination?.Path is not { IsFile: true } destinationUri)
+                destinationPath = CreateClipboardExportDestination(
+                    viewModel.GetSuggestedExportFileName(),
+                    preset.FileExtension);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                viewModel.ReportClipboardExportStatus(
+                    $"Could not prepare clipboard export: {exception.Message}");
+                return;
+            }
+        }
+        else
         {
-            return;
+            var destination = await StorageProvider.SaveFilePickerAsync(
+                new FilePickerSaveOptions
+                {
+                    Title = "Export clip",
+                    SuggestedFileName = viewModel.GetSuggestedExportFileName(),
+                    DefaultExtension = preset.FileExtension.TrimStart('.'),
+                    ShowOverwritePrompt = true,
+                    FileTypeChoices =
+                    [
+                        new FilePickerFileType(preset.DisplayName)
+                        {
+                            Patterns = [$"*{preset.FileExtension}"],
+                        },
+                    ],
+                });
+            if (destination?.Path is not { IsFile: true } destinationUri)
+            {
+                return;
+            }
+
+            destinationPath = destinationUri.LocalPath;
+            if (!destinationPath.EndsWith(preset.FileExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                destinationPath = Path.ChangeExtension(destinationPath, preset.FileExtension);
+            }
         }
 
-        var destinationPath = destinationUri.LocalPath;
-        if (!destinationPath.EndsWith(preset.FileExtension, StringComparison.OrdinalIgnoreCase))
-        {
-            destinationPath = Path.ChangeExtension(destinationPath, preset.FileExtension);
-        }
-
-        await viewModel.ExportAsync(
+        var result = await viewModel.ExportAsync(
             destinationPath,
-            replaceExistingDestination: File.Exists(destinationPath),
+            replaceExistingDestination: !clipboardOnly && File.Exists(destinationPath),
             _lifetimeCancellation.Token);
+        if (result is not null && viewModel.ExportDestination != ExportDestinationMode.File)
+        {
+            await CopyExportFileToClipboardAsync(
+                viewModel,
+                result.DestinationPath,
+                discardOnFailure: clipboardOnly);
+        }
+    }
+
+    private static string CreateClipboardExportDestination(
+        string suggestedFileName,
+        string fileExtension)
+    {
+        var directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ClipEdit",
+            "Clipboard");
+        Directory.CreateDirectory(directory);
+        var baseName = Path.GetFileNameWithoutExtension(suggestedFileName);
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            baseName = "clip";
+        }
+
+        var uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
+        return Path.Combine(
+            directory,
+            $"{baseName}-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{uniqueSuffix}{fileExtension}");
+    }
+
+    private async Task CopyExportFileToClipboardAsync(
+        MainWindowViewModel viewModel,
+        string destinationPath,
+        bool discardOnFailure)
+    {
+        try
+        {
+            var file = new FileInfo(destinationPath);
+            if (!file.Exists)
+            {
+                viewModel.ReportClipboardExportStatus("The exported file could not be found for copying");
+                return;
+            }
+
+            if (file.Length > viewModel.ClipboardExportMaximumBytes)
+            {
+                var message = discardOnFailure
+                    ? $"Clipboard export is {FormatFileSize(file.Length)}, above the " +
+                      $"{viewModel.ClipboardExportMaximumMegabytes} MB limit; the cached output was discarded"
+                    : $"Exported {file.Name}, but its {FormatFileSize(file.Length)} size is above the " +
+                      $"{viewModel.ClipboardExportMaximumMegabytes} MB clipboard limit";
+                if (discardOnFailure)
+                {
+                    TryDeleteFile(destinationPath);
+                }
+
+                viewModel.ReportClipboardExportStatus(message);
+                return;
+            }
+
+            if (Clipboard is null)
+            {
+                if (discardOnFailure)
+                {
+                    TryDeleteFile(destinationPath);
+                }
+
+                viewModel.ReportClipboardExportStatus("Clipboard is unavailable on this desktop");
+                return;
+            }
+
+            var storageFile = await StorageProvider.TryGetFileFromPathAsync(new Uri(destinationPath));
+            if (storageFile is null)
+            {
+                if (discardOnFailure)
+                {
+                    TryDeleteFile(destinationPath);
+                }
+
+                viewModel.ReportClipboardExportStatus("The exported file could not be opened for copying");
+                return;
+            }
+
+            await Clipboard.SetFileAsync(storageFile);
+            CleanupPreviousClipboardExports(destinationPath);
+            var status = discardOnFailure
+                ? $"Copied {file.Name} ({FormatFileSize(file.Length)}) to clipboard"
+                : $"Exported {file.Name} and copied it to clipboard ({FormatFileSize(file.Length)})";
+            viewModel.ReportClipboardExportStatus(status);
+        }
+        catch (Exception exception)
+        {
+            if (discardOnFailure)
+            {
+                TryDeleteFile(destinationPath);
+            }
+
+            viewModel.ReportClipboardExportStatus($"Could not copy export to clipboard: {exception.Message}");
+        }
+    }
+
+    private static void CleanupPreviousClipboardExports(string currentPath)
+    {
+        var directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ClipEdit",
+            "Clipboard");
+        try
+        {
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            foreach (var path in Directory.EnumerateFiles(directory))
+            {
+                if (!string.Equals(Path.GetFullPath(path), Path.GetFullPath(currentPath),
+                        OperatingSystem.IsWindows()
+                            ? StringComparison.OrdinalIgnoreCase
+                            : StringComparison.Ordinal))
+                {
+                    TryDeleteFile(path);
+                }
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+        }
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        const double megabyte = 1_024d * 1_024d;
+        return bytes >= megabyte
+            ? $"{bytes / megabyte:0.#} MB"
+            : $"{Math.Max(1, (long)Math.Ceiling(bytes / 1_024d))} KB";
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     private void CancelExport_Click(object? sender, RoutedEventArgs eventArgs)

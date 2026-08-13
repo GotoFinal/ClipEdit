@@ -4,9 +4,17 @@ namespace ClipEdit.App.Settings;
 
 internal sealed record CanvasInteractionSettings(
     double WheelZoomPercent,
-    int WheelRotationDegrees)
+    int WheelRotationDegrees,
+    int ClipboardExportMaximumMegabytes)
 {
-    public static CanvasInteractionSettings Default { get; } = new(10, 1);
+    public const int MinimumClipboardExportMegabytes = 1;
+    public const int MaximumClipboardExportMegabytes = 4_096;
+    public const int DefaultClipboardExportMegabytes = 100;
+
+    public static CanvasInteractionSettings Default { get; } = new(
+        10,
+        1,
+        DefaultClipboardExportMegabytes);
 
     public CanvasInteractionSettings Normalize()
     {
@@ -14,7 +22,13 @@ internal sealed record CanvasInteractionSettings(
             ? Math.Clamp(WheelZoomPercent, 1, 50)
             : Default.WheelZoomPercent;
         var rotation = Math.Clamp(WheelRotationDegrees, 1, 45);
-        return new CanvasInteractionSettings(zoom, rotation);
+        var clipboardMaximum = ClipboardExportMaximumMegabytes <= 0
+            ? DefaultClipboardExportMegabytes
+            : Math.Clamp(
+                ClipboardExportMaximumMegabytes,
+                MinimumClipboardExportMegabytes,
+                MaximumClipboardExportMegabytes);
+        return new CanvasInteractionSettings(zoom, rotation, clipboardMaximum);
     }
 }
 

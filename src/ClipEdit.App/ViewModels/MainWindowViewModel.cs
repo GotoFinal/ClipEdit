@@ -66,6 +66,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private int _exportScalePercent = ExportEncodingSettings.DefaultScalePercent;
     private int _exportQuality = ExportEncodingSettings.DefaultQuality;
     private int _gifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
+    private ExportDestinationChoice _selectedExportDestination = ExportDestinationChoice.File;
     private bool _isExporting;
     private double _exportProgress;
     private string _exportPhaseText = string.Empty;

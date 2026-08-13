@@ -1,3 +1,4 @@
+using ClipEdit.App.Settings;
 using ClipEdit.Domain.Geometry;
 
 namespace ClipEdit.App.ViewModels;
@@ -8,6 +9,8 @@ public sealed partial class MainWindowViewModel
     private CropRegion _canvasCrop = CropRegion.FullFrame(new PixelSize(1, 1));
     private double _clipWheelZoomPercent = 10;
     private int _clipWheelRotationDegrees = 1;
+    private int _clipboardExportMaximumMegabytes =
+        CanvasInteractionSettings.DefaultClipboardExportMegabytes;
     private CanvasInteractionTool _canvasTool = CanvasInteractionTool.Crop;
 
     public PixelSize CanvasSize
@@ -96,11 +99,33 @@ public sealed partial class MainWindowViewModel
         set => SetProperty(ref _clipWheelRotationDegrees, Math.Clamp(value, 1, 45));
     }
 
+    public int ClipboardExportMaximumMegabytes
+    {
+        get => _clipboardExportMaximumMegabytes;
+        set => SetProperty(
+            ref _clipboardExportMaximumMegabytes,
+            Math.Clamp(
+                value,
+                CanvasInteractionSettings.MinimumClipboardExportMegabytes,
+                CanvasInteractionSettings.MaximumClipboardExportMegabytes));
+    }
+
+    public long ClipboardExportMaximumBytes =>
+        ClipboardExportMaximumMegabytes * 1_024L * 1_024L;
+
     public void ResetCanvasInteractionSettings()
     {
         ClipWheelZoomPercent = 10;
         ClipWheelRotationDegrees = 1;
-        StatusText = "Canvas controls reset: wheel zoom 10%, Shift+wheel rotation 1°";
+        ClipboardExportMaximumMegabytes =
+            CanvasInteractionSettings.DefaultClipboardExportMegabytes;
+        StatusText = "Controls reset: wheel zoom 10%, rotation 1°, clipboard limit 100 MB";
+    }
+
+    public void ReportClipboardExportStatus(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        StatusText = message;
     }
 
     public CanvasInteractionTool CanvasTool

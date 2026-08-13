@@ -25,6 +25,7 @@ public sealed class ExportPreferencesStoreTests
                 AudioCodecFamily.Opus,
                 false,
                 48,
+                ExportDestinationMode.FileAndClipboard,
                 [
                     new SavedExportPresetViewModel(
                         "VP9 preset",
@@ -79,6 +80,7 @@ public sealed class ExportPreferencesStoreTests
             CustomAudioCodec = AudioCodecFamily.None,
             CustomUseSourceFrameRate = false,
             CustomFrameRate = 50,
+            ExportDestination = ExportDestinationMode.Clipboard,
         };
 
         viewModel.ApplyExportPreferences(preferences);
@@ -91,7 +93,21 @@ public sealed class ExportPreferencesStoreTests
         Assert.Same(AudioCodecChoice.None, viewModel.CustomAudioCodec);
         Assert.False(viewModel.CustomUseSourceFrameRate);
         Assert.Equal(50, viewModel.CustomFrameRate);
+        Assert.Equal(ExportDestinationMode.Clipboard, viewModel.ExportDestination);
+        Assert.Equal("Copy", viewModel.ExportActionText);
         Assert.False(viewModel.IsProjectDirty);
+    }
+
+    [Fact]
+    public void Export_destination_choices_cover_file_clipboard_and_combined_output()
+    {
+        Assert.Equal(
+            [
+                ExportDestinationMode.File,
+                ExportDestinationMode.Clipboard,
+                ExportDestinationMode.FileAndClipboard,
+            ],
+            ExportDestinationChoice.All.Select(choice => choice.Value));
     }
 
     private sealed class StubMediaProbe : ClipEdit.Media.Probe.IMediaProbe

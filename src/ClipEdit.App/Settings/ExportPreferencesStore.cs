@@ -15,6 +15,7 @@ internal sealed record ExportPreferences(
     AudioCodecFamily CustomAudioCodec,
     bool CustomUseSourceFrameRate,
     int CustomFrameRate,
+    ExportDestinationMode ExportDestination,
     IReadOnlyList<SavedExportPresetViewModel> SavedPresets)
 {
     public static ExportPreferences Default { get; } = new(
@@ -27,6 +28,7 @@ internal sealed record ExportPreferences(
         AudioCodecFamily.Aac,
         true,
         30,
+        ExportDestinationMode.File,
         []);
 
     public ExportPreferences Normalize()
@@ -77,6 +79,9 @@ internal sealed record ExportPreferences(
             CustomVideoCodec = custom.Video,
             CustomAudioCodec = custom.Audio,
             CustomFrameRate = Math.Clamp(CustomFrameRate, 1, 120),
+            ExportDestination = Enum.IsDefined(ExportDestination)
+                ? ExportDestination
+                : Default.ExportDestination,
             SavedPresets = saved,
         };
     }

@@ -287,6 +287,7 @@ public sealed partial class MainWindowViewModel
             ExportScalePercent = normalized.ScalePercent;
             ExportQuality = normalized.Quality;
             GifFrameRate = normalized.GifFrameRate;
+            SelectedExportDestination = ExportDestinationChoice.FromValue(normalized.ExportDestination);
             ReplaceSavedExportPresets(normalized.SavedPresets);
             SelectedExportPreset = ExportPresets.FirstOrDefault(preset =>
                                        preset.Id == normalized.SelectedExportPresetId) ??
@@ -308,6 +309,7 @@ public sealed partial class MainWindowViewModel
         CustomAudioCodec.Value,
         CustomUseSourceFrameRate,
         CustomFrameRate,
+        ExportDestination,
         SavedExportPresets.ToArray());
 
     internal void ApplyCustomExportSettings(

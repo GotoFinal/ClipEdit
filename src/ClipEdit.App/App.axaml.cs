@@ -60,6 +60,8 @@ public sealed partial class App : Avalonia.Application
             var interactionSettings = settingsStore.Load();
             viewModel.ClipWheelZoomPercent = interactionSettings.WheelZoomPercent;
             viewModel.ClipWheelRotationDegrees = interactionSettings.WheelRotationDegrees;
+            viewModel.ClipboardExportMaximumMegabytes =
+                interactionSettings.ClipboardExportMaximumMegabytes;
             var exportPreferencesStore = new ExportPreferencesStore(
                 Path.Combine(applicationDataDirectory, "export-settings.json"));
             viewModel.ApplyExportPreferences(exportPreferencesStore.Load());
@@ -74,7 +76,8 @@ public sealed partial class App : Avalonia.Application
             {
                 settingsStore.Save(new CanvasInteractionSettings(
                     viewModel.ClipWheelZoomPercent,
-                    viewModel.ClipWheelRotationDegrees));
+                    viewModel.ClipWheelRotationDegrees,
+                    viewModel.ClipboardExportMaximumMegabytes));
                 exportPreferencesStore.Save(viewModel.CreateExportPreferences());
             };
 

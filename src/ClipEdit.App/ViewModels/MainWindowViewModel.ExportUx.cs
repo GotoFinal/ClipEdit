@@ -3,8 +3,66 @@ using ClipEdit.Media.Export;
 
 namespace ClipEdit.App.ViewModels;
 
+public enum ExportDestinationMode
+{
+    File,
+    Clipboard,
+    FileAndClipboard,
+}
+
+public sealed record ExportDestinationChoice(
+    ExportDestinationMode Value,
+    string DisplayName)
+{
+    public static ExportDestinationChoice File { get; } = new(
+        ExportDestinationMode.File,
+        "File");
+
+    public static ExportDestinationChoice Clipboard { get; } = new(
+        ExportDestinationMode.Clipboard,
+        "Clipboard");
+
+    public static ExportDestinationChoice FileAndClipboard { get; } = new(
+        ExportDestinationMode.FileAndClipboard,
+        "File + clipboard");
+
+    public static IReadOnlyList<ExportDestinationChoice> All { get; } =
+        [File, Clipboard, FileAndClipboard];
+
+    public static ExportDestinationChoice FromValue(ExportDestinationMode value) => value switch
+    {
+        ExportDestinationMode.Clipboard => Clipboard,
+        ExportDestinationMode.FileAndClipboard => FileAndClipboard,
+        _ => File,
+    };
+}
+
 public sealed partial class MainWindowViewModel
 {
+    public IReadOnlyList<ExportDestinationChoice> ExportDestinationChoices =>
+        ExportDestinationChoice.All;
+
+    public ExportDestinationChoice SelectedExportDestination
+    {
+        get => _selectedExportDestination;
+        set
+        {
+            var next = value ?? ExportDestinationChoice.File;
+            if (SetProperty(ref _selectedExportDestination, next))
+            {
+                OnPropertyChanged(nameof(ExportActionText));
+                OnPropertyChanged(nameof(ExportDestination));
+                OnPropertyChanged(nameof(ExportSettingsSummary));
+            }
+        }
+    }
+
+    public ExportDestinationMode ExportDestination => SelectedExportDestination.Value;
+
+    public string ExportActionText => ExportDestination == ExportDestinationMode.Clipboard
+        ? "Copy"
+        : "Export";
+
     public int ExportScalePercent
     {
         get => _exportScalePercent;
@@ -81,9 +139,21 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    public string ExportSettingsSummary => IsGifExport
-        ? $"{ExportOutputSizeText} · quality {ExportQuality}% · {GifFrameRate} fps"
-        : $"{ExportOutputSizeText} · quality {ExportQuality}%";
+    public string ExportSettingsSummary
+    {
+        get
+        {
+            var destination = ExportDestination switch
+            {
+                ExportDestinationMode.Clipboard => "Clipboard · ",
+                ExportDestinationMode.FileAndClipboard => "File + clipboard · ",
+                _ => string.Empty,
+            };
+            return IsGifExport
+                ? $"{destination}{ExportOutputSizeText} · quality {ExportQuality}% · {GifFrameRate} fps"
+                : $"{destination}{ExportOutputSizeText} · quality {ExportQuality}%";
+        }
+    }
 
     private ExportEncodingSettings CurrentExportEncodingSettings => new(
         ExportQuality,
