@@ -13,3 +13,9 @@ artifacts/
 .clipedit-cache/
 *.partial
 /test-media/local/
+
+# Project documentation is intentionally maintained outside Git.
+/docs/
+/README.md
+/AGENTS.md
+/test-media/README.md

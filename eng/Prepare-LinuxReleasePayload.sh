@@ -263,7 +263,6 @@ done < <(find "$staging_path/native" -maxdepth 1 -type f -name '*.so*' -print)
 
 install -m 0644 "$workspace_root/LICENSE" "$staging_path/LICENSE.txt"
 install -m 0644 "$workspace_root/THIRD_PARTY_NOTICES.md" "$staging_path/licenses/THIRD_PARTY_NOTICES.md"
-install -m 0644 "$workspace_root/docs/07-native-dependencies.md" "$staging_path/licenses/07-native-dependencies.md"
 install -m 0644 "$mpv_build_root/ffmpeg/COPYING.GPLv3" "$staging_path/licenses/FFmpeg-GPL-3.0.txt"
 install -m 0644 "$mpv_build_root/mpv/Copyright" "$staging_path/licenses/mpv-Copyright.txt"
 install -m 0644 "$mpv_build_root/libass/COPYING" "$staging_path/licenses/libass-ISC.txt"

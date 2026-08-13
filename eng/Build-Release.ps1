@@ -73,8 +73,7 @@ $requiredPayload = @(
     "tools/ffmpeg/ffprobe$executableSuffix",
     $(if ($RuntimeId -eq 'win-x64') { 'tools/ffmpeg/libmpv-2.dll' } else { 'libmpv.so.2' }),
     'LICENSE.txt',
-    'licenses/THIRD_PARTY_NOTICES.md',
-    'licenses/07-native-dependencies.md'
+    'licenses/THIRD_PARTY_NOTICES.md'
 )
 
 if ($RuntimeId -eq 'win-x64') {

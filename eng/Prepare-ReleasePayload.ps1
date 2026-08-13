@@ -101,7 +101,6 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'LICENSE') -Destination (Join-Path $stagingPath 'LICENSE.txt')
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'THIRD_PARTY_NOTICES.md') -Destination $licensePath
-    Copy-Item -LiteralPath (Join-Path $workspaceRoot 'docs/07-native-dependencies.md') -Destination $licensePath
     Copy-Item -Path (Join-Path $nativeStackRoot 'licenses/*') -Destination $licensePath
     Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'SOURCE-LOCK.tsv') -Destination $licensePath
     Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'BUILDER-PACKAGES.txt') -Destination $licensePath

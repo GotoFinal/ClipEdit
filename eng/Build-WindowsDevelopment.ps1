@@ -60,7 +60,6 @@ try {
     Copy-Item -LiteralPath $libMpvPath -Destination (Join-Path $stagingPath 'libmpv-2.dll')
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'LICENSE') -Destination (Join-Path $stagingPath 'LICENSE.txt')
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'THIRD_PARTY_NOTICES.md') -Destination $licensePath
-    Copy-Item -LiteralPath (Join-Path $workspaceRoot 'docs/07-native-dependencies.md') -Destination $licensePath
     Copy-Item -LiteralPath (Join-Path $ffmpegRoot 'LICENSE') -Destination (Join-Path $licensePath 'FFmpeg-GPL-3.0.txt')
     Copy-Item -LiteralPath (Join-Path $ffmpegRoot 'README.txt') -Destination (Join-Path $licensePath 'FFmpeg-build-README.txt')
 
