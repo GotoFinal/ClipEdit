@@ -467,7 +467,34 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(3.003, clip.SourceStart.TotalSeconds, precision: 3);
         Assert.Equal(new MediaTime(12, 1), clip.SourceEnd);
-        Assert.Equal(8.997, viewModel.SequenceDurationSeconds, precision: 3);
+        Assert.Equal(12, viewModel.SequenceDurationSeconds);
+    }
+
+    [Fact]
+    public async Task Keep_selection_trims_only_intersecting_clips_and_preserves_the_rest()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync(
+        [
+            Path.Combine(Path.GetTempPath(), "sequence-keep-first.mkv"),
+            Path.Combine(Path.GetTempPath(), "sequence-keep-second.mkv"),
+        ]);
+        var clipsBefore = viewModel.VideoClips.ToArray();
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 12;
+
+        Assert.True(viewModel.KeepSequenceSelectionOnly());
+
+        Assert.Equal(2, viewModel.VideoClips.Count);
+        Assert.Equal(
+            new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
+            viewModel.VideoClips[0].Model.SourceRange);
+        Assert.Equal(new MediaTime(5, 1), viewModel.VideoClips[0].TimelineStart);
+        Assert.Equal(clipsBefore[1].Id, viewModel.VideoClips[1].Id);
+        Assert.Equal(clipsBefore[1].Model, viewModel.VideoClips[1].Model);
+        Assert.Equal(120, viewModel.SequenceDurationSeconds);
+        Assert.Equal(5, viewModel.SequenceSelectionStartSeconds);
+        Assert.Equal(5, viewModel.SequenceSelectionEndSeconds);
     }
 
     [Fact]

@@ -1277,6 +1277,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var overlapEnd = Min(selection.End, clip.TimelineEnd);
             if (overlapEnd <= overlapStart)
             {
+                replacements.Add(clip);
                 continue;
             }
 
@@ -1286,17 +1287,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (clip.Model.KeepOnly(sourceSelection) is { } kept)
             {
                 replacements.Add(clip.CreateSibling(
-                    kept.MoveTo(kept.TimelineStart - selection.Start)));
+                    kept.MoveTo(overlapStart)));
             }
         }
 
-        ReplaceVideoClips(replacements, preferredClipId: null);
-        _sequencePlayhead = MediaTime.Zero;
-        _sequenceSelectionStart = MediaTime.Zero;
-        _sequenceSelectionEnd = SequenceTimeFromSeconds(SequenceDurationSeconds);
-        RaiseSequenceStateChanged();
-        SyncSourcePreviewToSequenceTime(MediaTime.Zero, selectClip: true);
-        StatusText = "Kept only the selected timeline section; drag either clip edge outward to restore hidden source";
+        ReplaceVideoClips(replacements, SelectedVideoClip?.Id);
+        CollapseSequenceSelection(selection.Start);
+        StatusText = "Trimmed the clips touched by the selection; unrelated clips were left unchanged";
         MarkProjectDirty();
         StartSequenceTimelineAnalysis(debounce: false);
         return true;
