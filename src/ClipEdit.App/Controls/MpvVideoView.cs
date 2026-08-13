@@ -76,6 +76,7 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly DispatcherTimer _positionTimer;
+    private readonly PreviewLoadGate _loadGate = new();
     private CancellationTokenSource? _loadCancellation;
     private Task _loadTask = Task.CompletedTask;
     private CancellationTokenSource? _seekCancellation;
@@ -353,9 +354,14 @@ public sealed class MpvVideoView : OpenGlControlBase
 
         try
         {
-            _renderContext ??= _engine.CreateOpenGlRenderContext(
-                gl.GetProcAddress,
-                RequestRenderFromNativeCallback);
+            if (_renderContext is null)
+            {
+                _renderContext = _engine.CreateOpenGlRenderContext(
+                    gl.GetProcAddress,
+                    RequestRenderFromNativeCallback);
+                TryStartPendingLoad();
+            }
+
             if (!_mediaLoaded)
             {
                 return;
@@ -413,8 +419,22 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     private void StartLoad()
     {
-        if (_shutdownStarted || _engineTask is null)
+        _loadGate.Request();
+        TryStartPendingLoad();
+    }
+
+    private void TryStartPendingLoad()
+    {
+        if (!_loadGate.TryConsume(
+                _shutdownStarted,
+                _engine is not null,
+                _renderContext is not null))
         {
+            if (!_shutdownStarted && _engineTask is not null && _renderContext is null)
+            {
+                RequestNextFrameRendering();
+            }
+
             return;
         }
 
