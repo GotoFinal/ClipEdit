@@ -13,7 +13,6 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     private SequenceClip _model;
     private CropRegion _sourceWindow;
     private ClipCanvasTransform _canvasTransform;
-    private MediaTime _timelineStart;
     private IReadOnlyList<TimelineThumbnailFrame> _timelineThumbnails = [];
     private bool _isTimelineLoading;
 
@@ -241,19 +240,17 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
 
     public MediaTime TimelineStart
     {
-        get => _timelineStart;
+        get => Model.TimelineStart;
         internal set
         {
-            if (SetProperty(ref _timelineStart, value))
+            if (value != Model.TimelineStart)
             {
-                OnPropertyChanged(nameof(TimelineStartSeconds));
-                OnPropertyChanged(nameof(TimelineEnd));
-                OnPropertyChanged(nameof(TimelineEndSeconds));
+                ReplaceModel(Model.MoveTo(value));
             }
         }
     }
 
-    public MediaTime TimelineEnd => TimelineStart + Duration;
+    public MediaTime TimelineEnd => Model.TimelineEnd;
 
     public double TimelineStartSeconds => TimelineStart.TotalSeconds;
 
@@ -351,6 +348,8 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SourceStartSeconds));
         OnPropertyChanged(nameof(SourceEndSeconds));
         OnPropertyChanged(nameof(Duration));
+        OnPropertyChanged(nameof(TimelineStart));
+        OnPropertyChanged(nameof(TimelineStartSeconds));
         OnPropertyChanged(nameof(DurationSeconds));
         OnPropertyChanged(nameof(TimelineEnd));
         OnPropertyChanged(nameof(TimelineEndSeconds));

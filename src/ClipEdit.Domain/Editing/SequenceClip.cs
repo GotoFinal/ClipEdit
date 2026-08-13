@@ -161,8 +161,12 @@ public sealed record SequenceClip
             : new SequenceClip(Id, SourceId, SourceRange, AvailableRange, timelineStart);
     }
 
-    private SequenceClip WithRange(MediaRange range) =>
-        new(Id, SourceId, range, AvailableRange, TimelineStart + (range.Start - SourceRange.Start));
+    private SequenceClip WithRange(MediaRange range)
+    {
+        var proposedTimelineStart = TimelineStart + (range.Start - SourceRange.Start);
+        var timelineStart = proposedTimelineStart < MediaTime.Zero ? MediaTime.Zero : proposedTimelineStart;
+        return new SequenceClip(Id, SourceId, range, AvailableRange, timelineStart);
+    }
 
     private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;
 

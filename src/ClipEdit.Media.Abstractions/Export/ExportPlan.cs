@@ -16,6 +16,8 @@ public enum ExportStrategy
 public sealed record ExportPlan
 {
     private readonly PixelSize _outputSize;
+    private readonly MediaTime _expectedDuration;
+    private readonly ImmutableArray<MediaTime> _videoSegmentTimelineStarts;
 
     public ExportPlan(
         string sourcePath,
@@ -81,6 +83,8 @@ public sealed record ExportPlan
         VideoSegments = [];
         _outputSize = crop.ExportSize;
         SequenceTimelineStart = MediaTime.Zero;
+        _expectedDuration = SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
+        _videoSegmentTimelineStarts = [];
     }
 
     public ExportPlan(
@@ -90,7 +94,8 @@ public sealed record ExportPlan
         ExportPreset preset,
         bool replaceExistingDestination = false,
         ImmutableArray<ExportAudioTrackPlan> externalAudioTracks = default,
-        MediaTime sequenceTimelineStart = default)
+        MediaTime sequenceTimelineStart = default,
+        MediaTime? sequenceDuration = null)
     {
         if (videoSegments.IsDefaultOrEmpty || videoSegments.Any(segment => segment is null))
         {
@@ -124,6 +129,33 @@ public sealed record ExportPlan
                 nameof(externalAudioTracks));
         }
 
+        var starts = ImmutableArray.CreateBuilder<MediaTime>(videoSegments.Length);
+        var cursor = sequenceTimelineStart;
+        foreach (var segment in videoSegments)
+        {
+            var start = segment.TimelineStart ?? cursor;
+            if (start < cursor)
+            {
+                throw new ArgumentException(
+                    "Sequence video segments must be ordered and cannot overlap.",
+                    nameof(videoSegments));
+            }
+
+            starts.Add(start);
+            cursor = start + segment.SourceRange.Duration;
+        }
+
+        var resolvedDuration = sequenceDuration ?? (cursor - sequenceTimelineStart);
+        if (resolvedDuration <= MediaTime.Zero ||
+            cursor > sequenceTimelineStart + resolvedDuration)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(sequenceDuration),
+                "The sequence duration must contain every placed video segment.");
+        }
+
+        _videoSegmentTimelineStarts = starts.MoveToImmutable();
+        _expectedDuration = resolvedDuration;
         VideoSegments = videoSegments;
         _outputSize = outputSize;
         DestinationPath = Path.GetFullPath(destinationPath);
@@ -156,6 +188,14 @@ public sealed record ExportPlan
     public CropRegion Crop { get; }
 
     public ImmutableArray<MediaRange> SourceRanges { get; }
+    public MediaTime GetVideoSegmentTimelineStart(int index)
+    {
+        if (!IsSequence || index < 0 || index >= _videoSegmentTimelineStarts.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+        return _videoSegmentTimelineStarts[index];
+    }
 
     public ExportPreset Preset { get; }
 
@@ -165,10 +205,7 @@ public sealed record ExportPlan
 
     public PixelSize OutputSize => _outputSize;
 
-    public MediaTime ExpectedDuration =>
-        IsSequence
-            ? VideoSegments.Aggregate(MediaTime.Zero, static (total, segment) => total + segment.SourceRange.Duration)
-            : SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
+    public MediaTime ExpectedDuration => _expectedDuration;
 
     private static void ValidateRanges(ImmutableArray<MediaRange> ranges)
     {
@@ -241,7 +278,8 @@ public sealed record ExportVideoSegmentPlan
         PixelSize canvasSize,
         CropRegion canvasCrop,
         ClipCanvasTransform canvasTransform,
-        ImmutableArray<ExportAudioTrackPlan> audioTracks = default)
+        ImmutableArray<ExportAudioTrackPlan> audioTracks = default,
+        MediaTime? timelineStart = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
@@ -268,9 +306,15 @@ public sealed record ExportVideoSegmentPlan
         VideoStreamIndex = videoStreamIndex;
         SourceRange = sourceRange;
         CanvasSize = canvasSize;
+        if (timelineStart < MediaTime.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timelineStart));
+        }
+
         CanvasCrop = canvasCrop;
         CanvasTransform = canvasTransform;
         AudioTracks = embeddedTracks;
+        TimelineStart = timelineStart;
         UsesCanvasTransform = true;
     }
 
@@ -283,6 +327,8 @@ public sealed record ExportVideoSegmentPlan
     public PixelSize CanvasSize { get; }
 
     public CropRegion CanvasCrop { get; }
+
+    public MediaTime? TimelineStart { get; }
 
     public ClipCanvasTransform CanvasTransform { get; }
 

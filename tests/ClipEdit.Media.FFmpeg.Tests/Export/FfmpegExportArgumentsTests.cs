@@ -200,6 +200,44 @@ public sealed class FfmpegExportArgumentsTests
             graph);
     }
 
+    [Fact]
+    public void Sequence_gaps_lower_to_black_frames_and_silence()
+    {
+        var canvas = new PixelSize(1_280, 720);
+        var crop = CropRegion.FullFrame(canvas);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    "C:\\source.mkv",
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvas,
+                    crop,
+                    ClipCanvasTransform.Identity,
+                    [new ExportAudioTrackPlan(1, 0)],
+                    new MediaTime(3, 1)),
+            ],
+            canvas,
+            "C:\\gapped.mp4",
+            Mp4Compatible,
+            sequenceDuration: new MediaTime(7, 1));
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.Equal(new MediaTime(7, 1), plan.ExpectedDuration);
+        Assert.Contains(
+            "color=c=black:s=1280x720:r=30:d=3,format=yuv420p,setsar=1[vgap0]",
+            graph);
+        Assert.Contains(
+            "color=c=black:s=1280x720:r=30:d=2,format=yuv420p,setsar=1[vgap1]",
+            graph);
+        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=3,aformat=sample_fmts=fltp:channel_layouts=stereo[agap0]", graph);
+        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2,aformat=sample_fmts=fltp:channel_layouts=stereo[agap1]", graph);
+        Assert.Contains(
+            "[vgap0][agap0][vseg0][aseg0][vgap1][agap1]concat=n=3:v=1:a=1[vbase][abase]",
+            graph);
+    }
+
     private static ExportPlan CreatePlan(
         string sourcePath,
         string destinationPath,

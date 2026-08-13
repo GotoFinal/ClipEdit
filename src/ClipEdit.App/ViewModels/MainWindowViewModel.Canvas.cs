@@ -114,6 +114,7 @@ public sealed partial class MainWindowViewModel
                 OnPropertyChanged(nameof(IsTransformToolActive));
                 OnPropertyChanged(nameof(IsAutoToolActive));
                 OnPropertyChanged(nameof(IsClipTransformOverlayActive));
+                OnPropertyChanged(nameof(IsAutoCanvasOverlayActive));
                 StatusText = value switch
                 {
                     CanvasInteractionTool.Crop => "Crop tool: drag the shared frame or its handles",
@@ -130,7 +131,9 @@ public sealed partial class MainWindowViewModel
 
     public bool IsAutoToolActive => CanvasTool == CanvasInteractionTool.Auto;
 
-    public bool IsClipTransformOverlayActive => IsTransformToolActive || IsAutoToolActive;
+    public bool IsClipTransformOverlayActive =>
+        !IsSequencePlayheadInGap && (IsTransformToolActive || IsAutoToolActive);
+    public bool IsAutoCanvasOverlayActive => !IsSequencePlayheadInGap && IsAutoToolActive;
 
     public void UseCropTool() => CanvasTool = CanvasInteractionTool.Crop;
 
@@ -208,6 +211,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(IsTransformToolActive));
         OnPropertyChanged(nameof(IsAutoToolActive));
         OnPropertyChanged(nameof(IsClipTransformOverlayActive));
+        OnPropertyChanged(nameof(IsAutoCanvasOverlayActive));
     }
 
     private void TrySetCanvasCrop(int x, int y, int width, int height)

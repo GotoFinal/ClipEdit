@@ -37,6 +37,9 @@ public sealed class SequenceTimelineCanvas : Control
     public static readonly StyledProperty<double> ViewportStartProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, double>(nameof(ViewportStart));
 
+    public static readonly StyledProperty<bool> FreeViewportProperty =
+        AvaloniaProperty.Register<SequenceTimelineCanvas, bool>(nameof(FreeViewport));
+
     public static readonly StyledProperty<double> HoverTimeProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, double>(nameof(HoverTime), -1);
 
@@ -64,6 +67,8 @@ public sealed class SequenceTimelineCanvas : Control
     private double _pointerStartX;
     private double _dragSourceStart;
     private double _dragSourceEnd;
+    private double _dragTimelineStart;
+    private double _previewTimelineStart = double.NaN;
     private double _selectionAnchor;
     private bool _isPanning;
     private double _panStartX;
@@ -80,6 +85,7 @@ public sealed class SequenceTimelineCanvas : Control
             SelectionEndProperty,
             ZoomProperty,
             ViewportStartProperty,
+            FreeViewportProperty,
             HoverTimeProperty,
             VisualRevisionProperty);
     }
@@ -97,6 +103,8 @@ public sealed class SequenceTimelineCanvas : Control
     public event EventHandler? MoveLeftRequested;
 
     public event EventHandler? MoveRightRequested;
+    public event EventHandler<VideoClipMoveRequestedEventArgs>? ClipMoveRequested;
+
 
     public IReadOnlyList<VideoClipViewModel>? Clips
     {
@@ -145,6 +153,12 @@ public sealed class SequenceTimelineCanvas : Control
         get => GetValue(ViewportStartProperty);
         set => SetValue(ViewportStartProperty, value);
     }
+    public bool FreeViewport
+    {
+        get => GetValue(FreeViewportProperty);
+        set => SetValue(FreeViewportProperty, value);
+    }
+
 
     public double HoverTime
     {
@@ -192,7 +206,7 @@ public sealed class SequenceTimelineCanvas : Control
     {
         base.OnPointerPressed(eventArgs);
         var currentPoint = eventArgs.GetCurrentPoint(this);
-        if (currentPoint.Properties.IsMiddleButtonPressed && EffectiveZoom > 1)
+        if (currentPoint.Properties.IsMiddleButtonPressed && (EffectiveZoom > 1 || FreeViewport))
         {
             Focus();
             _isPanning = true;
@@ -238,13 +252,17 @@ public sealed class SequenceTimelineCanvas : Control
             }
             else
             {
-                _dragClip = FindClip(time);
-                if (_dragClip is not null)
+                _dragClip = point.Y >= TrackTop ? FindClip(time) : null;
+                if (_dragClip is null)
+                {
+                    _dragMode = SequenceTimelineDragMode.NewSelection;
+                }
+                else
                 {
                     SetCurrentValue(SelectedClipProperty, _dragClip);
+                    SetCurrentValue(PlayheadProperty, time);
+                    _dragMode = SequenceTimelineDragMode.MoveClip;
                 }
-
-                _dragMode = SequenceTimelineDragMode.NewSelection;
             }
         }
 
@@ -252,6 +270,8 @@ public sealed class SequenceTimelineCanvas : Control
         _selectionAnchor = time;
         _dragSourceStart = _dragClip?.SourceStartSeconds ?? 0;
         _dragSourceEnd = _dragClip?.SourceEndSeconds ?? 0;
+        _dragTimelineStart = _dragClip?.TimelineStartSeconds ?? 0;
+        _previewTimelineStart = _dragTimelineStart;
         if (_dragMode == SequenceTimelineDragMode.NewSelection)
         {
             SetCurrentValue(SelectionStartProperty, time);
@@ -304,6 +324,12 @@ public sealed class SequenceTimelineCanvas : Control
             case SequenceTimelineDragMode.TrimEnd:
                 ApplyTrim(point.X - _pointerStartX);
                 break;
+            case SequenceTimelineDragMode.MoveClip:
+                _previewTimelineStart = Math.Max(
+                    0,
+                    _dragTimelineStart + ((point.X - _pointerStartX) * EffectiveViewportDuration / Math.Max(1, Bounds.Width)));
+                InvalidateVisual();
+                break;
         }
 
         eventArgs.Handled = true;
@@ -312,16 +338,24 @@ public sealed class SequenceTimelineCanvas : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs eventArgs)
     {
         base.OnPointerReleased(eventArgs);
+
+        _isPanning = false;
+        if (_dragMode == SequenceTimelineDragMode.MoveClip &&
+            _dragClip is { } movedClip &&
+            double.IsFinite(_previewTimelineStart))
+        {
+            ClipMoveRequested?.Invoke(
+                this,
+                new VideoClipMoveRequestedEventArgs(movedClip, _previewTimelineStart));
+        }
         if (eventArgs.Pointer.Captured == this)
         {
             eventArgs.Pointer.Capture(null);
         }
-
-        _isPanning = false;
-        if (_dragMode == SequenceTimelineDragMode.NewSelection)
-        {
-            _dragMode = SequenceTimelineDragMode.None;
-        }
+        _dragMode = SequenceTimelineDragMode.None;
+        _dragClip = null;
+        _previewTimelineStart = double.NaN;
+        InvalidateVisual();
 
         eventArgs.Handled = true;
     }
@@ -332,6 +366,8 @@ public sealed class SequenceTimelineCanvas : Control
         _isPanning = false;
         _dragMode = SequenceTimelineDragMode.None;
         _dragClip = null;
+        _previewTimelineStart = double.NaN;
+        InvalidateVisual();
     }
 
     protected override void OnPointerExited(PointerEventArgs eventArgs)
@@ -351,7 +387,7 @@ public sealed class SequenceTimelineCanvas : Control
             return;
         }
 
-        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) && EffectiveZoom > 1)
+        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) && (EffectiveZoom > 1 || FreeViewport))
         {
             SetCurrentValue(
                 ViewportStartProperty,
@@ -363,10 +399,10 @@ public sealed class SequenceTimelineCanvas : Control
             var anchor = XToTime(x);
             var requestedZoom = Math.Clamp(
                 EffectiveZoom * Math.Pow(1.25, eventArgs.Delta.Y),
-                1,
+                FreeViewport ? TimelineViewportMath.MinimumFreeZoom : 1,
                 TimelineViewportMath.MaximumZoom);
             var relative = Math.Clamp(x / Math.Max(1, Bounds.Width), 0, 1);
-            var newDuration = Duration / requestedZoom;
+            var newDuration = TimelineViewportMath.VisibleDuration(Duration, requestedZoom, FreeViewport);
             SetCurrentValue(ZoomProperty, requestedZoom);
             SetCurrentValue(ViewportStartProperty, ClampViewportStart(anchor - (relative * newDuration), requestedZoom));
         }
@@ -438,8 +474,12 @@ public sealed class SequenceTimelineCanvas : Control
 
     private void DrawClip(DrawingContext context, VideoClipViewModel clip)
     {
-        var start = Math.Max(clip.TimelineStartSeconds, EffectiveViewportStart);
-        var end = Math.Min(clip.TimelineEndSeconds, EffectiveViewportEnd);
+        var clipStart = ReferenceEquals(clip, _dragClip) &&
+                        _dragMode == SequenceTimelineDragMode.MoveClip
+            ? _previewTimelineStart
+            : clip.TimelineStartSeconds;
+        var start = Math.Max(clipStart, EffectiveViewportStart);
+        var end = Math.Min(clipStart + clip.DurationSeconds, EffectiveViewportEnd);
         if (end <= start)
         {
             return;
@@ -451,8 +491,8 @@ public sealed class SequenceTimelineCanvas : Control
         {
             foreach (var frame in clip.TimelineThumbnails)
             {
-                var frameTimelineStart = clip.TimelineStartSeconds + (frame.Start - clip.SourceStartSeconds);
-                var frameTimelineEnd = clip.TimelineStartSeconds + (frame.End - clip.SourceStartSeconds);
+                var frameTimelineStart = clipStart + (frame.Start - clip.SourceStartSeconds);
+                var frameTimelineEnd = clipStart + (frame.End - clip.SourceStartSeconds);
                 var visibleFrameStart = Math.Max(start, frameTimelineStart);
                 var visibleFrameEnd = Math.Min(end, frameTimelineEnd);
                 if (visibleFrameEnd <= visibleFrameStart)
@@ -550,19 +590,34 @@ public sealed class SequenceTimelineCanvas : Control
         {
             if (_dragMode == SequenceTimelineDragMode.TrimStart)
             {
+                var previousEnd = (Clips ?? [])
+                    .Where(clip => !ReferenceEquals(clip, _dragClip) && clip.TimelineEndSeconds <= _dragClip.TimelineStartSeconds)
+                    .Select(clip => clip.TimelineEndSeconds)
+                    .DefaultIfEmpty(0)
+                    .Max();
+                var earliestSourceStart = _dragClip.SourceStartSeconds -
+                                          (_dragClip.TimelineStartSeconds - previousEnd);
                 var bounded = Math.Clamp(
                     requestedSourceTime,
-                    _dragClip.Model.AvailableRange.Start.TotalSeconds,
+                    Math.Max(_dragClip.Model.AvailableRange.Start.TotalSeconds, earliestSourceStart),
                     _dragClip.SourceEndSeconds - frameStep);
                 _dragClip.SourceStartSeconds = bounded;
                 SetCurrentValue(PlayheadProperty, _dragClip.TimelineStartSeconds);
             }
             else
             {
+                var nextStart = (Clips ?? [])
+                    .Where(clip => !ReferenceEquals(clip, _dragClip) && clip.TimelineStartSeconds >= _dragClip.TimelineEndSeconds)
+                    .Select(clip => clip.TimelineStartSeconds)
+                    .DefaultIfEmpty(double.PositiveInfinity)
+                    .Min();
+                var latestSourceEnd = double.IsPositiveInfinity(nextStart)
+                    ? _dragClip.Model.AvailableRange.End.TotalSeconds
+                    : _dragClip.SourceEndSeconds + (nextStart - _dragClip.TimelineEndSeconds);
                 var bounded = Math.Clamp(
                     requestedSourceTime,
                     _dragClip.SourceStartSeconds + frameStep,
-                    _dragClip.Model.AvailableRange.End.TotalSeconds);
+                    Math.Min(_dragClip.Model.AvailableRange.End.TotalSeconds, latestSourceEnd));
                 _dragClip.SourceEndSeconds = bounded;
                 SetCurrentValue(PlayheadProperty, _dragClip.TimelineEndSeconds);
             }
@@ -648,16 +703,16 @@ public sealed class SequenceTimelineCanvas : Control
 
     private double TrackHeight => Math.Max(0, Bounds.Height - TrackTop);
 
-    private double EffectiveZoom => TimelineViewportMath.ClampZoom(Zoom);
+    private double EffectiveZoom => TimelineViewportMath.ClampZoom(Zoom, FreeViewport);
 
-    private double EffectiveViewportDuration => Duration <= 0 ? 1 : Duration / EffectiveZoom;
+    private double EffectiveViewportDuration => Duration <= 0 ? 1 : TimelineViewportMath.VisibleDuration(Duration, EffectiveZoom, FreeViewport);
 
     private double EffectiveViewportStart => ClampViewportStart(ViewportStart);
 
     private double EffectiveViewportEnd => EffectiveViewportStart + EffectiveViewportDuration;
 
     private double ClampViewportStart(double start, double? zoom = null) =>
-        TimelineViewportMath.ClampStart(Duration, zoom ?? EffectiveZoom, start);
+        TimelineViewportMath.ClampStart(Duration, zoom ?? EffectiveZoom, start, FreeViewport);
 
     private static Rect CreateCoverSourceRect(
         double sourceWidth,
@@ -693,6 +748,19 @@ internal enum SequenceTimelineDragMode
     NewSelection,
     SelectionStart,
     SelectionEnd,
+    MoveClip,
     TrimStart,
     TrimEnd,
+}
+
+public sealed class VideoClipMoveRequestedEventArgs : EventArgs
+{
+    public VideoClipMoveRequestedEventArgs(VideoClipViewModel clip, double timelineStart)
+    {
+        Clip = clip ?? throw new ArgumentNullException(nameof(clip));
+        TimelineStart = timelineStart;
+    }
+
+    public VideoClipViewModel Clip { get; }
+    public double TimelineStart { get; }
 }

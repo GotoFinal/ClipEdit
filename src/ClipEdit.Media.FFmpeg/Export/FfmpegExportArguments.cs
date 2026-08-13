@@ -117,7 +117,7 @@ internal static class FfmpegExportArguments
                     $"y=(H-h)/2{FormatSignedScalar(transform.OffsetY)}:shortest=1," +
                     $"crop={segment.CanvasCrop.Width}:{segment.CanvasCrop.Height}:" +
                     $"{segment.CanvasCrop.X}:{segment.CanvasCrop.Y}," +
-                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos," +
+                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format=yuv420p," +
                     $"setsar=1[vseg{segmentIndex}]");
             }
             else
@@ -126,7 +126,7 @@ internal static class FfmpegExportArguments
                     $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
                     $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
                     $"setpts=PTS-STARTPTS,crop={segment.Crop.Width}:{segment.Crop.Height}:{segment.Crop.X}:{segment.Crop.Y}," +
-                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,setsar=1[vseg{segmentIndex}]");
+                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format=yuv420p,setsar=1[vseg{segmentIndex}]");
             }
 
             if (!hasEmbeddedAudio)
@@ -137,7 +137,7 @@ internal static class FfmpegExportArguments
             if (segment.AudioTracks.IsEmpty)
             {
                 filters.Add(
-                    $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(range.Duration)}[aseg{segmentIndex}]");
+                    $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(range.Duration)},aformat=sample_fmts=fltp:channel_layouts=stereo[aseg{segmentIndex}]");
                 continue;
             }
 
@@ -167,19 +167,56 @@ internal static class FfmpegExportArguments
             }
         }
 
+        var sequenceInputs = new List<(string Video, string? Audio)>();
+        var sequenceCursor = plan.SequenceTimelineStart;
+        var gapIndex = 0;
+        for (var segmentIndex = 0; segmentIndex < plan.VideoSegments.Length; segmentIndex++)
+        {
+            var segmentStart = plan.GetVideoSegmentTimelineStart(segmentIndex);
+            if (segmentStart > sequenceCursor)
+            {
+                AddGap(segmentStart - sequenceCursor);
+            }
+
+            sequenceInputs.Add(($"vseg{segmentIndex}", hasEmbeddedAudio ? $"aseg{segmentIndex}" : null));
+            sequenceCursor = segmentStart + plan.VideoSegments[segmentIndex].SourceRange.Duration;
+        }
+
+        var sequenceEnd = plan.SequenceTimelineStart + plan.ExpectedDuration;
+        if (sequenceEnd > sequenceCursor)
+        {
+            AddGap(sequenceEnd - sequenceCursor);
+        }
+
         if (hasEmbeddedAudio)
         {
             filters.Add(
-                string.Concat(Enumerable.Range(0, plan.VideoSegments.Length)
-                    .Select(index => $"[vseg{index}][aseg{index}]")) +
-                $"concat=n={plan.VideoSegments.Length}:v=1:a=1[vbase][abase]");
+                string.Concat(sequenceInputs.Select(input => $"[{input.Video}][{input.Audio}]")) +
+                $"concat=n={sequenceInputs.Count}:v=1:a=1[vbase][abase]");
         }
         else
         {
             filters.Add(
-                string.Concat(Enumerable.Range(0, plan.VideoSegments.Length)
-                    .Select(index => $"[vseg{index}]")) +
-                $"concat=n={plan.VideoSegments.Length}:v=1:a=0[vbase]");
+                string.Concat(sequenceInputs.Select(input => $"[{input.Video}]")) +
+                $"concat=n={sequenceInputs.Count}:v=1:a=0[vbase]");
+        }
+
+        void AddGap(MediaTime duration)
+        {
+            var videoLabel = $"vgap{gapIndex}";
+            filters.Add(
+                $"color=c=black:s={plan.OutputSize.Width}x{plan.OutputSize.Height}:" +
+                $"r=30:d={FormatTime(duration)},format=yuv420p,setsar=1[{videoLabel}]");
+            string? audioLabel = null;
+            if (hasEmbeddedAudio)
+            {
+                audioLabel = $"agap{gapIndex}";
+                filters.Add(
+                    $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(duration)},aformat=sample_fmts=fltp:channel_layouts=stereo[{audioLabel}]");
+            }
+
+            sequenceInputs.Add((videoLabel, audioLabel));
+            gapIndex++;
         }
 
         var externalSources = GetSequenceExternalAudioSources(plan);

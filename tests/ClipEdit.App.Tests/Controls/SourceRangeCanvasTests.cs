@@ -183,4 +183,12 @@ public sealed class SourceRangeCanvasTests
         Assert.Equal(4, viewport.Zoom);
         Assert.Equal(25, viewport.Start);
     }
+
+    [Fact]
+    public void Free_viewport_can_zoom_out_and_pan_the_sequence_to_either_side()
+    {
+        Assert.Equal(400, TimelineViewportMath.VisibleDuration(100, 0.25, freeViewport: true));
+        Assert.Equal(-360, TimelineViewportMath.ClampStart(100, 0.25, -1_000, freeViewport: true));
+        Assert.Equal(60, TimelineViewportMath.ClampStart(100, 0.25, 1_000, freeViewport: true));
+    }
 }

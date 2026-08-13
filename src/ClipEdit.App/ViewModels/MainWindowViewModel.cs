@@ -75,6 +75,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private MediaTime _sequenceSelectionEnd;
     private double _sequenceTimelineZoom = 1;
     private double _sequenceTimelineViewportStart;
+    private bool _isSequenceTimelineFreeMode;
+    private bool _isSequencePlayheadInGap;
 
     public MainWindowViewModel(
         IMediaProbe? mediaProbe,
@@ -297,7 +299,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     public double SequenceDurationSeconds =>
-        VideoClips.Aggregate(0d, static (total, clip) => total + clip.DurationSeconds);
+        VideoClips.Count == 0 ? 0 : VideoClips.Max(static clip => clip.TimelineEndSeconds);
 
     public double SequencePlayheadSeconds
     {
@@ -317,6 +319,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     public string SequencePlayheadText => FormatSequenceTimestamp(_sequencePlayhead);
+
+    public bool IsSequencePlayheadInGap
+    {
+        get => _isSequencePlayheadInGap;
+        private set
+        {
+            if (SetProperty(ref _isSequencePlayheadInGap, value))
+            {
+                OnPropertyChanged(nameof(IsClipTransformOverlayActive));
+                OnPropertyChanged(nameof(IsAutoCanvasOverlayActive));
+            }
+        }
+    }
 
     public double SequenceSelectionStartSeconds
     {
@@ -370,12 +385,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _sequencePlayhead > clip.TimelineStart &&
         _sequencePlayhead < clip.TimelineEnd;
 
+    public bool IsSequenceTimelineFreeMode
+    {
+        get => _isSequenceTimelineFreeMode;
+        set
+        {
+            if (!SetProperty(ref _isSequenceTimelineFreeMode, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(SequenceTimelineModeText));
+            FitSequenceTimeline();
+        }
+    }
+
+    public string SequenceTimelineModeText => IsSequenceTimelineFreeMode ? "Free" : "Fit";
+
     public double SequenceTimelineZoom
     {
         get => _sequenceTimelineZoom;
         set
         {
-            var next = TimelineViewportMath.ClampZoom(value);
+            var next = TimelineViewportMath.ClampZoom(value, IsSequenceTimelineFreeMode);
             if (!SetProperty(ref _sequenceTimelineZoom, next))
             {
                 return;
@@ -392,7 +424,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         get => _sequenceTimelineViewportStart;
         set
         {
-            var next = TimelineViewportMath.ClampStart(SequenceDurationSeconds, SequenceTimelineZoom, value);
+            var next = TimelineViewportMath.ClampStart(SequenceDurationSeconds, SequenceTimelineZoom, value, IsSequenceTimelineFreeMode);
             if (SetProperty(ref _sequenceTimelineViewportStart, next))
             {
                 RaiseSequenceViewportChanged();
@@ -402,20 +434,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     public double SequenceTimelineViewportDuration =>
-        TimelineViewportMath.VisibleDuration(SequenceDurationSeconds, SequenceTimelineZoom);
+        TimelineViewportMath.VisibleDuration(SequenceDurationSeconds, SequenceTimelineZoom, IsSequenceTimelineFreeMode);
 
     public double SequenceTimelineViewportEnd =>
-        Math.Min(SequenceDurationSeconds, SequenceTimelineViewportStart + SequenceTimelineViewportDuration);
+        SequenceTimelineViewportStart + SequenceTimelineViewportDuration;
 
     public string SequenceTimelineZoomText => $"{SequenceTimelineZoom:0.#}×";
 
     public string SequenceTimelineViewportText =>
-        $"{FormatSequenceTimestamp(SequenceTimeFromSeconds(SequenceTimelineViewportStart))} – " +
-        FormatSequenceTimestamp(SequenceTimeFromSeconds(SequenceTimelineViewportEnd));
+        $"{FormatTimelineViewportPosition(SequenceTimelineViewportStart)} – " +
+        FormatTimelineViewportPosition(SequenceTimelineViewportEnd);
 
     public bool CanZoomSequenceTimelineIn => SequenceTimelineZoom < TimelineViewportMath.MaximumZoom;
 
-    public bool CanZoomSequenceTimelineOut => SequenceTimelineZoom > 1;
+    public bool CanZoomSequenceTimelineOut =>
+        SequenceTimelineZoom > (IsSequenceTimelineFreeMode ? TimelineViewportMath.MinimumFreeZoom : 1);
 
     public double TimelineHoverTime
     {
@@ -578,9 +611,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             var outputSize = CanvasCrop.ExportSize;
-            var duration = slices.Aggregate(
-                MediaTime.Zero,
-                static (total, slice) => total + slice.SourceRange.Duration);
+            var duration = HasSequenceSelection
+                ? NormalizedSequenceSelection().Duration
+                : NonNegativeTimelineTime(SequenceDurationSeconds);
             return $"{SelectedExportPreset.DisplayName} · exact sequence re-encode · " +
                    $"{outputSize.Width} × {outputSize.Height} · {FormatSequenceTimestamp(duration)}";
         }
@@ -812,7 +845,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     CanvasSize,
                     CanvasCrop,
                     slice.Clip.CanvasTransform,
-                    embeddedAudio);
+                    embeddedAudio,
+                    slice.Clip.TimelineStart +
+                    (slice.SourceRange.Start - slice.Clip.SourceStart));
             }).ToImmutableArray();
             var externalAudio = AudioTracks
                 .Where(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty)
@@ -823,9 +858,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     track.TimelineOffset,
                     track.Edit))
                 .ToImmutableArray();
-            var selectionStart = HasSequenceSelection
-                ? NormalizedSequenceSelection().Start
-                : MediaTime.Zero;
+            var exportRange = HasSequenceSelection
+                ? NormalizedSequenceSelection()
+                : new MediaRange(MediaTime.Zero, NonNegativeTimelineTime(SequenceDurationSeconds));
+            var selectionStart = exportRange.Start;
             var plan = new ExportPlan(
                 videoSegments,
                 CanvasCrop.ExportSize,
@@ -833,7 +869,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 SelectedExportPreset,
                 replaceExistingDestination,
                 externalAudio,
-                selectionStart);
+                selectionStart,
+                exportRange.Duration);
             IsExporting = true;
             ExportProgress = 0;
             ExportPhaseText = "Preparing";
@@ -944,7 +981,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 clip.SourceStart + (overlapEnd - clip.TimelineStart));
             foreach (var part in clip.Model.Remove(sourceRemoval, Guid.NewGuid()))
             {
-                replacements.Add(clip.CreateSibling(part));
+                var timelineStart = part.TimelineStart >= selection.End
+                    ? part.TimelineStart - selection.Duration
+                    : part.TimelineStart;
+                replacements.Add(clip.CreateSibling(
+                    part.MoveTo(timelineStart < MediaTime.Zero
+                        ? MediaTime.Zero
+                        : timelineStart)));
             }
         }
 
@@ -979,7 +1022,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 clip.SourceStart + (overlapEnd - clip.TimelineStart));
             if (clip.Model.KeepOnly(sourceSelection) is { } kept)
             {
-                replacements.Add(clip.CreateSibling(kept));
+                replacements.Add(clip.CreateSibling(
+                    kept.MoveTo(kept.TimelineStart - selection.Start)));
             }
         }
 
@@ -1050,6 +1094,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             .GroupBy(clip => clip.Source.Id)
             .ToDictionary(group => group.Key, group => group.First().CanvasTransform);
         var replacements = new List<VideoClipViewModel>(videoSources.Length);
+        var timelineCursor = MediaTime.Zero;
         foreach (var source in videoSources)
         {
             var duration = source.Edit?.SourceDuration ?? source.Media?.Probe.Duration;
@@ -1061,9 +1106,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var fullRange = new MediaRange(MediaTime.Zero, duration.Value);
             replacements.Add(new VideoClipViewModel(
                 source,
-                new SequenceClip(Guid.NewGuid(), source.Id, fullRange, fullRange),
+                new SequenceClip(Guid.NewGuid(), source.Id, fullRange, fullRange, timelineCursor),
                 source.Crop,
                 placements.GetValueOrDefault(source.Id, ClipCanvasTransform.Fill(source.VideoSize, CanvasSize))));
+            timelineCursor += fullRange.Duration;
         }
 
         ReplaceVideoClips(replacements, replacements.FirstOrDefault()?.Id);
@@ -1091,7 +1137,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             SequenceTimelineZoom,
             SequenceTimelineViewportStart,
             SequenceTimelineZoom * factor,
-            anchor ?? SequencePlayheadSeconds);
+            anchor ?? SequencePlayheadSeconds,
+            IsSequenceTimelineFreeMode);
         _sequenceTimelineZoom = result.Zoom;
         _sequenceTimelineViewportStart = result.Start;
         RaiseSequenceViewportChanged();
@@ -1101,7 +1148,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public void FitSequenceTimeline()
     {
         _sequenceTimelineZoom = 1;
-        _sequenceTimelineViewportStart = 0;
+        _sequenceTimelineViewportStart = TimelineViewportMath.ClampStart(SequenceDurationSeconds, 1, 0, IsSequenceTimelineFreeMode);
         RaiseSequenceViewportChanged();
         StartSequenceTimelineAnalysis(debounce: false);
     }
@@ -1197,11 +1244,82 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         VideoClips.Move(sourceIndex, destinationIndex);
+        RepackVideoClips();
         UpdateSequenceLayout(resetSelectionIfEmpty: false);
         SelectedVideoClip = source;
         StatusText = $"Moved {source.DisplayName} in the video sequence";
         MarkProjectDirty();
         StartSequenceTimelineAnalysis(debounce: false);
+        return true;
+    }
+
+    public bool MoveVideoClipTo(VideoClipViewModel clip, double requestedTimelineStart)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+        if (!VideoClips.Contains(clip) || IsBusy || IsExporting || !double.IsFinite(requestedTimelineStart))
+        {
+            return false;
+        }
+
+        var requested = Math.Max(0, requestedTimelineStart);
+        var previousDuration = SequenceDurationSeconds;
+        var selectionCoveredWholeSequence = _sequenceSelectionStart == MediaTime.Zero &&
+                                            _sequenceSelectionEnd == SequenceTimeFromSeconds(previousDuration);
+        var duration = clip.DurationSeconds;
+        var others = VideoClips
+            .Where(candidate => !ReferenceEquals(candidate, clip))
+            .OrderBy(candidate => candidate.TimelineStartSeconds)
+            .ToArray();
+        var candidates = new List<double>
+        {
+            requested,
+            0,
+            others.Length == 0 ? 0 : others.Max(candidate => candidate.TimelineEndSeconds),
+        };
+        foreach (var other in others)
+        {
+            candidates.Add(other.TimelineEndSeconds);
+            candidates.Add(Math.Max(0, other.TimelineStartSeconds - duration));
+        }
+
+        var snapped = candidates
+            .Where(candidate => others.All(other =>
+                candidate + duration <= other.TimelineStartSeconds + 0.000001 ||
+                candidate >= other.TimelineEndSeconds - 0.000001))
+            .Distinct()
+            .OrderBy(candidate => Math.Abs(candidate - requested))
+            .ThenBy(candidate => candidate)
+            .First();
+        var timelineStart = NonNegativeTimelineTime(snapped);
+        if (timelineStart == clip.TimelineStart)
+        {
+            return false;
+        }
+
+        clip.TimelineStart = timelineStart;
+        var ordered = VideoClips
+            .OrderBy(candidate => candidate.TimelineStart)
+            .ThenBy(candidate => candidate.Id)
+            .ToArray();
+        for (var targetIndex = 0; targetIndex < ordered.Length; targetIndex++)
+        {
+            var sourceIndex = VideoClips.IndexOf(ordered[targetIndex]);
+            if (sourceIndex != targetIndex)
+            {
+                VideoClips.Move(sourceIndex, targetIndex);
+            }
+        }
+
+        UpdateSequenceLayout(resetSelectionIfEmpty: false);
+        if (selectionCoveredWholeSequence)
+        {
+            _sequenceSelectionEnd = SequenceTimeFromSeconds(SequenceDurationSeconds);
+            RaiseSequenceSelectionChanged();
+        }
+
+        SyncSourcePreviewToSequenceTime(_sequencePlayhead, selectClip: false);
+        SelectedVideoClip = clip;
+        StatusText = $"Moved {clip.DisplayName} to {FormatSequenceTimestamp(timelineStart)}";
         return true;
     }
 
@@ -1748,7 +1866,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             _sequenceSelectionStart == MediaTime.Zero &&
             Math.Abs(_sequenceSelectionEnd.TotalSeconds - previousDuration) < 0.001;
         var fullRange = new MediaRange(MediaTime.Zero, duration.Value);
-        var model = new SequenceClip(Guid.NewGuid(), mediaItem.Id, fullRange, fullRange);
+        var model = new SequenceClip(Guid.NewGuid(), mediaItem.Id, fullRange, fullRange, SequenceTimeFromSeconds(previousDuration));
         if (VideoClips.Count == 0)
         {
             InitializeCanvas(mediaItem.VideoSize, CropRegion.FullFrame(mediaItem.VideoSize));
@@ -1836,14 +1954,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void UpdateSequenceLayout(bool resetSelectionIfEmpty)
     {
-        var cursor = MediaTime.Zero;
-        foreach (var clip in VideoClips)
-        {
-            clip.TimelineStart = cursor;
-            cursor += clip.Duration;
-        }
-
-        var duration = cursor;
+        var duration = VideoClips.Count == 0 ? MediaTime.Zero : VideoClips.Max(static clip => clip.TimelineEnd);
         if (_sequencePlayhead > duration)
         {
             _sequencePlayhead = duration;
@@ -1869,10 +1980,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _sequenceTimelineViewportStart = TimelineViewportMath.ClampStart(
             duration.TotalSeconds,
             SequenceTimelineZoom,
-            _sequenceTimelineViewportStart);
+            _sequenceTimelineViewportStart,
+            IsSequenceTimelineFreeMode);
         RaiseSequenceStateChanged();
     }
 
+
+    private void RepackVideoClips()
+    {
+        var cursor = MediaTime.Zero;
+        foreach (var clip in VideoClips)
+        {
+            clip.TimelineStart = cursor;
+            cursor += clip.Duration;
+        }
+    }
     private void CollapseSequenceSelection(MediaTime timelineTime)
     {
         var bounded = Min(timelineTime, SequenceTimeFromSeconds(SequenceDurationSeconds));
@@ -1900,8 +2022,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var clip = FindClipAtTimelineTime(timelineTime);
         if (clip is null)
         {
+            IsSequencePlayheadInGap = VideoClips.Count > 0;
             return;
         }
+        IsSequencePlayheadInGap = false;
 
         if (selectClip)
         {
@@ -1928,7 +2052,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             ? NormalizedSequenceSelection()
             : new MediaRange(MediaTime.Zero, SequenceTimeFromSeconds(SequenceDurationSeconds));
         var slices = new List<SequenceExportSlice>(VideoClips.Count);
-        foreach (var clip in VideoClips)
+        foreach (var clip in VideoClips.OrderBy(static clip => clip.TimelineStart))
         {
             var timelineStart = Max(selection.Start, clip.TimelineStart);
             var timelineEnd = Min(selection.End, clip.TimelineEnd);
@@ -1956,6 +2080,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         return new MediaTime(checked((long)Math.Round(bounded * 1_000_000)), 1_000_000);
     }
 
+    private static MediaTime NonNegativeTimelineTime(double seconds)
+    {
+        var bounded = double.IsFinite(seconds) ? Math.Max(0, seconds) : 0;
+        return new MediaTime(
+            checked((long)Math.Round(bounded * 1_000_000)),
+            1_000_000);
+    }
+
     private void RaiseSequenceSelectionChanged()
     {
         OnPropertyChanged(nameof(SequenceSelectionRangeText));
@@ -1976,6 +2108,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SequenceTimelineViewportText));
         OnPropertyChanged(nameof(CanZoomSequenceTimelineIn));
         OnPropertyChanged(nameof(CanZoomSequenceTimelineOut));
+        OnPropertyChanged(nameof(IsSequenceTimelineFreeMode));
+        OnPropertyChanged(nameof(SequenceTimelineModeText));
     }
 
     private void RaiseSequenceStateChanged()
@@ -2199,6 +2333,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             : $"{minutes:00}:{seconds:00}.{milliseconds:000}";
     }
 
+    private static string FormatTimelineViewportPosition(double seconds)
+    {
+        var finite = double.IsFinite(seconds) ? seconds : 0;
+        var absolute = new MediaTime(
+            checked((long)Math.Round(Math.Abs(finite) * 1_000)),
+            1_000);
+        return (finite < 0 ? "−" : string.Empty) + FormatSequenceTimestamp(absolute);
+    }
+
     private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;
 
     private static MediaTime Max(MediaTime left, MediaTime right) => left >= right ? left : right;
@@ -2289,7 +2432,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             transform.Scale,
             transform.RotationDegrees,
             transform.ScaleX,
-            transform.ScaleY);
+            transform.ScaleY,
+            clip.TimelineStart.Numerator,
+            clip.TimelineStart.Denominator);
     }
 
     private void RestoreVideoSequence(ProjectDocument document, ICollection<string> warnings)
@@ -2331,6 +2476,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 }
             }
 
+            var legacyTimelineCursor = MediaTime.Zero;
             foreach (var savedClip in document.VideoClips)
             {
                 if (!mediaById.TryGetValue(savedClip.SourceMediaId, out var source) || !source.HasVideo)
@@ -2349,7 +2495,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                             new MediaTime(savedClip.SourceEndNumerator, savedClip.SourceEndDenominator)),
                         new MediaRange(
                             new MediaTime(savedClip.AvailableStartNumerator, savedClip.AvailableStartDenominator),
-                            new MediaTime(savedClip.AvailableEndNumerator, savedClip.AvailableEndDenominator)));
+                            new MediaTime(savedClip.AvailableEndNumerator, savedClip.AvailableEndDenominator)),
+                        document.SchemaVersion >= 5
+                            ? new MediaTime(savedClip.TimelineStartNumerator, savedClip.TimelineStartDenominator)
+                            : legacyTimelineCursor);
                     var window = new CropRegion(
                         source.VideoSize,
                         savedClip.SourceWindowX,
@@ -2369,6 +2518,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                             savedClip.CanvasRotationDegrees)
                         : CreateLegacyCanvasTransform(source.VideoSize, CanvasSize, CanvasCrop, window);
                     replacements.Add(new VideoClipViewModel(source, model, window, transform));
+                    if (document.SchemaVersion < 5)
+                    {
+                        legacyTimelineCursor += model.Duration;
+                    }
                 }
                 catch (ArgumentException exception)
                 {

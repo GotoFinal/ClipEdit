@@ -330,12 +330,19 @@
                       SourceVideoSize="{Binding SelectedVideoClip.VideoSize}"
                       SourcePath="{Binding SelectedMedia.SourcePath}" />
 
+                  <Border
+                      Margin="5"
+                      Background="#000000"
+                      IsHitTestVisible="False"
+                      IsVisible="{Binding IsSequencePlayheadInGap}"
+                      ZIndex="9" />
+
                   <controls:ClipTransformCanvas
                       Margin="5"
                       AutomationProperties.Name="Selected clip canvas transform"
                       CanvasSize="{Binding CanvasSize}"
                       IsActive="{Binding IsClipTransformOverlayActive}"
-                      IsHitTestVisible="{Binding IsTransformToolActive}"
+                      IsHitTestVisible="{Binding IsClipTransformOverlayActive}"
                       SourceSize="{Binding SelectedVideoClip.VideoSize}"
                       WheelRotationDegrees="{Binding ClipWheelRotationDegrees}"
                       WheelZoomPercent="{Binding ClipWheelZoomPercent}"
@@ -362,8 +369,8 @@
                       Crop="{Binding CanvasCrop, Mode=TwoWay}"
                       CropSizeStep="{Binding CropSizeStep}"
                       IsCropAspectRatioLocked="{Binding IsCropAspectLocked}"
-                      IsHitTestVisible="{Binding IsAutoToolActive}"
-                      IsVisible="{Binding IsAutoToolActive}"
+                      IsHitTestVisible="{Binding IsAutoCanvasOverlayActive}"
+                      IsVisible="{Binding IsAutoCanvasOverlayActive}"
                       SourceSize="{Binding SelectedVideoClip.VideoSize}"
                       Transform="{Binding SelectedVideoClip.CanvasTransform, Mode=TwoWay}"
                       WheelRotationDegrees="{Binding ClipWheelRotationDegrees}"
@@ -544,7 +551,7 @@
                       </Button>
                     </StackPanel>
                   </StackPanel>
-                  <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
+                  <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="5">
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                       <TextBlock Classes="muted" FontSize="9" Text="{Binding SequenceTimelineViewportText}" />
                       <TextBlock Classes="muted" FontSize="9" Text="Wheel zoom · Shift+wheel pan · drag edges to restore or trim" />
@@ -556,7 +563,8 @@
                     <Button Grid.Column="3" Width="24" Height="20" Padding="5" Classes="secondary" Click="TimelineZoomIn_Click" IsEnabled="{Binding CanZoomSequenceTimelineIn}">
                       <PathIcon Width="10" Height="10" Data="M2,8 H14 M8,2 V14" />
                     </Button>
-                    <Button Grid.Column="4" Height="20" Padding="7,1" Classes="secondary" Click="TimelineFit_Click" Content="Fit" IsEnabled="{Binding CanZoomSequenceTimelineOut}" />
+                    <ToggleButton Grid.Column="4" Height="20" Padding="7,1" Classes="secondary" Content="Free" IsChecked="{Binding IsSequenceTimelineFreeMode, Mode=TwoWay}" ToolTip.Tip="Show workspace before and after the sequence so clips and hidden handles can be moved freely" />
+                    <Button Grid.Column="5" Height="20" Padding="7,1" Classes="secondary" Click="TimelineFit_Click" Content="Fit" />
                   </Grid>
                   <controls:SequenceTimelineCanvas
                       x:Name="SequenceTimeline"
@@ -565,6 +573,8 @@
                       Grid.Row="1"
                       AutomationProperties.Name="Video sequence timeline"
                       Clips="{Binding VideoClips}"
+                      ClipMoveRequested="SequenceTimeline_ClipMoveRequested"
+                      FreeViewport="{Binding IsSequenceTimelineFreeMode}"
                       DeleteRequested="SequenceTimeline_DeleteRequested"
                       Duration="{Binding SequenceDurationSeconds}"
                       HoverTime="{Binding TimelineHoverTime, Mode=TwoWay}"

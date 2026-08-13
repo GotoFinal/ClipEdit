@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ClipEdit.App.ViewModels;
+using ClipEdit.App.Controls;
 using ClipEdit.Media.Preview;
 
 namespace ClipEdit.App.Views;
@@ -447,6 +448,13 @@ public sealed partial class MainWindow : Window
         _ = eventArgs;
         ViewModel?.DeleteSelectedVideoClip();
     }
+
+    private void SequenceTimeline_ClipMoveRequested(object? sender, VideoClipMoveRequestedEventArgs eventArgs)
+    {
+        _ = sender;
+        ViewModel?.MoveVideoClipTo(eventArgs.Clip, eventArgs.TimelineStart);
+    }
+
 
     private void SequenceTimeline_SplitRequested(object? sender, EventArgs eventArgs)
     {

@@ -425,6 +425,63 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Clips_can_be_placed_with_gaps_and_export_preserves_empty_timeline_time()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        var firstPath = Path.Combine(Path.GetTempPath(), "gap-first.mkv");
+        var secondPath = Path.Combine(Path.GetTempPath(), "gap-second.mkv");
+        await viewModel.ImportFilesAsync([firstPath, secondPath]);
+        var second = viewModel.VideoClips[1];
+        viewModel.SequencePlayheadSeconds = 70;
+
+        Assert.True(viewModel.MoveVideoClipTo(second, 80));
+        Assert.Equal(80, second.TimelineStartSeconds);
+        Assert.Equal(140, viewModel.SequenceDurationSeconds);
+        Assert.True(viewModel.IsSequencePlayheadInGap);
+
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "gap-export.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(new MediaTime(140, 1), renderer.Plan!.ExpectedDuration);
+        Assert.Equal(MediaTime.Zero, renderer.Plan.GetVideoSegmentTimelineStart(0));
+        Assert.Equal(new MediaTime(80, 1), renderer.Plan.GetVideoSegmentTimelineStart(1));
+
+        viewModel.SequencePlayheadSeconds = 70;
+        Assert.True(viewModel.IsSequencePlayheadInGap);
+        viewModel.SequencePlayheadSeconds = 80;
+        Assert.False(viewModel.IsSequencePlayheadInGap);
+    }
+
+    [Fact]
+    public async Task Clip_timeline_placement_survives_project_round_trip()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"timeline-placement-{Guid.NewGuid():N}.clipedit");
+        var store = new JsonProjectStore();
+        try
+        {
+            using (var original = new MainWindowViewModel(new StubProbe(), projectStore: store))
+            {
+                await original.ImportFilesAsync([
+                    Path.Combine(Path.GetTempPath(), "placement-first.mkv"),
+                    Path.Combine(Path.GetTempPath(), "placement-second.mkv")]);
+                Assert.True(original.MoveVideoClipTo(original.VideoClips[1], 75));
+                Assert.True(await original.SaveProjectAsync(path));
+            }
+
+            using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.True(await restored.OpenProjectAsync(path));
+            Assert.Equal(75, restored.VideoClips[1].TimelineStartSeconds);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task Export_uses_the_selected_preset_and_current_exact_edits()
     {
         var renderer = new RecordingExportRenderer();
