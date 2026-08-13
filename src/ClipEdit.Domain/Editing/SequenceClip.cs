@@ -12,7 +12,8 @@ public sealed record SequenceClip
         Guid id,
         Guid sourceId,
         MediaRange sourceRange,
-        MediaRange availableRange)
+        MediaRange availableRange,
+        MediaTime timelineStart = default)
     {
         if (id == Guid.Empty)
         {
@@ -38,10 +39,16 @@ public sealed record SequenceClip
                 nameof(availableRange));
         }
 
+        if (timelineStart < MediaTime.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timelineStart));
+        }
+
         Id = id;
         SourceId = sourceId;
         SourceRange = sourceRange;
         AvailableRange = availableRange;
+        TimelineStart = timelineStart;
     }
 
     public Guid Id { get; }
@@ -51,6 +58,10 @@ public sealed record SequenceClip
     public MediaRange SourceRange { get; }
 
     public MediaRange AvailableRange { get; }
+
+    public MediaTime TimelineStart { get; }
+
+    public MediaTime TimelineEnd => TimelineStart + Duration;
 
     public MediaTime Duration => SourceRange.Duration;
 
@@ -74,7 +85,8 @@ public sealed record SequenceClip
                 rightClipId,
                 SourceId,
                 new MediaRange(sourceTime, SourceRange.End),
-                AvailableRange));
+                AvailableRange,
+                TimelineStart + (sourceTime - SourceRange.Start)));
     }
 
     public IReadOnlyList<SequenceClip> Remove(MediaRange removal, Guid rightClipId)
@@ -102,7 +114,8 @@ public sealed record SequenceClip
                     rightClipId,
                     SourceId,
                     new MediaRange(end, SourceRange.End),
-                    AvailableRange),
+                    AvailableRange,
+                    TimelineStart + (end - SourceRange.Start)),
             ];
         }
 
@@ -141,8 +154,15 @@ public sealed record SequenceClip
         return WithRange(new MediaRange(SourceRange.Start, sourceTime));
     }
 
+    public SequenceClip MoveTo(MediaTime timelineStart)
+    {
+        return timelineStart == TimelineStart
+            ? this
+            : new SequenceClip(Id, SourceId, SourceRange, AvailableRange, timelineStart);
+    }
+
     private SequenceClip WithRange(MediaRange range) =>
-        new(Id, SourceId, range, AvailableRange);
+        new(Id, SourceId, range, AvailableRange, TimelineStart + (range.Start - SourceRange.Start));
 
     private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;
 
