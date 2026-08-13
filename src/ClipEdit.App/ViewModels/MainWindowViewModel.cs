@@ -37,6 +37,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly string? _recoveryDirectory;
     private readonly TimeSpan _autosaveDelay;
     private readonly List<ProjectMediaDocument> _unavailableProjectMedia = [];
+    private readonly Dictionary<string, string> _pendingProjectRelinks = new(PathComparer);
+    private ProjectDocument? _pendingProjectDocument;
+    private string? _pendingProjectPath;
+    private bool _pendingProjectIsRecovery;
+    private bool _pendingProjectDiscardUnsavedChanges;
     private MediaItemViewModel? _selectedMedia;
     private VideoClipViewModel? _selectedVideoClip;
     private bool _isBusy;
@@ -130,7 +135,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<AudioTrackViewModel> AudioTracks { get; } = [];
 
+    public ObservableCollection<RecoveryCandidateViewModel> RecoveryCandidates { get; } = [];
+
+    public ObservableCollection<MissingMediaReferenceViewModel> MissingMediaReferences { get; } = [];
+
     public bool IsProjectPersistenceAvailable => _projectStore is not null;
+
+    public bool HasRecoveryCandidates => RecoveryCandidates.Count > 0;
+
+    public bool HasPendingMissingMedia => MissingMediaReferences.Count > 0;
+
+    public string PendingProjectOpenTitle => _pendingProjectIsRecovery
+        ? "Relink media before recovery"
+        : "Relink media before opening";
+
+    public string PendingProjectOpenDescription =>
+        "ClipEdit has not replaced the current workspace. Choose the original file at its new location; replacements must match the saved media fingerprint.";
 
     public string? ProjectPath
     {
@@ -1879,8 +1899,102 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public async Task<bool> OpenProjectAsync(
+    public async Task DiscoverRecoveryCandidatesAsync(CancellationToken cancellationToken = default)
+    {
+        RecoveryCandidates.Clear();
+        if (_projectStore is null ||
+            string.IsNullOrWhiteSpace(_recoveryDirectory) ||
+            !Directory.Exists(_recoveryDirectory))
+        {
+            RaiseRecoveryStateChanged();
+            return;
+        }
+
+        string[] recoveryPaths;
+        try
+        {
+            recoveryPaths = Directory
+                .EnumerateFiles(_recoveryDirectory, "*.recovery.clipedit", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusText = $"Recovery files could not be inspected: {exception.Message}";
+            RaiseRecoveryStateChanged();
+            return;
+        }
+
+        foreach (var recoveryPath in recoveryPaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var lastModified = new DateTimeOffset(
+                File.GetLastWriteTimeUtc(recoveryPath),
+                TimeSpan.Zero);
+            try
+            {
+                var document = await _projectStore.LoadAsync(recoveryPath, cancellationToken);
+                var referencedMedia = document.Media
+                    .Select(media =>
+                    {
+                        var name = Path.GetFileName(media.SourcePath);
+                        return string.IsNullOrWhiteSpace(name) ? media.SourcePath : name;
+                    })
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                RecoveryCandidates.Add(new RecoveryCandidateViewModel(
+                    recoveryPath,
+                    document.ProjectId,
+                    lastModified,
+                    referencedMedia));
+            }
+            catch (ProjectStoreException exception)
+            {
+                RecoveryCandidates.Add(new RecoveryCandidateViewModel(
+                    recoveryPath,
+                    Guid.Empty,
+                    lastModified,
+                    [],
+                    exception.Message));
+            }
+        }
+
+        if (RecoveryCandidates.Count > 0)
+        {
+            StatusText = $"{RecoveryCandidates.Count} recovery autosave{(RecoveryCandidates.Count == 1 ? string.Empty : "s")} available";
+        }
+
+        RaiseRecoveryStateChanged();
+    }
+
+    public async Task<bool> DiscardRecoveryAsync(
+        RecoveryCandidateViewModel candidate,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        if (_projectStore is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            await _projectStore.DeleteIfExistsAsync(candidate.RecoveryPath, cancellationToken);
+            RecoveryCandidates.Remove(candidate);
+            StatusText = "Discarded the recovery autosave; source media was not changed";
+            RaiseRecoveryStateChanged();
+            return true;
+        }
+        catch (ProjectStoreException exception)
+        {
+            StatusText = exception.Message;
+            return false;
+        }
+    }
+
+    public async Task<bool> OpenProjectWithRelinkingAsync(
         string projectPath,
+        bool isRecovery = false,
         bool discardUnsavedChanges = false,
         CancellationToken cancellationToken = default)
     {
@@ -1901,6 +2015,203 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         try
         {
             document = await _projectStore.LoadAsync(projectPath, cancellationToken);
+        }
+        catch (ProjectStoreException exception)
+        {
+            StatusText = exception.Message;
+            return false;
+        }
+
+        var missing = document.Media
+            .Select(media => (media, reason: GetUnavailableMediaReason(media)))
+            .Where(entry => entry.reason is not null)
+            .Select(entry => new MissingMediaReferenceViewModel(entry.media, entry.reason!))
+            .ToArray();
+        if (missing.Length == 0)
+        {
+            var opened = isRecovery
+                ? await RecoverProjectAsync(projectPath, cancellationToken)
+                : await OpenProjectAsync(projectPath, discardUnsavedChanges, cancellationToken);
+            if (opened && isRecovery)
+            {
+                var recoveredCandidate = RecoveryCandidates.FirstOrDefault(candidate =>
+                    PathComparer.Equals(candidate.RecoveryPath, Path.GetFullPath(projectPath)));
+                if (recoveredCandidate is not null)
+                {
+                    RecoveryCandidates.Remove(recoveredCandidate);
+                    RaiseRecoveryStateChanged();
+                }
+            }
+
+            return opened;
+        }
+
+        ClearPendingProjectOpen();
+        _pendingProjectDocument = document;
+        _pendingProjectPath = Path.GetFullPath(projectPath);
+        _pendingProjectIsRecovery = isRecovery;
+        _pendingProjectDiscardUnsavedChanges = discardUnsavedChanges;
+        foreach (var reference in missing)
+        {
+            MissingMediaReferences.Add(reference);
+        }
+
+        StatusText = $"{missing.Length} media file{(missing.Length == 1 ? " needs" : "s need")} relinking before the project can open";
+        RaiseRecoveryStateChanged();
+        return false;
+    }
+
+    public async Task<bool> RelinkMissingMediaAsync(
+        MissingMediaReferenceViewModel reference,
+        string replacementPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        ArgumentException.ThrowIfNullOrWhiteSpace(replacementPath);
+        if (_pendingProjectDocument is null ||
+            _pendingProjectPath is null ||
+            !MissingMediaReferences.Contains(reference) ||
+            _importMedia is null)
+        {
+            StatusText = "There is no pending media reference to relink.";
+            return false;
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(replacementPath);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            StatusText = $"The replacement path is invalid: {exception.Message}";
+            return false;
+        }
+
+        if (!File.Exists(fullPath))
+        {
+            StatusText = "The selected replacement file no longer exists.";
+            return false;
+        }
+
+        var duplicatesAnotherSource = _pendingProjectDocument.Media.Any(media =>
+            !PathComparer.Equals(media.SourcePath, reference.OriginalPath) &&
+            PathComparer.Equals(
+                _pendingProjectRelinks.GetValueOrDefault(media.SourcePath, media.SourcePath),
+                fullPath));
+        if (duplicatesAnotherSource)
+        {
+            StatusText = "That file is already used by another media item in this project.";
+            return false;
+        }
+
+        using var candidate = new MediaItemViewModel(fullPath, reference.MediaId);
+        await candidate.ProbeAsync(_importMedia, cancellationToken);
+        if (!candidate.IsReady || candidate.Media is null)
+        {
+            StatusText = $"Could not use {candidate.DisplayName}: {candidate.Detail}";
+            return false;
+        }
+
+        var mismatch = ValidateRelinkFingerprint(
+            reference.SavedMedia,
+            candidate,
+            _pendingProjectDocument);
+        if (mismatch is not null)
+        {
+            StatusText = $"{candidate.DisplayName} does not match the saved media: {mismatch}";
+            return false;
+        }
+
+        reference.Resolve(fullPath);
+        _pendingProjectRelinks[reference.OriginalPath] = fullPath;
+        if (MissingMediaReferences.Any(item => !item.IsResolved))
+        {
+            StatusText = $"Relinked {reference.DisplayName}; choose the remaining media";
+            return true;
+        }
+
+        var pendingPath = _pendingProjectPath;
+        var isRecovery = _pendingProjectIsRecovery;
+        var discardUnsavedChanges = _pendingProjectDiscardUnsavedChanges;
+        var relinks = new Dictionary<string, string>(_pendingProjectRelinks, PathComparer);
+        var opened = isRecovery
+            ? await RecoverProjectAsync(pendingPath, cancellationToken, relinks)
+            : await OpenProjectAsync(pendingPath, discardUnsavedChanges, cancellationToken, relinks);
+        if (!opened)
+        {
+            return false;
+        }
+
+        ClearPendingProjectOpen();
+        if (isRecovery)
+        {
+            var recoveredCandidate = RecoveryCandidates.FirstOrDefault(candidate =>
+                PathComparer.Equals(candidate.RecoveryPath, pendingPath));
+            if (recoveredCandidate is not null)
+            {
+                RecoveryCandidates.Remove(recoveredCandidate);
+            }
+        }
+        else
+        {
+            IsProjectDirty = true;
+            StatusText = "Opened with relinked media; save the project to keep the new locations";
+            ScheduleAutosave();
+        }
+
+        RaiseRecoveryStateChanged();
+        return true;
+    }
+
+    public void CancelPendingProjectOpen()
+    {
+        if (!HasPendingMissingMedia)
+        {
+            return;
+        }
+
+        ClearPendingProjectOpen();
+        StatusText = "Canceled opening the project; the current workspace was not changed";
+    }
+
+    public async Task<bool> OpenProjectAsync(
+        string projectPath,
+        bool discardUnsavedChanges = false,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? mediaPathOverrides = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
+        if (_projectStore is null)
+        {
+            StatusText = "Project opening is unavailable.";
+            return false;
+        }
+
+        if (IsProjectDirty && !discardUnsavedChanges)
+        {
+            StatusText = "Save the current project before opening another one.";
+            return false;
+        }
+
+        ProjectDocument document;
+        try
+        {
+            document = await _projectStore.LoadAsync(projectPath, cancellationToken);
+            if (mediaPathOverrides is { Count: > 0 })
+            {
+                document = document with
+                {
+                    Media = document.Media
+                        .Select(media => mediaPathOverrides.TryGetValue(
+                            media.SourcePath,
+                            out var replacementPath)
+                                ? media with { SourcePath = replacementPath }
+                                : media)
+                        .ToArray(),
+                };
+            }
         }
         catch (ProjectStoreException exception)
         {
@@ -1995,12 +2306,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public async Task<bool> RecoverProjectAsync(
         string recoveryPath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? mediaPathOverrides = null)
     {
         var recovered = await OpenProjectAsync(
             recoveryPath,
             discardUnsavedChanges: true,
-            cancellationToken);
+            cancellationToken,
+            mediaPathOverrides);
         if (!recovered)
         {
             return false;
@@ -2129,6 +2442,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanApplyCropPresetToAll));
         OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
         OnPropertyChanged(nameof(CanMoveSelectedVideoRight));
+        RaiseRecoveryStateChanged();
         RaiseSequenceStateChanged();
         RaiseExportStateChanged();
     }
@@ -2161,6 +2475,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _knownPaths.Clear();
         _pendingMediaIds.Clear();
         _unavailableProjectMedia.Clear();
+        ClearPendingProjectOpen();
         _timelineFrameCache.Clear();
         _isAdvancedMode = false;
         _moveTimelineClipsByDefault = false;
@@ -3554,6 +3869,106 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private string GetRecoveryPath()
     {
         return Path.Combine(_recoveryDirectory!, $"{_projectId:N}.recovery.clipedit");
+    }
+
+    private static string? GetUnavailableMediaReason(ProjectMediaDocument media)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(media.SourcePath);
+            if (!File.Exists(fullPath))
+            {
+                return "File not found";
+            }
+
+            if (media.ExpectedFileSizeBytes is { } expectedBytes)
+            {
+                var actualBytes = new FileInfo(fullPath).Length;
+                if (actualBytes != expectedBytes)
+                {
+                    return $"File size changed (saved {expectedBytes:N0} bytes, current {actualBytes:N0} bytes)";
+                }
+            }
+
+            return null;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException or
+                IOException or UnauthorizedAccessException)
+        {
+            return $"File cannot be accessed: {exception.Message}";
+        }
+    }
+
+    private static string? ValidateRelinkFingerprint(
+        ProjectMediaDocument saved,
+        MediaItemViewModel candidate,
+        ProjectDocument pendingProject)
+    {
+        var probe = candidate.Media!.Probe;
+        if (saved.ExpectedFileSizeBytes is { } expectedBytes &&
+            probe.FileSizeBytes is { } actualBytes &&
+            expectedBytes != actualBytes)
+        {
+            return $"file size is {actualBytes:N0} bytes, expected {expectedBytes:N0}";
+        }
+
+        var requiresVideo = pendingProject.VideoClips?.Any(clip =>
+            clip.SourceMediaId == saved.MediaId) == true;
+        if (requiresVideo)
+        {
+            if (!candidate.HasVideo)
+            {
+                return "the saved item is video but the replacement has no video stream";
+            }
+
+            var expectedSize = new PixelSize(saved.SourceWidth, saved.SourceHeight);
+            if (candidate.VideoSize != expectedSize)
+            {
+                return $"video size is {candidate.VideoSize.Width} × {candidate.VideoSize.Height}, expected {expectedSize.Width} × {expectedSize.Height}";
+            }
+        }
+
+        var expectedDuration = new MediaTime(
+            saved.SourceDurationNumerator,
+            saved.SourceDurationDenominator);
+        if (probe.Duration is not { } actualDuration ||
+            Math.Abs(actualDuration.TotalSeconds - expectedDuration.TotalSeconds) > 0.1)
+        {
+            return $"duration differs from the saved {expectedDuration.TotalSeconds:0.###} seconds";
+        }
+
+        var availableAudioStreams = probe.AudioStreams
+            .Select(stream => stream.Index)
+            .ToHashSet();
+        var missingStream = (saved.AudioTracks ?? [])
+            .Select(track => track.StreamIndex)
+            .FirstOrDefault(index => !availableAudioStreams.Contains(index), -1);
+        if (missingStream >= 0)
+        {
+            return $"audio stream {missingStream} is missing";
+        }
+
+        return null;
+    }
+
+    private void ClearPendingProjectOpen()
+    {
+        _pendingProjectDocument = null;
+        _pendingProjectPath = null;
+        _pendingProjectIsRecovery = false;
+        _pendingProjectDiscardUnsavedChanges = false;
+        _pendingProjectRelinks.Clear();
+        MissingMediaReferences.Clear();
+        RaiseRecoveryStateChanged();
+    }
+
+    private void RaiseRecoveryStateChanged()
+    {
+        OnPropertyChanged(nameof(HasRecoveryCandidates));
+        OnPropertyChanged(nameof(HasPendingMissingMedia));
+        OnPropertyChanged(nameof(PendingProjectOpenTitle));
+        OnPropertyChanged(nameof(PendingProjectOpenDescription));
     }
 
     private void StartPreviewRefresh(

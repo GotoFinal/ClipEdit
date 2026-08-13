@@ -268,6 +268,50 @@
     </Border>
 
     <Grid Grid.Row="1" Margin="10" ColumnDefinitions="214,*" ColumnSpacing="10">
+      <Border
+          Grid.ColumnSpan="2"
+          ZIndex="30"
+          Margin="18"
+          Padding="18"
+          MaxWidth="760"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Top"
+          Classes="panel"
+          Background="#20242D"
+          BorderBrush="#7C5CFC"
+          IsVisible="{Binding HasPendingMissingMedia}">
+        <StackPanel Spacing="10">
+          <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding PendingProjectOpenTitle}" />
+          <TextBlock Classes="muted" Text="{Binding PendingProjectOpenDescription}" TextWrapping="Wrap" />
+          <ItemsControl ItemsSource="{Binding MissingMediaReferences}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:MissingMediaReferenceViewModel">
+                <Border Margin="0,3" Padding="10,7" Background="#181B22" CornerRadius="6">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <StackPanel Spacing="2">
+                      <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                      <TextBlock Classes="muted" FontSize="10" Text="{Binding DetailText}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button
+                        Grid.Column="1"
+                        Classes="secondary"
+                        Click="RelinkMissingMedia_Click"
+                        Content="Relink…"
+                        AutomationProperties.Name="{Binding DisplayName}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button
+              HorizontalAlignment="Right"
+              Classes="secondary"
+              Click="CancelPendingProjectOpen_Click"
+              Content="Cancel open"
+              AutomationProperties.Name="Cancel opening project" />
+        </StackPanel>
+      </Border>
+
       <Border Grid.Column="0" Classes="panel" Padding="10">
         <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
           <Grid ColumnDefinitions="*,Auto">
@@ -349,7 +393,7 @@
           <Grid Margin="28">
             <Border
                 MaxWidth="650"
-                MaxHeight="380"
+                MaxHeight="560"
                 Padding="44"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
@@ -384,6 +428,52 @@
                     Text="{Binding EmptyStateDescription}"
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
+
+                <Border
+                    MinWidth="470"
+                    MaxWidth="560"
+                    Padding="10"
+                    Background="#20242D"
+                    BorderBrush="#7C5CFC"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    IsVisible="{Binding HasRecoveryCandidates}">
+                  <StackPanel Spacing="7">
+                    <TextBlock FontWeight="SemiBold" Text="Recovery autosaves" />
+                    <TextBlock Classes="muted" FontSize="11" Text="Nothing is restored automatically. Review the referenced media first." />
+                    <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                      <ItemsControl ItemsSource="{Binding RecoveryCandidates}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:RecoveryCandidateViewModel">
+                            <Border Margin="0,3" Padding="9,7" Background="#181B22" CornerRadius="6">
+                              <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                <StackPanel>
+                                  <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                                  <TextBlock Classes="muted" FontSize="10" Text="{Binding ReferencedMediaText}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button
+                                    Grid.Column="1"
+                                    Classes="primary"
+                                    Padding="9,5"
+                                    Click="RecoverCandidate_Click"
+                                    Content="Recover"
+                                    IsEnabled="{Binding CanRecover}"
+                                    AutomationProperties.Name="{Binding AutomationName}" />
+                                <Button
+                                    Grid.Column="2"
+                                    Classes="secondary"
+                                    Padding="9,5"
+                                    Click="DiscardRecoveryCandidate_Click"
+                                    Content="Discard"
+                                    AutomationProperties.Name="{Binding AutomationName}" />
+                              </Grid>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                  </StackPanel>
+                </Border>
 
                 <Button
                     Margin="0,8,0,0"

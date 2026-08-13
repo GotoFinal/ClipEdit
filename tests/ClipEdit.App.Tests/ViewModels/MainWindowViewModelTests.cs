@@ -909,6 +909,196 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Recovery_discovery_is_explicit_and_identifies_referenced_media()
+    {
+        var directory = Directory.CreateTempSubdirectory("clipedit-recovery-");
+        var sourcePath = Path.Combine(directory.FullName, "referenced-video.mkv");
+        var recoveryPath = Path.Combine(directory.FullName, $"{Guid.NewGuid():N}.recovery.clipedit");
+        var store = new JsonProjectStore();
+
+        try
+        {
+            using (var source = new MainWindowViewModel(new StubProbe(), projectStore: store))
+            {
+                await source.ImportFilesAsync([sourcePath]);
+                await store.SaveAsync(recoveryPath, source.CreateProjectDocument());
+            }
+
+            using var viewModel = new MainWindowViewModel(
+                new StubProbe(),
+                projectStore: store,
+                recoveryDirectory: directory.FullName);
+
+            Assert.Empty(viewModel.RecoveryCandidates);
+            Assert.Empty(viewModel.MediaItems);
+
+            await viewModel.DiscoverRecoveryCandidatesAsync();
+
+            var candidate = Assert.Single(viewModel.RecoveryCandidates);
+            Assert.True(candidate.CanRecover);
+            Assert.Contains("referenced-video.mkv", candidate.ReferencedMedia);
+            Assert.Empty(viewModel.MediaItems);
+            Assert.True(viewModel.ShowEmptyState);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Unreadable_recovery_can_be_discarded_without_touching_media()
+    {
+        var directory = Directory.CreateTempSubdirectory("clipedit-recovery-corrupt-");
+        var recoveryPath = Path.Combine(directory.FullName, $"{Guid.NewGuid():N}.recovery.clipedit");
+        var sourcePath = Path.Combine(directory.FullName, "source.mkv");
+        await File.WriteAllTextAsync(recoveryPath, "{ not valid json");
+        await File.WriteAllBytesAsync(sourcePath, [1, 2, 3]);
+
+        try
+        {
+            using var viewModel = new MainWindowViewModel(
+                new StubProbe(),
+                projectStore: new JsonProjectStore(),
+                recoveryDirectory: directory.FullName);
+
+            await viewModel.DiscoverRecoveryCandidatesAsync();
+            var candidate = Assert.Single(viewModel.RecoveryCandidates);
+            Assert.False(candidate.CanRecover);
+            Assert.NotNull(candidate.ErrorText);
+
+            Assert.True(await viewModel.DiscardRecoveryAsync(candidate));
+            Assert.False(File.Exists(recoveryPath));
+            Assert.True(File.Exists(sourcePath));
+            Assert.Empty(viewModel.RecoveryCandidates);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Missing_source_waits_for_matching_relink_before_restoring_the_project()
+    {
+        var directory = Directory.CreateTempSubdirectory("clipedit-relink-");
+        var originalPath = Path.Combine(directory.FullName, "moved-video.mkv");
+        var replacementPath = Path.Combine(directory.FullName, "found-video.mkv");
+        var projectPath = Path.Combine(directory.FullName, "project.clipedit");
+        var store = new JsonProjectStore();
+
+        try
+        {
+            await File.WriteAllBytesAsync(originalPath, new byte[1_024]);
+            Guid expectedClipId;
+            using (var source = new MainWindowViewModel(new StubProbe(), projectStore: store))
+            {
+                await source.ImportFilesAsync([originalPath]);
+                expectedClipId = Assert.Single(source.VideoClips).Id;
+                Assert.True(await source.SaveProjectAsync(projectPath));
+            }
+
+            File.Move(originalPath, replacementPath);
+
+            using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.False(await restored.OpenProjectWithRelinkingAsync(projectPath));
+            Assert.True(restored.HasPendingMissingMedia);
+            Assert.Empty(restored.MediaItems);
+            var missing = Assert.Single(restored.MissingMediaReferences);
+            Assert.Equal("moved-video.mkv", missing.DisplayName);
+
+            Assert.True(await restored.RelinkMissingMediaAsync(missing, replacementPath));
+
+            Assert.False(restored.HasPendingMissingMedia);
+            Assert.Equal(Path.GetFullPath(replacementPath), Assert.Single(restored.MediaItems).SourcePath);
+            Assert.Equal(expectedClipId, Assert.Single(restored.VideoClips).Id);
+            Assert.Equal(Path.GetFullPath(projectPath), restored.ProjectPath);
+            Assert.True(restored.IsProjectDirty);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Relink_rejects_a_structurally_different_replacement()
+    {
+        var directory = Directory.CreateTempSubdirectory("clipedit-relink-mismatch-");
+        var originalPath = Path.Combine(directory.FullName, "missing-video.mkv");
+        var replacementPath = Path.Combine(directory.FullName, "audio-only.flac");
+        var projectPath = Path.Combine(directory.FullName, "project.clipedit");
+        var store = new JsonProjectStore();
+
+        try
+        {
+            await File.WriteAllBytesAsync(originalPath, new byte[1_024]);
+            using (var source = new MainWindowViewModel(new StubProbe(), projectStore: store))
+            {
+                await source.ImportFilesAsync([originalPath]);
+                Assert.True(await source.SaveProjectAsync(projectPath));
+            }
+
+            File.Delete(originalPath);
+            await File.WriteAllBytesAsync(replacementPath, new byte[1_024]);
+
+            using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.False(await restored.OpenProjectWithRelinkingAsync(projectPath));
+            var missing = Assert.Single(restored.MissingMediaReferences);
+
+            Assert.False(await restored.RelinkMissingMediaAsync(missing, replacementPath));
+            Assert.True(restored.HasPendingMissingMedia);
+            Assert.Empty(restored.MediaItems);
+            Assert.Contains("no video stream", restored.StatusText, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Recovery_only_opens_after_explicit_user_action()
+    {
+        var directory = Directory.CreateTempSubdirectory("clipedit-recover-explicit-");
+        var sourcePath = Path.Combine(directory.FullName, "source.mkv");
+        var recoveryPath = Path.Combine(directory.FullName, $"{Guid.NewGuid():N}.recovery.clipedit");
+        var store = new JsonProjectStore();
+
+        try
+        {
+            await File.WriteAllBytesAsync(sourcePath, new byte[1_024]);
+            using (var source = new MainWindowViewModel(new StubProbe(), projectStore: store))
+            {
+                await source.ImportFilesAsync([sourcePath]);
+                await store.SaveAsync(recoveryPath, source.CreateProjectDocument());
+            }
+
+            using var recovered = new MainWindowViewModel(
+                new StubProbe(),
+                projectStore: store,
+                recoveryDirectory: directory.FullName);
+            await recovered.DiscoverRecoveryCandidatesAsync();
+            var candidate = Assert.Single(recovered.RecoveryCandidates);
+            Assert.Empty(recovered.MediaItems);
+
+            Assert.True(await recovered.OpenProjectWithRelinkingAsync(
+                candidate.RecoveryPath,
+                isRecovery: true,
+                discardUnsavedChanges: true));
+
+            Assert.Single(recovered.MediaItems);
+            Assert.Empty(recovered.RecoveryCandidates);
+            Assert.Null(recovered.ProjectPath);
+            Assert.True(recovered.IsProjectDirty);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Dirty_edits_are_coalesced_into_a_recovery_autosave()
     {
         var store = new RecordingProjectStore();

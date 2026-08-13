@@ -75,22 +75,23 @@ public sealed partial class App : Avalonia.Application
             desktop.MainWindow = mainWindow;
 
             var startupArguments = ClassifyStartupArguments(desktop.Args);
-            if (startupArguments.ProjectPath is not null || startupArguments.MediaPaths.Count > 0)
+            mainWindow.Opened += async (_, _) =>
             {
-                mainWindow.Opened += async (_, _) =>
+                if (startupArguments.ProjectPath is not null)
                 {
-                    if (startupArguments.ProjectPath is not null)
-                    {
-                        await viewModel.OpenProjectAsync(
-                            startupArguments.ProjectPath,
-                            discardUnsavedChanges: true);
-                    }
-                    else
-                    {
-                        await mainWindow.ImportPathsAsync(startupArguments.MediaPaths);
-                    }
-                };
-            }
+                    await viewModel.OpenProjectWithRelinkingAsync(
+                        startupArguments.ProjectPath,
+                        discardUnsavedChanges: true);
+                }
+                else if (startupArguments.MediaPaths.Count > 0)
+                {
+                    await mainWindow.ImportPathsAsync(startupArguments.MediaPaths);
+                }
+                else
+                {
+                    await viewModel.DiscoverRecoveryCandidatesAsync();
+                }
+            };
         }
 
         base.OnFrameworkInitializationCompleted();

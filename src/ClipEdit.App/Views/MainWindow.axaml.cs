@@ -240,11 +240,82 @@ public sealed partial class MainWindow : Window
         var projectPath = projectUri?.LocalPath;
         if (!string.IsNullOrWhiteSpace(projectPath))
         {
-            await viewModel.OpenProjectAsync(
+            await viewModel.OpenProjectWithRelinkingAsync(
                 projectPath,
                 discardUnsavedChanges: false,
+                cancellationToken: _lifetimeCancellation.Token);
+        }
+    }
+
+    private async void RecoverCandidate_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is not Button { DataContext: RecoveryCandidateViewModel { CanRecover: true } candidate } ||
+            ViewModel is not { } viewModel)
+        {
+            return;
+        }
+
+        await viewModel.OpenProjectWithRelinkingAsync(
+            candidate.RecoveryPath,
+            isRecovery: true,
+            discardUnsavedChanges: true,
+            cancellationToken: _lifetimeCancellation.Token);
+    }
+
+    private async void DiscardRecoveryCandidate_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is not Button { DataContext: RecoveryCandidateViewModel candidate } ||
+            ViewModel is not { } viewModel)
+        {
+            return;
+        }
+
+        var confirmation = new ConfirmActionDialog(
+            "Discard this recovery autosave?",
+            "The autosaved edit decisions will be removed. Referenced source media files will not be changed.",
+            "Discard autosave");
+        if (await confirmation.ShowDialog<bool>(this))
+        {
+            await viewModel.DiscardRecoveryAsync(candidate, _lifetimeCancellation.Token);
+        }
+    }
+
+    private async void RelinkMissingMedia_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is not Button { DataContext: MissingMediaReferenceViewModel reference } ||
+            ViewModel is not { } viewModel)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions
+            {
+                Title = $"Relink {reference.DisplayName}",
+                AllowMultiple = false,
+                FileTypeFilter = [MediaFileType, FilePickerFileTypes.All],
+            });
+        var replacementPath = files
+            .Select(file => file.Path)
+            .FirstOrDefault(uri => uri.IsFile)?
+            .LocalPath;
+        if (!string.IsNullOrWhiteSpace(replacementPath))
+        {
+            await viewModel.RelinkMissingMediaAsync(
+                reference,
+                replacementPath,
                 _lifetimeCancellation.Token);
         }
+    }
+
+    private void CancelPendingProjectOpen_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.CancelPendingProjectOpen();
     }
 
     private async void SaveProject_Click(object? sender, RoutedEventArgs eventArgs)
