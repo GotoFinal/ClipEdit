@@ -43,6 +43,9 @@ public sealed class SequenceTimelineCanvas : Control
     public static readonly StyledProperty<bool> SnappingEnabledProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, bool>(nameof(SnappingEnabled), true);
 
+    public static readonly StyledProperty<bool> MoveClipsByDefaultProperty =
+        AvaloniaProperty.Register<SequenceTimelineCanvas, bool>(nameof(MoveClipsByDefault));
+
     public static readonly StyledProperty<double> HoverTimeProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, double>(nameof(HoverTime), -1);
 
@@ -56,6 +59,7 @@ public sealed class SequenceTimelineCanvas : Control
     private static readonly IBrush OutsideSelectionBrush = new ImmutableSolidColorBrush(0xB20A0C12);
     private static readonly IBrush SelectionBrush = new ImmutableSolidColorBrush(0x326E51FF);
     private static readonly IBrush SelectionHandleBrush = new ImmutableSolidColorBrush(0xFFFFFFFF);
+    private static readonly IBrush ClipTrimHandleBrush = new ImmutableSolidColorBrush(0xFF9DE7FF);
     private static readonly IBrush AvailableHandleBrush = new ImmutableSolidColorBrush(0xFFFFC857);
     private static readonly IPen SelectedClipPen = new Pen(0xFF9DE7FF, 3).ToImmutable();
     private static readonly IPen ClipBoundaryPen = new Pen(0xFF171A22, 2).ToImmutable();
@@ -90,6 +94,7 @@ public sealed class SequenceTimelineCanvas : Control
             ViewportStartProperty,
             FreeViewportProperty,
             SnappingEnabledProperty,
+            MoveClipsByDefaultProperty,
             HoverTimeProperty,
             VisualRevisionProperty);
     }
@@ -107,6 +112,8 @@ public sealed class SequenceTimelineCanvas : Control
     public event EventHandler? MoveLeftRequested;
 
     public event EventHandler? MoveRightRequested;
+    public event EventHandler? CopyRequested;
+    public event EventHandler? PasteRequested;
     public event EventHandler<VideoClipMoveRequestedEventArgs>? ClipMoveRequested;
 
 
@@ -167,6 +174,12 @@ public sealed class SequenceTimelineCanvas : Control
     {
         get => GetValue(SnappingEnabledProperty);
         set => SetValue(SnappingEnabledProperty, value);
+    }
+
+    public bool MoveClipsByDefault
+    {
+        get => GetValue(MoveClipsByDefaultProperty);
+        set => SetValue(MoveClipsByDefaultProperty, value);
     }
 
 
@@ -263,15 +276,20 @@ public sealed class SequenceTimelineCanvas : Control
             else
             {
                 _dragClip = point.Y >= TrackTop ? FindClip(time) : null;
-                if (_dragClip is null)
+                if (_dragClip is not null)
                 {
-                    _dragMode = SequenceTimelineDragMode.NewSelection;
+                    SetCurrentValue(SelectedClipProperty, _dragClip);
+                }
+
+                if (_dragClip is not null &&
+                    ShouldMoveClip(MoveClipsByDefault, eventArgs.KeyModifiers))
+                {
+                    SetCurrentValue(PlayheadProperty, time);
+                    _dragMode = SequenceTimelineDragMode.MoveClip;
                 }
                 else
                 {
-                    SetCurrentValue(SelectedClipProperty, _dragClip);
-                    SetCurrentValue(PlayheadProperty, time);
-                    _dragMode = SequenceTimelineDragMode.MoveClip;
+                    _dragMode = SequenceTimelineDragMode.NewSelection;
                 }
             }
         }
@@ -340,7 +358,7 @@ public sealed class SequenceTimelineCanvas : Control
                     _dragTimelineStart + ((point.X - _pointerStartX) * EffectiveViewportDuration / Math.Max(1, Bounds.Width)));
                 _previewTimelineStart = SnapClipTimelineStart(
                     requestedStart,
-                    SnappingEnabled && !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control));
+                    SnappingEnabled && !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Alt));
                 InvalidateVisual();
                 break;
         }
@@ -429,6 +447,20 @@ public sealed class SequenceTimelineCanvas : Control
         if (eventArgs.Key == Key.Delete)
         {
             DeleteRequested?.Invoke(this, EventArgs.Empty);
+            eventArgs.Handled = true;
+            return;
+        }
+
+        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control) && eventArgs.Key == Key.C)
+        {
+            CopyRequested?.Invoke(this, EventArgs.Empty);
+            eventArgs.Handled = true;
+            return;
+        }
+
+        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control) && eventArgs.Key == Key.V)
+        {
+            PasteRequested?.Invoke(this, EventArgs.Empty);
             eventArgs.Handled = true;
             return;
         }
@@ -546,7 +578,24 @@ public sealed class SequenceTimelineCanvas : Control
         {
             context.FillRectangle(AvailableHandleBrush, new Rect(rect.Right - 6, rect.Top + 3, 3, rect.Height - 6), 2);
         }
+
+        if (ReferenceEquals(clip, SelectedClip))
+        {
+            var handleHeight = Math.Min(24, Math.Max(12, rect.Height - 10));
+            var handleTop = rect.Center.Y - (handleHeight / 2);
+            context.FillRectangle(
+                ClipTrimHandleBrush,
+                new Rect(rect.Left - 2, handleTop, 6, handleHeight),
+                2);
+            context.FillRectangle(
+                ClipTrimHandleBrush,
+                new Rect(rect.Right - 4, handleTop, 6, handleHeight),
+                2);
+        }
     }
+
+    internal static bool ShouldMoveClip(bool moveClipsByDefault, KeyModifiers modifiers) =>
+        moveClipsByDefault || modifiers.HasFlag(KeyModifiers.Control);
 
     private void DrawSelection(DrawingContext context)
     {

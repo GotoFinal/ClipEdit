@@ -1,4 +1,5 @@
 using ClipEdit.App.Controls;
+using Avalonia.Input;
 
 namespace ClipEdit.App.Tests.Controls;
 
@@ -38,5 +39,18 @@ public sealed class SequenceTimelineCanvasTests
             tolerance: 0.2);
 
         Assert.Equal(10.1, snapped, 6);
+    }
+
+    [Theory]
+    [InlineData(false, KeyModifiers.None, false)]
+    [InlineData(false, KeyModifiers.Control, true)]
+    [InlineData(true, KeyModifiers.None, true)]
+    [InlineData(true, KeyModifiers.Control, true)]
+    public void Range_mode_selects_by_default_and_control_temporarily_moves(
+        bool moveByDefault,
+        KeyModifiers modifiers,
+        bool expectedMove)
+    {
+        Assert.Equal(expectedMove, SequenceTimelineCanvas.ShouldMoveClip(moveByDefault, modifiers));
     }
 }

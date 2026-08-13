@@ -427,6 +427,47 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Empty_sequence_keeps_the_timeline_available_and_media_can_be_added_repeatedly()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "repeatable.mkv")]);
+
+        Assert.True(viewModel.DeleteSelectedVideoClip());
+        Assert.Empty(viewModel.VideoClips);
+        Assert.True(viewModel.ShowTimeline);
+
+        Assert.True(viewModel.AddMediaToTimeline(viewModel.SelectedMedia));
+        Assert.True(viewModel.AddMediaToTimeline(viewModel.SelectedMedia));
+
+        Assert.Equal(2, viewModel.VideoClips.Count);
+        Assert.All(viewModel.VideoClips, clip => Assert.Same(viewModel.SelectedMedia, clip.Source));
+        Assert.Equal(120, viewModel.SequenceDurationSeconds);
+    }
+
+    [Fact]
+    public async Task Timeline_copy_and_paste_creates_an_independent_clip_instance_with_the_same_edits()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "copy-paste.mkv")]);
+        var original = Assert.Single(viewModel.VideoClips);
+        original.SourceStartSeconds = 5;
+        original.SourceEndSeconds = 12;
+        original.CanvasTransform = new ClipCanvasTransform(12, -8, 1.25, 0.8, 7);
+        original.AudioGainDb = -3.5;
+
+        Assert.True(viewModel.CopySelectedVideoClip());
+        Assert.True(viewModel.PasteVideoClip());
+
+        var pasted = Assert.IsType<VideoClipViewModel>(viewModel.SelectedVideoClip);
+        Assert.NotEqual(original.Id, pasted.Id);
+        Assert.Equal(original.Model.SourceRange, pasted.Model.SourceRange);
+        Assert.Equal(original.Model.AvailableRange, pasted.Model.AvailableRange);
+        Assert.Equal(original.CanvasTransform, pasted.CanvasTransform);
+        Assert.Equal(original.AudioGainDb, pasted.AudioGainDb);
+        Assert.Equal(original.TimelineEnd, pasted.TimelineStart);
+    }
+
+    [Fact]
     public async Task Clips_can_be_placed_with_gaps_and_export_preserves_empty_timeline_time()
     {
         var renderer = new RecordingExportRenderer();

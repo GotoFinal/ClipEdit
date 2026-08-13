@@ -620,6 +620,30 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ProjectMediaItem_DoubleTapped(object? sender, TappedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: MediaItemViewModel mediaItem } &&
+            ViewModel?.AddMediaToTimeline(mediaItem) == true)
+        {
+            SequenceTimeline.Focus();
+            eventArgs.Handled = true;
+        }
+    }
+
+    private void SequenceTimeline_CopyRequested(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.CopySelectedVideoClip();
+    }
+
+    private void SequenceTimeline_PasteRequested(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.PasteVideoClip();
+    }
+
     private static void RemoveAudioSelection_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = eventArgs;

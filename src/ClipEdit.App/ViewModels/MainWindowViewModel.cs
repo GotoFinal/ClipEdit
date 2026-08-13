@@ -68,6 +68,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private bool _isLoadingProject;
     private bool _isAdvancedMode;
     private bool _isTimelineSnappingEnabled = true;
+    private bool _moveTimelineClipsByDefault;
+    private VideoClipClipboard? _videoClipClipboard;
     private CropAspectPreset _selectedCropAspectPreset = BuiltInCropAspectPresets.Custom;
     private bool _isCropAspectLocked;
     private bool _isApplyingCropPreset;
@@ -428,6 +430,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public bool MoveTimelineClipsByDefault
+    {
+        get => _moveTimelineClipsByDefault;
+        set
+        {
+            if (SetProperty(ref _moveTimelineClipsByDefault, value))
+            {
+                OnPropertyChanged(nameof(TimelinePointerModeText));
+                StatusText = value
+                    ? "Timeline Move mode: drag clip bodies to reposition them"
+                    : "Timeline Range mode: drag to select; Ctrl+drag moves a clip";
+            }
+        }
+    }
+
+    public string TimelinePointerModeText => MoveTimelineClipsByDefault ? "Move" : "Range";
+
     public bool IsSequenceTimelineFreeMode
     {
         get => _isSequenceTimelineFreeMode;
@@ -691,7 +710,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool ShowQuickWorkspace => HasReadyMedia;
 
-    public bool ShowTimeline => VideoClips.Count > 0;
+    public bool ShowTimeline => VideoItems.Any();
 
     public bool HasAudioTracks => AudioTracks.Count > 0;
 
@@ -865,6 +884,94 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         RaiseWorkspaceStateChanged();
+    }
+
+    public bool AddMediaToTimeline(MediaItemViewModel? mediaItem = null)
+    {
+        var source = mediaItem ?? SelectedMedia;
+        if (source is not { IsReady: true, HasVideo: true })
+        {
+            StatusText = "Select a ready video in Media first.";
+            return false;
+        }
+
+        var duration = source.Edit?.SourceDuration ?? source.Media?.Probe.Duration;
+        if (duration is null || duration <= MediaTime.Zero)
+        {
+            StatusText = $"{source.DisplayName} has no usable video duration.";
+            return false;
+        }
+
+        var previous = VideoClips.LastOrDefault(clip => ReferenceEquals(clip.Source, source));
+        var fullRange = new MediaRange(MediaTime.Zero, duration.Value);
+        var defaultTransform = CanvasSize == new PixelSize(1, 1)
+            ? ClipCanvasTransform.Identity
+            : ClipCanvasTransform.Fill(source.VideoSize, CanvasSize);
+        var clip = AddVideoClipInstance(
+            source,
+            fullRange,
+            fullRange,
+            previous?.SourceWindow ?? source.Crop,
+            previous?.CanvasTransform ?? defaultTransform,
+            audioGainDb: 0,
+            NonNegativeTimelineTime(SequenceDurationSeconds),
+            selectClip: true,
+            collapseSelection: true);
+        StatusText = $"Added another {clip.DisplayName} clip to the timeline";
+        MarkProjectDirty();
+        return true;
+    }
+
+    public bool CopySelectedVideoClip()
+    {
+        if (SelectedVideoClip is not { } clip)
+        {
+            StatusText = "Select a timeline clip to copy.";
+            return false;
+        }
+
+        _videoClipClipboard = new VideoClipClipboard(
+            clip.Source.Id,
+            clip.Model.SourceRange,
+            clip.Model.AvailableRange,
+            clip.SourceWindow,
+            clip.CanvasTransform,
+            clip.AudioGainDb);
+        StatusText = $"Copied {clip.DisplayName}; press Ctrl+V on the timeline to paste";
+        return true;
+    }
+
+    public bool PasteVideoClip()
+    {
+        if (_videoClipClipboard is not { } copied)
+        {
+            StatusText = "Copy a timeline clip before pasting.";
+            return false;
+        }
+
+        var source = MediaItems.FirstOrDefault(item => item.Id == copied.SourceId && item.IsReady && item.HasVideo);
+        if (source is null)
+        {
+            _videoClipClipboard = null;
+            StatusText = "The copied clip's source is no longer in this project.";
+            return false;
+        }
+
+        var preferredStart = SelectedVideoClip?.TimelineEnd ?? NonNegativeTimelineTime(SequenceDurationSeconds);
+        var timelineStart = FindAvailableTimelineStart(preferredStart, copied.SourceRange.Duration);
+        var clip = AddVideoClipInstance(
+            source,
+            copied.SourceRange,
+            copied.AvailableRange,
+            copied.SourceWindow,
+            copied.CanvasTransform,
+            copied.AudioGainDb,
+            timelineStart,
+            selectClip: true,
+            collapseSelection: true);
+        StatusText = $"Pasted {clip.DisplayName} at {FormatSequenceTimestamp(timelineStart)}";
+        MarkProjectDirty();
+        return true;
     }
 
     public string GetSuggestedExportFileName()
@@ -1499,6 +1606,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         MediaItems.Remove(mediaItem);
         mediaItem.Dispose();
         _knownPaths.Remove(mediaItem.SourcePath);
+        if (_videoClipClipboard?.SourceId == mediaItem.Id)
+        {
+            _videoClipClipboard = null;
+        }
         _unavailableProjectMedia.RemoveAll(saved =>
             PathComparer.Equals(saved.SourcePath, mediaItem.SourcePath));
         SelectedMedia = MediaItems.Count == 0
@@ -1823,6 +1934,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _unavailableProjectMedia.Clear();
         _timelineFrameCache.Clear();
         _isAdvancedMode = false;
+        _moveTimelineClipsByDefault = false;
+        _videoClipClipboard = null;
         _sequencePlayhead = MediaTime.Zero;
         _sequenceSelectionStart = MediaTime.Zero;
         _sequenceSelectionEnd = MediaTime.Zero;
@@ -2060,22 +2173,51 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        var fullRange = new MediaRange(MediaTime.Zero, duration.Value);
+        var defaultTransform = CanvasSize == new PixelSize(1, 1)
+            ? ClipCanvasTransform.Identity
+            : ClipCanvasTransform.Fill(mediaItem.VideoSize, CanvasSize);
+        AddVideoClipInstance(
+            mediaItem,
+            fullRange,
+            fullRange,
+            mediaItem.Crop,
+            defaultTransform,
+            audioGainDb: 0,
+            NonNegativeTimelineTime(SequenceDurationSeconds),
+            selectClip: VideoClips.Count == 0,
+            collapseSelection: false);
+    }
+
+    private VideoClipViewModel AddVideoClipInstance(
+        MediaItemViewModel mediaItem,
+        MediaRange sourceRange,
+        MediaRange availableRange,
+        CropRegion sourceWindow,
+        ClipCanvasTransform canvasTransform,
+        double audioGainDb,
+        MediaTime timelineStart,
+        bool selectClip,
+        bool collapseSelection)
+    {
         var previousDuration = SequenceDurationSeconds;
         var selectionCoveredWholeSequence =
             _sequenceSelectionStart == MediaTime.Zero &&
             Math.Abs(_sequenceSelectionEnd.TotalSeconds - previousDuration) < 0.001;
-        var fullRange = new MediaRange(MediaTime.Zero, duration.Value);
-        var model = new SequenceClip(Guid.NewGuid(), mediaItem.Id, fullRange, fullRange, SequenceTimeFromSeconds(previousDuration));
-        if (VideoClips.Count == 0)
+        if (VideoClips.Count == 0 && CanvasSize == new PixelSize(1, 1))
         {
             InitializeCanvas(mediaItem.VideoSize, CropRegion.FullFrame(mediaItem.VideoSize));
+            canvasTransform = ClipCanvasTransform.Fill(mediaItem.VideoSize, CanvasSize);
         }
 
-        var clip = new VideoClipViewModel(
-            mediaItem,
-            model,
-            mediaItem.Crop,
-            ClipCanvasTransform.Fill(mediaItem.VideoSize, CanvasSize));
+        var model = new SequenceClip(
+            Guid.NewGuid(),
+            mediaItem.Id,
+            sourceRange,
+            availableRange,
+            timelineStart,
+            audioGainDb);
+        var clip = new VideoClipViewModel(mediaItem, model, sourceWindow, canvasTransform);
         AttachVideoClip(clip);
         VideoClips.Add(clip);
         UpdateSequenceLayout(resetSelectionIfEmpty: false);
@@ -2087,8 +2229,35 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             RaiseSequenceSelectionChanged();
         }
 
-        SelectedVideoClip ??= clip;
+        if (selectClip || SelectedVideoClip is null)
+        {
+            SelectedVideoClip = clip;
+        }
+        if (collapseSelection)
+        {
+            CollapseSequenceSelection(clip.TimelineStart);
+        }
         StartSequenceTimelineAnalysis(debounce: false);
+        return clip;
+    }
+
+    private MediaTime FindAvailableTimelineStart(MediaTime preferredStart, MediaTime duration)
+    {
+        var candidate = preferredStart < MediaTime.Zero ? MediaTime.Zero : preferredStart;
+        foreach (var clip in VideoClips.OrderBy(static clip => clip.TimelineStart))
+        {
+            if (candidate + duration <= clip.TimelineStart)
+            {
+                return candidate;
+            }
+
+            if (candidate < clip.TimelineEnd && candidate + duration > clip.TimelineStart)
+            {
+                candidate = clip.TimelineEnd;
+            }
+        }
+
+        return candidate;
     }
 
     private void AttachVideoClip(VideoClipViewModel clip)
@@ -3328,3 +3497,11 @@ file static class ReadOnlyListExtensions
 internal readonly record struct SequenceExportSlice(
     VideoClipViewModel Clip,
     MediaRange SourceRange);
+
+internal readonly record struct VideoClipClipboard(
+    Guid SourceId,
+    MediaRange SourceRange,
+    MediaRange AvailableRange,
+    CropRegion SourceWindow,
+    ClipCanvasTransform CanvasTransform,
+    double AudioGainDb);
