@@ -36,6 +36,12 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
+        if (OperatingSystem.IsWindows())
+        {
+            WindowDecorations = WindowDecorations.BorderOnly;
+            WindowsCaptionButtons.IsVisible = true;
+        }
+
         DragDrop.AddDragOverHandler(this, OnDragOver);
         DragDrop.AddDropHandler(this, OnDrop);
         Closed += OnClosed;

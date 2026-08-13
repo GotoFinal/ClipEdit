@@ -4,6 +4,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:ClipEdit.App.Controls"
+    xmlns:chrome="using:Avalonia.Controls.Chrome"
     xmlns:mediaExport="using:ClipEdit.Media.Export"
     xmlns:vm="using:ClipEdit.App.ViewModels"
     Title="{Binding ProductName}"
@@ -38,6 +39,21 @@
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="8" />
     </Style>
+    <Style Selector="Button.caption">
+      <Setter Property="Width" Value="42" />
+      <Setter Property="Height" Value="55" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#D8DAE3" />
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="Button.caption:pointerover">
+      <Setter Property="Background" Value="#343946" />
+    </Style>
+    <Style Selector="Button.caption-close:pointerover">
+      <Setter Property="Background" Value="#C42B1C" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="Foreground" Value="#8D93A5" />
     </Style>
@@ -47,6 +63,8 @@
     <Border
         Grid.Row="0"
         Padding="12,0"
+        x:Name="AppCommandBar"
+        chrome:WindowDecorationProperties.ElementRole="TitleBar"
         Background="#181B22"
         BorderBrush="#292D38"
         BorderThickness="0,0,0,1">
@@ -67,7 +85,7 @@
               Text="{Binding ProductName}" />
         </StackPanel>
 
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <Button
               Classes="secondary"
               Click="NewProject_Click"
@@ -85,7 +103,7 @@
               IsEnabled="{Binding CanSaveProject}" />
         </StackPanel>
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <ToggleButton
               Padding="9,5"
               Classes="secondary"
@@ -143,11 +161,11 @@
                 Foreground="#FFB36B"
                 Text="{Binding ExportAvailabilityText}"
                 TextTrimming="CharacterEllipsis" />
-            <Button Classes="secondary" Padding="7,2" Click="FixExportCompatibility_Click" Content="{Binding ExportCompatibilityActionText}" IsVisible="{Binding CanFixExportCompatibility}" />
+            <Button Classes="secondary" Padding="7,2" Click="FixExportCompatibility_Click" Content="{Binding ExportCompatibilityActionText}" IsVisible="{Binding CanFixExportCompatibility}" chrome:WindowDecorationProperties.ElementRole="User" />
           </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" chrome:WindowDecorationProperties.ElementRole="User">
           <ComboBox
               Width="154"
               ItemsSource="{Binding ExportPresets}"
@@ -169,6 +187,22 @@
               Click="CancelExport_Click"
               Content="Cancel"
               IsVisible="{Binding CanCancelExport}" />
+          <StackPanel
+              x:Name="WindowsCaptionButtons"
+              Height="55"
+              Margin="6,0,-12,0"
+              IsVisible="False"
+              Orientation="Horizontal">
+            <Button x:Name="MinimizeCaptionButton" Classes="caption" AutomationProperties.Name="Minimize window" chrome:WindowDecorationProperties.ElementRole="MinimizeButton">
+              <PathIcon Width="11" Height="11" Data="M1,6 H10" />
+            </Button>
+            <Button x:Name="MaximizeCaptionButton" Classes="caption" AutomationProperties.Name="Maximize or restore window" chrome:WindowDecorationProperties.ElementRole="MaximizeButton">
+              <PathIcon Width="11" Height="11" Data="M1,1 H10 V10 H1 Z M2,2 V9 H9 V2 Z" />
+            </Button>
+            <Button x:Name="CloseCaptionButton" Classes="caption caption-close" AutomationProperties.Name="Close window" chrome:WindowDecorationProperties.ElementRole="CloseButton">
+              <PathIcon Width="11" Height="11" Data="M1,1 L10,10 M10,1 L1,10" />
+            </Button>
+          </StackPanel>
         </StackPanel>
       </Grid>
     </Border>
