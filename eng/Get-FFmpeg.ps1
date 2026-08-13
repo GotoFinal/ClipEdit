@@ -1,16 +1,31 @@
 [CmdletBinding()]
-param()
+param(
+    [ValidateSet('Static', 'Shared')]
+    [string]$Linkage = 'Static'
+)
 
 $ErrorActionPreference = 'Stop'
 
 $version = '9.0.1'
-$archiveName = "ffmpeg-$version-full_build.7z"
-$expectedSha256 = '4b9c814cb07a1f90d05b768ef4eb2abbf89af94bbb924df5b7dbd6e64e1e2b96'
+$shared = $Linkage -eq 'Shared'
+$archiveVariant = if ($shared) { 'full_build-shared' } else { 'full_build' }
+$archiveName = "ffmpeg-$version-$archiveVariant.7z"
+$expectedSha256 = if ($shared) {
+    'cb4d5e8db6a3353bffdb2100d3eb4b76733457fa443215e236f57c99f9ffdca4'
+}
+else {
+    '4b9c814cb07a1f90d05b768ef4eb2abbf89af94bbb924df5b7dbd6e64e1e2b96'
+}
 $downloadUri = "https://www.gyan.dev/ffmpeg/builds/packages/$archiveName"
-$archiveRootName = "ffmpeg-$version-full_build"
+$archiveRootName = "ffmpeg-$version-$archiveVariant"
 
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
-$packageRoot = Join-Path $workspaceRoot "packages/native/ffmpeg/win-x64/$version"
+$packageRoot = if ($shared) {
+    Join-Path $workspaceRoot "packages/native/ffmpeg/win-x64/$version/shared"
+}
+else {
+    Join-Path $workspaceRoot "packages/native/ffmpeg/win-x64/$version"
+}
 $archivePath = Join-Path $packageRoot $archiveName
 $partialPath = "$archivePath.download"
 $runtimePath = Join-Path $packageRoot 'runtime'
@@ -62,7 +77,20 @@ if ($LASTEXITCODE -ne 0) {
 
 $ffmpegPath = Join-Path $binPath 'ffmpeg.exe'
 $ffprobePath = Join-Path $binPath 'ffprobe.exe'
-foreach ($requiredPath in @($ffmpegPath, $ffprobePath)) {
+$requiredPaths = @($ffmpegPath, $ffprobePath)
+if ($shared) {
+    $requiredPaths += @(
+        'avcodec-63.dll',
+        'avdevice-63.dll',
+        'avfilter-12.dll',
+        'avformat-63.dll',
+        'avutil-61.dll',
+        'swresample-7.dll',
+        'swscale-10.dll'
+    ) | ForEach-Object { Join-Path $binPath $_ }
+}
+
+foreach ($requiredPath in $requiredPaths) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "The extracted FFmpeg package is missing $requiredPath."
     }
@@ -72,6 +100,10 @@ $versionText = (& $ffmpegPath -version | Select-Object -First 1)
 if ($versionText -notmatch "ffmpeg version $([regex]::Escape($version))") {
     throw "The extracted FFmpeg executable did not report version $version."
 }
+$probeVersionText = (& $ffprobePath -version | Select-Object -First 1)
+if ($probeVersionText -notmatch "ffprobe version $([regex]::Escape($version))") {
+    throw "The extracted ffprobe executable did not report version $version."
+}
 
 $encoders = (& $ffmpegPath -hide_banner -encoders 2>&1 | Out-String)
 foreach ($encoder in @('libx264', 'libvpx-vp9', 'aac', 'libopus')) {
@@ -80,4 +112,11 @@ foreach ($encoder in @('libx264', 'libvpx-vp9', 'aac', 'libopus')) {
     }
 }
 
-Write-Host "FFmpeg $version GPL full build is ready at $binPath"
+$filters = (& $ffmpegPath -hide_banner -filters 2>&1 | Out-String)
+foreach ($filter in @('crop', 'scale', 'rotate', 'overlay', 'concat', 'atrim', 'asetpts', 'aeval', 'volume', 'amix', 'alimiter', 'apad', 'showwavespic')) {
+    if ($filters -notmatch "\b$([regex]::Escape($filter))\b") {
+        throw "The extracted FFmpeg package does not expose the required $filter filter."
+    }
+}
+
+Write-Host "FFmpeg $version GPL full $($Linkage.ToLowerInvariant()) build is ready at $binPath"

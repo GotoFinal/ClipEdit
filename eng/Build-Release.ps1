@@ -40,7 +40,12 @@ if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
 }
 
 if ([string]::IsNullOrWhiteSpace($NativePayloadPath)) {
-    $NativePayloadPath = Join-Path $workspaceRoot "packages/native/release/$RuntimeId/payload"
+    $NativePayloadPath = if ($RuntimeId -eq 'win-x64') {
+        Join-Path $workspaceRoot 'packages/native/release/win-x64/ffmpeg-9.0.1-full-shared/payload'
+    }
+    else {
+        Join-Path $workspaceRoot "packages/native/release/$RuntimeId/payload"
+    }
 }
 
 $fullPayloadPath = [System.IO.Path]::GetFullPath($NativePayloadPath)
@@ -62,6 +67,18 @@ $requiredPayload = @(
     'licenses/THIRD_PARTY_NOTICES.md',
     'licenses/07-native-dependencies.md'
 )
+
+if ($RuntimeId -eq 'win-x64') {
+    $requiredPayload += @(
+        'tools/ffmpeg/avcodec-63.dll',
+        'tools/ffmpeg/avdevice-63.dll',
+        'tools/ffmpeg/avfilter-12.dll',
+        'tools/ffmpeg/avformat-63.dll',
+        'tools/ffmpeg/avutil-61.dll',
+        'tools/ffmpeg/swresample-7.dll',
+        'tools/ffmpeg/swscale-10.dll'
+    )
+}
 
 $missingPayload = @($requiredPayload | Where-Object {
     -not (Test-Path -LiteralPath (Join-Path $fullPayloadPath $_) -PathType Leaf)
@@ -140,6 +157,11 @@ try {
         sha256 = $hash
         includesManagedRuntime = $true
         compressionEnabled = $compressionEnabled
+        nativeMediaProfile = if ($RuntimeId -eq 'win-x64') {
+            'ffmpeg-9.0.1-full-shared+libmpv-self-contained'
+        } else {
+            'ffmpeg-9.0.1-source-built+libmpv'
+        }
         includesFFmpeg = $true
         includesLibMpv = $true
         publiclyRedistributable = $false
