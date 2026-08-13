@@ -77,10 +77,13 @@ public sealed class MpvVideoView : OpenGlControlBase
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly DispatcherTimer _positionTimer;
     private CancellationTokenSource? _loadCancellation;
+    private Task _loadTask = Task.CompletedTask;
     private CancellationTokenSource? _seekCancellation;
+    private Task _seekTask = Task.CompletedTask;
     private MediaTime _pendingSeekPosition;
     private int _seekRevision;
     private bool _seekLoopRunning;
+    private bool _suppressSeekRestart;
     private CancellationTokenSource? _audioMixCancellation;
     private Task<MpvPreviewEngine>? _engineTask;
     private MpvPreviewEngine? _engine;
@@ -126,6 +129,8 @@ public sealed class MpvVideoView : OpenGlControlBase
         _positionTimer.Tick += OnPositionTimerTick;
         SizeChanged += (_, _) => StartVideoTransformChange();
     }
+
+    public event EventHandler? PlaybackCompleted;
 
     public string? SourcePath
     {
@@ -213,33 +218,56 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     public async Task TogglePlaybackAsync(CancellationToken cancellationToken = default)
     {
-        if (!IsPlaybackAvailable)
+        if (!IsPaused)
+        {
+            SetCurrentValue(IsPausedProperty, true);
+            return;
+        }
+
+        await PlayAsync(cancellationToken);
+    }
+
+    public async Task PlayAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await WaitForCurrentLoadAsync(cancellationToken);
+        if (!IsPlaybackAvailable || !_mediaLoaded || _engine is null || _shutdownStarted)
         {
             return;
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
         if (PlaybackRanges.Count == 0)
         {
             PlaybackStatus = "No kept video ranges to play";
             return;
         }
 
-        if (IsPaused && _engine is not null)
+        _suppressSeekRestart = true;
+        try
         {
-            var decision = GetPlaybackRangeDecision(Position, PlaybackRanges);
-            var target = _isEndOfFile || decision.Action == PlaybackRangeAction.End
-                ? PlaybackRanges[0].Start
-                : decision.Target;
-            if (target is not null)
+            var canceledSeek = _seekCancellation;
+            canceledSeek?.Cancel();
+            try
             {
-                SetPositionFromPlayback(target.Value);
-                await _engine.SeekAsync(target.Value, cancellationToken);
-                _isEndOfFile = false;
+                await _seekTask.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (canceledSeek?.IsCancellationRequested == true)
+            {
+                // The ordered playback seek below replaces the scrub request.
             }
         }
+        finally
+        {
+            _suppressSeekRestart = false;
+        }
 
-        SetCurrentValue(IsPausedProperty, !IsPaused);
+        var target = GetPlaybackStartPosition(Position, PlaybackRanges, _isEndOfFile);
+        SetPositionFromPlayback(target);
+        await _engine.SeekAsync(target, cancellationToken);
+        _isEndOfFile = false;
+        await _engine.SetPausedAsync(false, cancellationToken);
+        SetCurrentValue(IsPausedProperty, false);
+        PlaybackStatus = "Playing timeline preview";
     }
 
     public async Task StepFrameAsync(
@@ -394,7 +422,20 @@ public sealed class MpvVideoView : OpenGlControlBase
         _seekCancellation?.Cancel();
         _loadCancellation?.Dispose();
         _loadCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
-        _ = LoadAsync(_loadCancellation.Token);
+        _loadTask = LoadAsync(_loadCancellation.Token);
+    }
+
+    private async Task WaitForCurrentLoadAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var pendingLoad = _loadTask;
+            await pendingLoad.WaitAsync(cancellationToken);
+            if (ReferenceEquals(pendingLoad, _loadTask))
+            {
+                return;
+            }
+        }
     }
 
     private async Task LoadAsync(CancellationToken cancellationToken)
@@ -471,7 +512,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         var request = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
         _seekCancellation = request;
         _seekLoopRunning = true;
-        _ = SeekLatestAsync(request);
+        _seekTask = SeekLatestAsync(request);
     }
 
     private async Task SeekLatestAsync(CancellationTokenSource request)
@@ -519,7 +560,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             }
 
             request.Dispose();
-            if (!_shutdownStarted && _mediaLoaded && handledRevision != _seekRevision)
+            if (!_shutdownStarted && _mediaLoaded && !_suppressSeekRestart && handledRevision != _seekRevision)
             {
                 StartSeek();
             }
@@ -777,6 +818,26 @@ public sealed class MpvVideoView : OpenGlControlBase
         return new PlaybackRangeDecision(PlaybackRangeAction.End, Target: null);
     }
 
+    internal static MediaTime GetPlaybackStartPosition(
+        MediaTime position,
+        IReadOnlyList<MediaRange> ranges,
+        bool isEndOfFile)
+    {
+        ArgumentNullException.ThrowIfNull(ranges);
+        if (ranges.Count == 0)
+        {
+            throw new ArgumentException("At least one playback range is required.", nameof(ranges));
+        }
+
+        var decision = GetPlaybackRangeDecision(position, ranges);
+        if (isEndOfFile || decision.Action == PlaybackRangeAction.End)
+        {
+            return ranges[0].Start;
+        }
+
+        return decision.Target ?? position;
+    }
+
     private void SetPositionFromPlayback(MediaTime position)
     {
         _updatingPositionFromPlayback = true;
@@ -796,6 +857,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         _positionTimer.Stop();
         SetCurrentValue(IsPausedProperty, true);
         PlaybackStatus = status;
+        PlaybackCompleted?.Invoke(this, EventArgs.Empty);
     }
 
     private void SetFailure(string message)

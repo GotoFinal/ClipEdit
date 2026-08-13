@@ -581,6 +581,44 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Live_source_playback_updates_sequence_time_and_advances_to_the_next_clip()
+    {
+        var firstPath = Path.Combine(Path.GetTempPath(), "playback-first.mkv");
+        var secondPath = Path.Combine(Path.GetTempPath(), "playback-second.mkv");
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([firstPath, secondPath]);
+        viewModel.SequencePlayheadSeconds = 25;
+
+        viewModel.SelectedMedia!.Playhead = new MediaTime(30, 1);
+
+        Assert.Equal(30, viewModel.SequencePlayheadSeconds);
+        Assert.True(viewModel.TryAdvanceSequencePlayback());
+        Assert.Equal(secondPath, viewModel.SelectedVideoClip!.SourcePath);
+        Assert.Equal(60, viewModel.SequencePlayheadSeconds);
+        Assert.Equal(MediaTime.Zero, viewModel.SelectedMedia.Playhead);
+    }
+
+    [Fact]
+    public async Task Preparing_playback_skips_a_gap_and_restarts_the_sequence_only_at_its_end()
+    {
+        var firstPath = Path.Combine(Path.GetTempPath(), "prepare-first.mkv");
+        var secondPath = Path.Combine(Path.GetTempPath(), "prepare-second.mkv");
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([firstPath, secondPath]);
+        Assert.True(viewModel.MoveVideoClipTo(viewModel.VideoClips[1], 80));
+        viewModel.SequencePlayheadSeconds = 70;
+
+        Assert.Equal(MediaTime.Zero, viewModel.PrepareSequencePlayback());
+        Assert.Equal(80, viewModel.SequencePlayheadSeconds);
+        Assert.Equal(secondPath, viewModel.SelectedVideoClip!.SourcePath);
+
+        viewModel.SequencePlayheadSeconds = 140;
+        Assert.Equal(MediaTime.Zero, viewModel.PrepareSequencePlayback());
+        Assert.Equal(0, viewModel.SequencePlayheadSeconds);
+        Assert.Equal(firstPath, viewModel.SelectedVideoClip!.SourcePath);
+    }
+
+    [Fact]
     public async Task Clip_timeline_placement_survives_project_round_trip()
     {
         var path = Path.Combine(Path.GetTempPath(), $"timeline-placement-{Guid.NewGuid():N}.clipedit");

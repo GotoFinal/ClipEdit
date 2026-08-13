@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Controls;
+using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Preview;
 
 namespace ClipEdit.App.Views;
@@ -326,7 +327,47 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
+        if (LivePreview.IsPaused && ViewModel?.PrepareSequencePlayback() is { } sourcePosition)
+        {
+            SynchronizeLivePreviewToSelectedClip(sourcePosition);
+        }
+
         await LivePreview.TogglePlaybackAsync(_lifetimeCancellation.Token);
+    }
+
+    private async void LivePreview_PlaybackCompleted(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel?.TryAdvanceSequencePlayback() != true ||
+            ViewModel.PrepareSequencePlayback() is not { } sourcePosition)
+        {
+            return;
+        }
+
+        SynchronizeLivePreviewToSelectedClip(sourcePosition);
+        try
+        {
+            await LivePreview.PlayAsync(_lifetimeCancellation.Token);
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+            // Window shutdown superseded the automatic clip transition.
+        }
+    }
+
+    private void SynchronizeLivePreviewToSelectedClip(MediaTime sourcePosition)
+    {
+        if (ViewModel?.SelectedVideoClip is not { } clip)
+        {
+            return;
+        }
+
+        LivePreview.SetCurrentValue(MpvVideoView.SourcePathProperty, clip.SourcePath);
+        LivePreview.SetCurrentValue(MpvVideoView.PositionProperty, sourcePosition);
+        LivePreview.SetCurrentValue(MpvVideoView.PlaybackRangesProperty, clip.PlaybackRanges);
+        LivePreview.SetCurrentValue(MpvVideoView.SourceVideoSizeProperty, clip.VideoSize);
+        LivePreview.SetCurrentValue(MpvVideoView.CanvasTransformProperty, clip.CanvasTransform);
     }
 
     private async void StepFrameBackward_Click(object? sender, RoutedEventArgs eventArgs)

@@ -45,6 +45,25 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
+    public void Playback_start_preserves_a_playhead_inside_the_current_range()
+    {
+        var target = MpvVideoView.GetPlaybackStartPosition(new MediaTime(3, 1), Ranges, isEndOfFile: false);
+
+        Assert.Equal(new MediaTime(3, 1), target);
+    }
+
+    [Fact]
+    public void Playback_start_uses_the_next_kept_range_or_restarts_only_after_end()
+    {
+        Assert.Equal(
+            new MediaTime(2, 1),
+            MpvVideoView.GetPlaybackStartPosition(MediaTime.Zero, Ranges, isEndOfFile: false));
+        Assert.Equal(
+            new MediaTime(2, 1),
+            MpvVideoView.GetPlaybackStartPosition(new MediaTime(10, 1), Ranges, isEndOfFile: true));
+    }
+
+    [Fact]
     public void Identity_canvas_transform_preserves_libmpv_fit()
     {
         var transform = MpvVideoView.CalculatePreviewVideoTransform(

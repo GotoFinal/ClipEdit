@@ -420,6 +420,7 @@
                       CanvasTransform="{Binding SelectedVideoClip.CanvasTransform}"
                       HasCuts="{Binding SelectedVideoClip.IsTrimmed}"
                       IsPaused="True"
+                      PlaybackCompleted="LivePreview_PlaybackCompleted"
                       PlaybackRanges="{Binding SelectedVideoClip.PlaybackRanges}"
                       Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
                       SourceVideoSize="{Binding SelectedVideoClip.VideoSize}"

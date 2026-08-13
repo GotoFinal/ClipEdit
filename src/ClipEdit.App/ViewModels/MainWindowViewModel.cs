@@ -1529,6 +1529,81 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         return true;
     }
 
+    public bool TryAdvanceSequencePlayback()
+    {
+        if (SelectedVideoClip is not { } currentClip)
+        {
+            return false;
+        }
+
+        var ordered = VideoClips
+            .OrderBy(clip => clip.TimelineStart)
+            .ThenBy(clip => clip.Id)
+            .ToArray();
+        var currentIndex = Array.IndexOf(ordered, currentClip);
+        if (currentIndex < 0 || currentIndex >= ordered.Length - 1)
+        {
+            return false;
+        }
+
+        var nextClip = ordered[currentIndex + 1];
+        SetSequencePlaybackPosition(nextClip.TimelineStart);
+        StatusText = $"Playing next clip: {nextClip.DisplayName}";
+        return true;
+    }
+
+    public MediaTime? PrepareSequencePlayback()
+    {
+        var ordered = VideoClips
+            .OrderBy(clip => clip.TimelineStart)
+            .ThenBy(clip => clip.Id)
+            .ToArray();
+        if (ordered.Length == 0)
+        {
+            return null;
+        }
+
+        VideoClipViewModel? clip;
+        if (_sequencePlayhead >= ordered[^1].TimelineEnd)
+        {
+            clip = ordered[0];
+            SetSequencePlaybackPosition(clip.TimelineStart);
+        }
+        else
+        {
+            clip = FindClipAtTimelineTime(_sequencePlayhead);
+            if (clip is null)
+            {
+                clip = ordered.FirstOrDefault(candidate => candidate.TimelineStart > _sequencePlayhead);
+                if (clip is null)
+                {
+                    return null;
+                }
+
+                SetSequencePlaybackPosition(clip.TimelineStart);
+            }
+            else
+            {
+                SelectedVideoClip = clip;
+            }
+        }
+
+        var offset = Min(clip.Duration, Max(MediaTime.Zero, _sequencePlayhead - clip.TimelineStart));
+        var sourcePosition = Min(clip.SourceEnd, clip.SourceStart + offset);
+        clip.Source.Playhead = sourcePosition;
+        return sourcePosition;
+    }
+
+    private void SetSequencePlaybackPosition(MediaTime timelinePosition)
+    {
+        _sequencePlayhead = timelinePosition;
+        OnPropertyChanged(nameof(SequencePlayheadSeconds));
+        OnPropertyChanged(nameof(SequencePlayheadText));
+        OnPropertyChanged(nameof(CanSplitSelectedVideoClip));
+        SyncSourcePreviewToSequenceTime(_sequencePlayhead, selectClip: true);
+        SynchronizeAudioTimelineState(refreshWaveforms: false);
+    }
+
     private static double InsertClipAtRequestedPosition(
         double requestedStart,
         double clipDuration,
@@ -2110,6 +2185,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         if (eventArgs.PropertyName == nameof(MediaItemViewModel.Playhead))
         {
+            SynchronizeSequencePlayheadFromSource(sender as MediaItemViewModel);
             StartPreviewRefresh((MediaItemViewModel?)sender, debounce: true, clearExisting: false);
         }
 
@@ -2125,6 +2201,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             RaiseExportStateChanged();
         }
 
+    }
+
+    private void SynchronizeSequencePlayheadFromSource(MediaItemViewModel? mediaItem)
+    {
+        if (mediaItem is null || SelectedVideoClip is not { } clip ||
+            !ReferenceEquals(clip.Source, mediaItem) ||
+            mediaItem.Playhead < clip.SourceStart || mediaItem.Playhead > clip.SourceEnd)
+        {
+            return;
+        }
+
+        var sourceOffset = Min(clip.Duration, Max(MediaTime.Zero, mediaItem.Playhead - clip.SourceStart));
+        var timelinePosition = clip.TimelineStart + sourceOffset;
+        if (_sequencePlayhead == timelinePosition)
+        {
+            return;
+        }
+
+        _sequencePlayhead = timelinePosition;
+        IsSequencePlayheadInGap = false;
+        OnPropertyChanged(nameof(SequencePlayheadSeconds));
+        OnPropertyChanged(nameof(SequencePlayheadText));
+        OnPropertyChanged(nameof(CanSplitSelectedVideoClip));
+        SynchronizeAudioTimelineState(refreshWaveforms: false);
     }
 
     private void RefreshAudioTimelineSegments(bool refreshWaveforms)
