@@ -134,6 +134,11 @@
               <MenuItem Header="Open project…" Click="OpenProject_Click" IsEnabled="{Binding CanOpenProject}" />
               <MenuItem Header="Save project" Click="SaveProject_Click" IsEnabled="{Binding CanSaveProject}" />
               <Separator />
+              <MenuItem
+                  x:Name="RegisterProjectFileAssociationMenuItem"
+                  Header="Use ClipEdit for .clipedit files"
+                  Click="RegisterProjectFileAssociation_Click" />
+              <Separator />
               <MenuItem Header="Legal notices…" Click="LegalNotices_Click" />
             </MenuFlyout>
           </Button.Flyout>

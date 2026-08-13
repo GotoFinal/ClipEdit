@@ -7,6 +7,8 @@ using Avalonia.Layout;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using ClipEdit.App.Views;
+using ClipEdit.App.Platform;
+using ClipEdit.App.ViewModels;
 
 namespace ClipEdit.App.Tests;
 
@@ -227,6 +229,29 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Project_menu_exposes_windows_file_association_setup_when_available()
+    {
+        var association = new FakeProjectFileAssociationService();
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        var window = new MainWindow(
+            association,
+            hasShownProjectFileAssociationPrompt: true,
+            markProjectFileAssociationPromptShown: null)
+        {
+            DataContext = viewModel,
+        };
+        var menuItem = window.FindControl<MenuItem>("RegisterProjectFileAssociationMenuItem");
+
+        Assert.NotNull(menuItem);
+        Assert.True(menuItem.IsVisible);
+        menuItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert.Equal(1, association.RegisterCount);
+        Assert.Equal("Association registered for this test", viewModel.StatusText);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Caption_buttons_explicitly_minimize_and_toggle_maximized_state()
     {
         var window = new MainWindow();
@@ -264,5 +289,16 @@ public sealed class MainWindowChromeTests
         var button = window.FindControl<Button>(name);
         Assert.NotNull(button);
         Assert.Equal(expected, WindowDecorationProperties.GetElementRole(button));
+    }
+
+    private sealed class FakeProjectFileAssociationService : IProjectFileAssociationService
+    {
+        public int RegisterCount { get; private set; }
+
+        public ProjectFileAssociationResult Register()
+        {
+            RegisterCount++;
+            return new ProjectFileAssociationResult(true, "Association registered for this test");
+        }
     }
 }

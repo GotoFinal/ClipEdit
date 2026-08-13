@@ -37,4 +37,26 @@ public sealed class AppStartupTests
             temporaryDirectory.Delete(recursive: true);
         }
     }
+
+    [Fact]
+    public void Project_path_is_classified_as_a_project_instead_of_media()
+    {
+        var temporaryDirectory = Directory.CreateTempSubdirectory("clipedit-drop-");
+        try
+        {
+            var projectPath = Path.Combine(temporaryDirectory.FullName, "project.CLIPEDIT");
+            var mediaPath = Path.Combine(temporaryDirectory.FullName, "video.mp4");
+            File.WriteAllText(projectPath, "{}");
+            File.WriteAllText(mediaPath, string.Empty);
+
+            var selection = InputPathClassifier.Classify([mediaPath, projectPath]);
+
+            Assert.Equal(Path.GetFullPath(projectPath), selection.ProjectPath);
+            Assert.Equal([Path.GetFullPath(mediaPath)], selection.MediaPaths);
+        }
+        finally
+        {
+            temporaryDirectory.Delete(recursive: true);
+        }
+    }
 }

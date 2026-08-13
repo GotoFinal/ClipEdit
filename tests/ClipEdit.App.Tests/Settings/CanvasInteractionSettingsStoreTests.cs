@@ -14,9 +14,9 @@ public sealed class CanvasInteractionSettingsStoreTests
             var store = new CanvasInteractionSettingsStore(path);
 
             Assert.Equal(CanvasInteractionSettings.Default, store.Load());
-            Assert.True(store.Save(new CanvasInteractionSettings(500, 0, 10_000)));
+            Assert.True(store.Save(new CanvasInteractionSettings(500, 0, 10_000, true)));
 
-            Assert.Equal(new CanvasInteractionSettings(50, 1, 4_096), store.Load());
+            Assert.Equal(new CanvasInteractionSettings(50, 1, 4_096, true), store.Load());
         }
         finally
         {

@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Settings;
+using ClipEdit.App.Platform;
 using ClipEdit.App.Views;
 using ClipEdit.Media.Analysis;
 using ClipEdit.Media.Export;
@@ -62,22 +63,44 @@ public sealed partial class App : Avalonia.Application
             viewModel.ClipWheelRotationDegrees = interactionSettings.WheelRotationDegrees;
             viewModel.ClipboardExportMaximumMegabytes =
                 interactionSettings.ClipboardExportMaximumMegabytes;
+            var hasShownProjectFileAssociationPrompt =
+                interactionSettings.HasShownProjectFileAssociationPrompt;
             var exportPreferencesStore = new ExportPreferencesStore(
                 Path.Combine(applicationDataDirectory, "export-settings.json"));
             viewModel.ApplyExportPreferences(exportPreferencesStore.Load());
             viewModel.SavedExportPresetsChanged += (_, _) =>
                 exportPreferencesStore.Save(viewModel.CreateExportPreferences());
-            var mainWindow = new MainWindow
+            IProjectFileAssociationService? projectFileAssociationService = null;
+            if (OperatingSystem.IsWindows() && Environment.ProcessPath is { } executablePath)
+            {
+                projectFileAssociationService =
+                    new WindowsProjectFileAssociationService(executablePath);
+            }
+
+            void SaveInteractionSettings()
+            {
+                settingsStore.Save(new CanvasInteractionSettings(
+                    viewModel.ClipWheelZoomPercent,
+                    viewModel.ClipWheelRotationDegrees,
+                    viewModel.ClipboardExportMaximumMegabytes,
+                    hasShownProjectFileAssociationPrompt));
+            }
+
+            var mainWindow = new MainWindow(
+                projectFileAssociationService,
+                hasShownProjectFileAssociationPrompt,
+                () =>
+                {
+                    hasShownProjectFileAssociationPrompt = true;
+                    SaveInteractionSettings();
+                })
             {
                 DataContext = viewModel,
             };
 
             mainWindow.Closed += (_, _) =>
             {
-                settingsStore.Save(new CanvasInteractionSettings(
-                    viewModel.ClipWheelZoomPercent,
-                    viewModel.ClipWheelRotationDegrees,
-                    viewModel.ClipboardExportMaximumMegabytes));
+                SaveInteractionSettings();
                 exportPreferencesStore.Save(viewModel.CreateExportPreferences());
             };
 
@@ -108,20 +131,8 @@ public sealed partial class App : Avalonia.Application
 
     internal static StartupArguments ClassifyStartupArguments(IEnumerable<string>? arguments)
     {
-        var existingPaths = arguments?
-            .Where(File.Exists)
-            .Select(Path.GetFullPath)
-            .ToArray() ?? [];
-        var projectPath = existingPaths.FirstOrDefault(path =>
-            string.Equals(Path.GetExtension(path), ".clipedit", StringComparison.OrdinalIgnoreCase));
-        var mediaPaths = existingPaths
-            .Where(path => !string.Equals(
-                Path.GetExtension(path),
-                ".clipedit",
-                StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-
-        return new StartupArguments(projectPath, mediaPaths);
+        var selection = InputPathClassifier.Classify(arguments);
+        return new StartupArguments(selection.ProjectPath, selection.MediaPaths);
     }
 }
 

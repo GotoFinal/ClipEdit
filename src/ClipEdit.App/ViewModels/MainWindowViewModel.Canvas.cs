@@ -124,6 +124,11 @@ public sealed partial class MainWindowViewModel
 
     public void ReportClipboardExportStatus(string message)
     {
+        ReportStatus(message);
+    }
+
+    public void ReportStatus(string message)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         StatusText = message;
     }

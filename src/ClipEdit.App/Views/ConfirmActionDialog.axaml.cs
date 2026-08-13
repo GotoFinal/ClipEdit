@@ -10,12 +10,17 @@ public sealed partial class ConfirmActionDialog : Window
         InitializeComponent();
     }
 
-    public ConfirmActionDialog(string title, string message, string confirmText)
+    public ConfirmActionDialog(
+        string title,
+        string message,
+        string confirmText,
+        string cancelText = "Cancel")
         : this()
     {
         Title = title;
         MessageText.Text = message;
         ConfirmButton.Content = confirmText;
+        CancelButton.Content = cancelText;
     }
 
     private void Cancel_Click(object? sender, RoutedEventArgs eventArgs)

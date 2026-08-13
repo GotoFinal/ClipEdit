@@ -16,7 +16,7 @@
         Foreground="#E9EAF0"
         TextWrapping="Wrap" />
     <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="10">
-      <Button Padding="16,9" Click="Cancel_Click" Content="Cancel" />
+      <Button x:Name="CancelButton" Padding="16,9" Click="Cancel_Click" Content="Cancel" />
       <Button x:Name="ConfirmButton" Padding="16,9" Click="Confirm_Click" />
     </StackPanel>
   </Grid>

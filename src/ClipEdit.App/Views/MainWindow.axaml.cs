@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Controls;
+using ClipEdit.App.Platform;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Preview;
 
@@ -34,10 +35,27 @@ public sealed partial class MainWindow : Window
     };
 
     private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private readonly IProjectFileAssociationService? _projectFileAssociationService;
+    private readonly Action? _markProjectFileAssociationPromptShown;
+    private bool _hasShownProjectFileAssociationPrompt;
 
     public MainWindow()
+        : this(null, hasShownProjectFileAssociationPrompt: false, null)
     {
+    }
+
+    internal MainWindow(
+        IProjectFileAssociationService? projectFileAssociationService,
+        bool hasShownProjectFileAssociationPrompt,
+        Action? markProjectFileAssociationPromptShown)
+    {
+        _projectFileAssociationService = projectFileAssociationService;
+        _hasShownProjectFileAssociationPrompt = hasShownProjectFileAssociationPrompt;
+        _markProjectFileAssociationPromptShown = markProjectFileAssociationPromptShown;
         InitializeComponent();
+
+        RegisterProjectFileAssociationMenuItem.IsVisible =
+            _projectFileAssociationService is not null;
 
         if (OperatingSystem.IsWindows())
         {
@@ -230,7 +248,7 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        if (ViewModel is not { CanOpenProject: true } viewModel)
+        if (ViewModel is not { CanOpenProject: true })
         {
             return;
         }
@@ -248,11 +266,34 @@ public sealed partial class MainWindow : Window
         var projectPath = projectUri?.LocalPath;
         if (!string.IsNullOrWhiteSpace(projectPath))
         {
-            await viewModel.OpenProjectWithRelinkingAsync(
-                projectPath,
-                discardUnsavedChanges: false,
-                cancellationToken: _lifetimeCancellation.Token);
+            await OpenProjectFromUserActionAsync(projectPath);
         }
+    }
+
+    private async Task<bool> OpenProjectFromUserActionAsync(string projectPath)
+    {
+        if (ViewModel is not { CanOpenProject: true } viewModel)
+        {
+            return false;
+        }
+
+        if (viewModel.IsProjectDirty)
+        {
+            var confirmation = new ConfirmActionDialog(
+                "Open another project?",
+                "The current project has unsaved changes. Discard them and open the selected project? Source media files will not be changed.",
+                "Discard and open");
+            if (!await confirmation.ShowDialog<bool>(this))
+            {
+                return false;
+            }
+        }
+
+        await viewModel.OpenProjectWithRelinkingAsync(
+            projectPath,
+            discardUnsavedChanges: true,
+            cancellationToken: _lifetimeCancellation.Token);
+        return true;
     }
 
     private async void RecoverCandidate_Click(object? sender, RoutedEventArgs eventArgs)
@@ -386,6 +427,45 @@ public sealed partial class MainWindow : Window
         ViewModel?.ResetCanvasInteractionSettings();
     }
 
+    private void RegisterProjectFileAssociation_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        RegisterProjectFileAssociation();
+    }
+
+    private void RegisterProjectFileAssociation()
+    {
+        if (_projectFileAssociationService is null)
+        {
+            return;
+        }
+
+        var result = _projectFileAssociationService.Register();
+        ViewModel?.ReportStatus(result.Message);
+    }
+
+    private async Task OfferProjectFileAssociationAsync()
+    {
+        if (_projectFileAssociationService is null || _hasShownProjectFileAssociationPrompt)
+        {
+            return;
+        }
+
+        var confirmation = new ConfirmActionDialog(
+            "Open .clipedit files with ClipEdit?",
+            "Register this portable ClipEdit executable for .clipedit files on your Windows account? If you move the app later, run this setup again from the ClipEdit menu.",
+            "Use ClipEdit",
+            "Not now");
+        var shouldRegister = await confirmation.ShowDialog<bool>(this);
+        _hasShownProjectFileAssociationPrompt = true;
+        _markProjectFileAssociationPromptShown?.Invoke();
+        if (shouldRegister)
+        {
+            RegisterProjectFileAssociation();
+        }
+    }
+
     private void UseAutoTool_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
@@ -404,9 +484,21 @@ public sealed partial class MainWindow : Window
             .Select(file => file.Path)
             .Where(uri => uri.IsFile)
             .Select(uri => uri.LocalPath)
-            .Where(path => !string.IsNullOrWhiteSpace(path));
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
 
-        await ImportPathsAsync(paths);
+        var selection = InputPathClassifier.Classify(paths);
+        if (selection.ProjectPath is not null)
+        {
+            if (await OpenProjectFromUserActionAsync(selection.ProjectPath))
+            {
+                await OfferProjectFileAssociationAsync();
+            }
+
+            return;
+        }
+
+        await ImportPathsAsync(selection.MediaPaths);
     }
 
     private void GoToStart_Click(object? sender, RoutedEventArgs eventArgs)

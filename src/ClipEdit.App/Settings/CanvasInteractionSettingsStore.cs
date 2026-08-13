@@ -5,7 +5,8 @@ namespace ClipEdit.App.Settings;
 internal sealed record CanvasInteractionSettings(
     double WheelZoomPercent,
     int WheelRotationDegrees,
-    int ClipboardExportMaximumMegabytes)
+    int ClipboardExportMaximumMegabytes,
+    bool HasShownProjectFileAssociationPrompt = false)
 {
     public const int MinimumClipboardExportMegabytes = 1;
     public const int MaximumClipboardExportMegabytes = 4_096;
@@ -14,7 +15,8 @@ internal sealed record CanvasInteractionSettings(
     public static CanvasInteractionSettings Default { get; } = new(
         10,
         1,
-        DefaultClipboardExportMegabytes);
+        DefaultClipboardExportMegabytes,
+        false);
 
     public CanvasInteractionSettings Normalize()
     {
@@ -28,7 +30,11 @@ internal sealed record CanvasInteractionSettings(
                 ClipboardExportMaximumMegabytes,
                 MinimumClipboardExportMegabytes,
                 MaximumClipboardExportMegabytes);
-        return new CanvasInteractionSettings(zoom, rotation, clipboardMaximum);
+        return new CanvasInteractionSettings(
+            zoom,
+            rotation,
+            clipboardMaximum,
+            HasShownProjectFileAssociationPrompt);
     }
 }
 
