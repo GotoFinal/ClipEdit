@@ -9,7 +9,11 @@ namespace ClipEdit.App.ViewModels;
 public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 {
     private const double MaximumTimelineOffsetSeconds = 7 * 24 * 60 * 60;
+    private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase
+        : StringComparer.Ordinal;
     private readonly MediaTime _timelineQuantum;
+    private readonly Dictionary<string, EmbeddedAudioSourceBinding> _embeddedSources = new(PathComparer);
     private SourceEdit _edit;
     private MediaTime _playhead;
     private MediaTime _selectionStart;
@@ -26,6 +30,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private VideoClipViewModel? _contextualGainClip;
     private int _waveformVisualRevision;
     private ImmutableArray<MediaRange> _timelineKeptRanges = [];
+    private ImmutableArray<MediaRange> _timelineSilencedRanges = [];
     private MediaTime _timelinePlayhead;
     private MediaTime _timelineSelectionStart;
     private MediaTime _timelineSelectionEnd;
@@ -35,7 +40,10 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private bool _isWaveformLoading;
     private string? _waveformErrorText;
 
-    public AudioTrackViewModel(ImportedMedia media, AudioStreamInfo stream)
+    public AudioTrackViewModel(
+        ImportedMedia media,
+        AudioStreamInfo stream,
+        int? embeddedLaneIndex = null)
     {
         ArgumentNullException.ThrowIfNull(media);
         ArgumentNullException.ThrowIfNull(stream);
@@ -48,12 +56,21 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         SourcePath = media.Probe.SourcePath;
         StreamIndex = stream.Index;
         IsExternal = media.IsExternalAudio;
-        DisplayName = BuildDisplayName(media, stream);
+        EmbeddedLaneIndex = IsExternal ? null : embeddedLaneIndex ?? 0;
+        DisplayName = IsExternal
+            ? BuildDisplayName(media, stream)
+            : $"A{(embeddedLaneIndex ?? 0) + 1} · Embedded audio";
         _timelineQuantum = stream.TimeBase is { } timeBase && timeBase > MediaTime.Zero
             ? timeBase
             : new MediaTime(1, stream.SampleRate ?? 48_000);
         _edit = new SourceEdit(duration.Value);
         _selectionEnd = duration.Value;
+        if (!IsExternal)
+        {
+            _embeddedSources.Add(
+                SourcePath,
+                new EmbeddedAudioSourceBinding(SourcePath, StreamIndex, _timelineQuantum, _edit));
+        }
     }
 
     public string SourcePath { get; }
@@ -62,9 +79,152 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public bool IsExternal { get; }
 
+    public int? EmbeddedLaneIndex { get; }
+
     public string DisplayName { get; }
 
     public string StableId => $"{SourcePath}|{StreamIndex}";
+
+    public IReadOnlyCollection<string> EmbeddedSourcePaths => _embeddedSources.Keys;
+
+    public ImmutableArray<MediaRange> TimelineSilencedRanges => _timelineSilencedRanges;
+
+    public bool HasEmbeddedSource(string sourcePath, int? streamIndex = null) =>
+        !IsExternal &&
+        _embeddedSources.TryGetValue(sourcePath, out var binding) &&
+        (streamIndex is null || binding.StreamIndex == streamIndex.Value);
+
+    public bool TryGetEmbeddedStreamIndex(string sourcePath, out int streamIndex)
+    {
+        if (!IsExternal && _embeddedSources.TryGetValue(sourcePath, out var binding))
+        {
+            streamIndex = binding.StreamIndex;
+            return true;
+        }
+
+        streamIndex = -1;
+        return false;
+    }
+
+    internal void AddEmbeddedSource(ImportedMedia media, AudioStreamInfo stream)
+    {
+        if (IsExternal || media.IsExternalAudio)
+        {
+            throw new InvalidOperationException("Only embedded media can be added to a logical embedded lane.");
+        }
+
+        var duration = stream.Duration ?? media.Probe.Duration;
+        if (duration is null || duration <= MediaTime.Zero)
+        {
+            throw new ArgumentException("An embedded audio source needs a known positive duration.", nameof(stream));
+        }
+
+        if (_embeddedSources.TryGetValue(media.Probe.SourcePath, out var existing))
+        {
+            if (existing.StreamIndex != stream.Index)
+            {
+                throw new InvalidOperationException("A media source can contribute only one stream to an audio lane.");
+            }
+            return;
+        }
+
+        var quantum = stream.TimeBase is { } timeBase && timeBase > MediaTime.Zero
+            ? timeBase
+            : new MediaTime(1, stream.SampleRate ?? 48_000);
+        _embeddedSources.Add(
+            media.Probe.SourcePath,
+            new EmbeddedAudioSourceBinding(
+                media.Probe.SourcePath,
+                stream.Index,
+                quantum,
+                new SourceEdit(duration.Value)));
+        OnPropertyChanged(nameof(EmbeddedSourcePaths));
+    }
+
+    internal bool RemoveEmbeddedSource(string sourcePath)
+    {
+        var removed = !IsExternal && _embeddedSources.Remove(sourcePath);
+        if (removed)
+        {
+            OnPropertyChanged(nameof(EmbeddedSourcePaths));
+            RebuildTimelineKeptRanges();
+        }
+        return removed;
+    }
+
+    internal SourceEdit CreateEditForClip(VideoClipViewModel clip)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+        if (IsExternal || !_embeddedSources.TryGetValue(clip.SourcePath, out var binding))
+        {
+            throw new InvalidOperationException("The selected clip does not contribute audio to this lane.");
+        }
+
+        var edit = binding.Edit;
+        foreach (var silence in _timelineSilencedRanges)
+        {
+            var overlapStart = Max(silence.Start, clip.TimelineStart);
+            var overlapEnd = Min(silence.End, clip.TimelineEnd);
+            if (overlapEnd <= overlapStart)
+            {
+                continue;
+            }
+
+            var sourceStart = clip.SourceStart + (overlapStart - clip.TimelineStart);
+            var sourceEnd = clip.SourceStart + (overlapEnd - clip.TimelineStart);
+            var boundedStart = Max(MediaTime.Zero, sourceStart);
+            var boundedEnd = Min(binding.Edit.SourceDuration, sourceEnd);
+            if (boundedEnd > boundedStart)
+            {
+                edit = edit.Remove(new MediaRange(boundedStart, boundedEnd));
+            }
+        }
+
+        return edit;
+    }
+
+    internal SourceEdit GetEmbeddedSourceEdit(string sourcePath)
+    {
+        if (IsExternal || !_embeddedSources.TryGetValue(sourcePath, out var binding))
+        {
+            throw new InvalidOperationException("The media source is not part of this embedded lane.");
+        }
+        return binding.Edit;
+    }
+
+    internal void RestoreEmbeddedSource(
+        string sourcePath,
+        int streamIndex,
+        SourceEdit edit,
+        double gainDb,
+        bool isMuted,
+        IEnumerable<MediaRange>? timelineSilencedRanges = null)
+    {
+        if (IsExternal ||
+            !_embeddedSources.TryGetValue(sourcePath, out var binding) ||
+            binding.StreamIndex != streamIndex ||
+            binding.Edit.SourceDuration != edit.SourceDuration)
+        {
+            throw new ArgumentException("The saved embedded audio binding no longer matches this lane.", nameof(sourcePath));
+        }
+
+        binding.Edit = edit;
+        if (PathComparer.Equals(sourcePath, SourcePath))
+        {
+            _edit = edit;
+            OnPropertyChanged(nameof(Edit));
+            OnPropertyChanged(nameof(KeptRanges));
+        }
+        GainDb = gainDb;
+        IsMuted = isMuted;
+        if (timelineSilencedRanges is not null)
+        {
+            _timelineSilencedRanges = MergeRanges(timelineSilencedRanges);
+        }
+        OnPropertyChanged(nameof(IsEdited));
+        OnPropertyChanged(nameof(TimelineSilencedRanges));
+        RebuildTimelineKeptRanges();
+    }
 
     public SourceEdit Edit
     {
@@ -73,6 +233,10 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         {
             if (SetProperty(ref _edit, value))
             {
+                if (!IsExternal && _embeddedSources.TryGetValue(SourcePath, out var primary))
+                {
+                    primary.Edit = value;
+                }
                 OnPropertyChanged(nameof(KeptRanges));
                 OnPropertyChanged(nameof(IsEdited));
                 OnPropertyChanged(nameof(HasRangeEdits));
@@ -86,7 +250,10 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     public ImmutableArray<MediaRange> KeptRanges => Edit.KeptRanges;
 
     public bool IsEdited =>
-        !Edit.IsUnedited || IsMuted || GainDb != 0 || TimelineOffset != MediaTime.Zero;
+        (!IsExternal && _embeddedSources.Values.Any(binding => !binding.Edit.IsUnedited)) ||
+        !Edit.IsUnedited ||
+        !_timelineSilencedRanges.IsEmpty ||
+        IsMuted || GainDb != 0 || TimelineOffset != MediaTime.Zero;
 
     public bool HasRangeEdits => !Edit.IsUnedited;
 
@@ -155,10 +322,10 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public double ContextualGainDb
     {
-        get => _contextualGainClip?.AudioGainDb ?? GainDb;
+        get => EffectiveContextualGainClip?.AudioGainDb ?? GainDb;
         set
         {
-            if (_contextualGainClip is { } clip)
+            if (EffectiveContextualGainClip is { } clip)
             {
                 clip.AudioGainDb = value;
             }
@@ -169,13 +336,32 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string ContextualGainText => _contextualGainClip?.AudioGainText ?? GainText;
+    public string ContextualGainText => EffectiveContextualGainClip?.AudioGainText ?? GainText;
 
-    public string ContextualGainLabel => _contextualGainClip is null ? "Track gain" : "Clip gain";
+    public string ContextualGainLabel => EffectiveContextualGainClip is null ? "Track gain" : "Clip gain";
 
-    public string ContextualGainTargetText => _contextualGainClip is null
-        ? "Adjust the whole audio track"
-        : $"Adjust selected clip: {_contextualGainClip.DisplayName}";
+    public string ContextualGainTargetText => EffectiveContextualGainClip is { } clip
+        ? $"Adjust selected clip: {clip.DisplayName}"
+        : "Adjust the whole audio track";
+
+    public bool CanToggleContextualClip =>
+        !IsExternal &&
+        EmbeddedLaneIndex is { } laneIndex &&
+        _contextualGainClip is { } clip &&
+        _embeddedSources.ContainsKey(clip.SourcePath);
+
+    public bool IsContextualClipIncluded =>
+        CanToggleContextualClip &&
+        _contextualGainClip!.IncludesAudioLane(EmbeddedLaneIndex!.Value);
+
+    public string ContextualClipActionText => IsContextualClipIncluded ? "Remove clip" : "Add clip";
+
+    public string ContextualClipActionToolTip => IsContextualClipIncluded
+        ? "Remove the selected clip's embedded audio from this lane"
+        : "Add the selected clip's embedded audio back to this lane";
+
+    private VideoClipViewModel? EffectiveContextualGainClip =>
+        IsContextualClipIncluded ? _contextualGainClip : null;
 
     public int WaveformVisualRevision => _waveformVisualRevision;
 
@@ -337,6 +523,17 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
             return false;
         }
 
+        if (!IsExternal)
+        {
+            _timelineSilencedRanges = MergeRanges(
+                _timelineSilencedRanges.Append(
+                    new MediaRange(_timelineSelectionStart, _timelineSelectionEnd)));
+            OnPropertyChanged(nameof(TimelineSilencedRanges));
+            OnPropertyChanged(nameof(IsEdited));
+            RebuildTimelineKeptRanges();
+            return true;
+        }
+
         var edit = Edit;
         foreach (var segment in TimelineSegments)
         {
@@ -411,6 +608,10 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ContextualGainText));
         OnPropertyChanged(nameof(ContextualGainLabel));
         OnPropertyChanged(nameof(ContextualGainTargetText));
+        OnPropertyChanged(nameof(CanToggleContextualClip));
+        OnPropertyChanged(nameof(IsContextualClipIncluded));
+        OnPropertyChanged(nameof(ContextualClipActionText));
+        OnPropertyChanged(nameof(ContextualClipActionToolTip));
     }
 
     internal void SynchronizeTimelineState(
@@ -454,7 +655,10 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         var mapped = new List<MediaRange>();
         foreach (var segment in TimelineSegments)
         {
-            foreach (var kept in KeptRanges)
+            var keptRanges = !IsExternal && segment.Clip is { } clip
+                ? CreateEditForClip(clip).KeptRanges
+                : KeptRanges;
+            foreach (var kept in keptRanges)
             {
                 var sourceStart = Max(segment.SourceRange.Start, kept.Start);
                 var sourceEnd = Min(segment.SourceRange.End, kept.End);
@@ -608,7 +812,26 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public void Reset()
     {
-        Edit = Edit.Reset();
+        if (IsExternal)
+        {
+            Edit = Edit.Reset();
+        }
+        else
+        {
+            foreach (var binding in _embeddedSources.Values)
+            {
+                binding.Edit = binding.Edit.Reset();
+            }
+            if (_embeddedSources.TryGetValue(SourcePath, out var primary))
+            {
+                _edit = primary.Edit;
+                OnPropertyChanged(nameof(Edit));
+                OnPropertyChanged(nameof(KeptRanges));
+            }
+            _timelineSilencedRanges = [];
+            OnPropertyChanged(nameof(TimelineSilencedRanges));
+            RebuildTimelineKeptRanges();
+        }
         _selectionStart = MediaTime.Zero;
         _selectionEnd = Edit.SourceDuration;
         GainDb = 0;
@@ -668,10 +891,17 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     {
         _ = sender;
         if (eventArgs.PropertyName is nameof(VideoClipViewModel.AudioGainDb) or
-            nameof(VideoClipViewModel.AudioGainText))
+            nameof(VideoClipViewModel.AudioGainText) or
+            nameof(VideoClipViewModel.ExcludedAudioLaneIndices))
         {
             OnPropertyChanged(nameof(ContextualGainDb));
             OnPropertyChanged(nameof(ContextualGainText));
+            OnPropertyChanged(nameof(ContextualGainLabel));
+            OnPropertyChanged(nameof(ContextualGainTargetText));
+            OnPropertyChanged(nameof(CanToggleContextualClip));
+            OnPropertyChanged(nameof(IsContextualClipIncluded));
+            OnPropertyChanged(nameof(ContextualClipActionText));
+            OnPropertyChanged(nameof(ContextualClipActionToolTip));
             IncrementWaveformVisualRevision();
         }
     }
@@ -718,6 +948,8 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         }
 
         Edit = edit;
+        _timelineSilencedRanges = [];
+        OnPropertyChanged(nameof(TimelineSilencedRanges));
         _selectionStart = edit.KeptRanges.IsEmpty ? MediaTime.Zero : edit.KeptRanges[0].Start;
         _selectionEnd = edit.KeptRanges.IsEmpty ? MediaTime.Zero : edit.KeptRanges[0].End;
         GainDb = gainDb;
@@ -762,6 +994,25 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanRemoveSelection));
     }
 
+    private static ImmutableArray<MediaRange> MergeRanges(IEnumerable<MediaRange> ranges)
+    {
+        var merged = ImmutableArray.CreateBuilder<MediaRange>();
+        foreach (var range in ranges.Where(range => !range.IsEmpty).OrderBy(range => range.Start))
+        {
+            if (merged.Count == 0 || range.Start > merged[^1].End)
+            {
+                merged.Add(range);
+                continue;
+            }
+
+            if (range.End > merged[^1].End)
+            {
+                merged[^1] = new MediaRange(merged[^1].Start, range.End);
+            }
+        }
+        return merged.ToImmutable();
+    }
+
     private static string BuildDisplayName(ImportedMedia media, AudioStreamInfo stream)
     {
         var sourceName = Path.GetFileName(media.Probe.SourcePath);
@@ -785,4 +1036,27 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         var milliseconds = checked((long)Math.Round(Math.Max(0, seconds) * 1_000));
         return new MediaTime(milliseconds, 1_000);
     }
+}
+
+internal sealed class EmbeddedAudioSourceBinding
+{
+    public EmbeddedAudioSourceBinding(
+        string sourcePath,
+        int streamIndex,
+        MediaTime quantum,
+        SourceEdit edit)
+    {
+        SourcePath = sourcePath;
+        StreamIndex = streamIndex;
+        Quantum = quantum;
+        Edit = edit;
+    }
+
+    public string SourcePath { get; }
+
+    public int StreamIndex { get; }
+
+    public MediaTime Quantum { get; }
+
+    public SourceEdit Edit { get; set; }
 }

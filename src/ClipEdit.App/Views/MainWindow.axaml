@@ -764,12 +764,13 @@
                   CornerRadius="7"
                   IsVisible="{Binding ShowAudioMixer}">
                 <Grid RowDefinitions="Auto,*" RowSpacing="5">
-                  <Grid ColumnDefinitions="*,Auto">
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
                       <TextBlock Classes="muted" FontSize="9" Text="Synced to video timeline" />
                     </StackPanel>
-                    <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding AudioTrackCountText}" />
+                    <Button Grid.Column="1" Height="22" Padding="7,1" Classes="secondary" Click="RestoreAudioTracks_Click" Content="Restore tracks" IsEnabled="{Binding CanRestoreMissingAudioTracks}" ToolTip.Tip="Restore source audio lanes that were removed from the project mix" />
+                    <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding AudioTrackCountText}" />
                   </Grid>
                   <ScrollViewer Grid.Row="1" MaxHeight="210" VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding AudioTracks}">
@@ -777,7 +778,7 @@
                         <DataTemplate x:DataType="vm:AudioTrackViewModel">
                           <Border Margin="0,0,0,5" Padding="7" Background="#20242D" CornerRadius="6">
                             <Grid RowDefinitions="Auto,Auto,52,Auto" RowSpacing="4">
-                              <Grid ColumnDefinitions="*,Auto,64,Auto,Auto,110,52" ColumnSpacing="6">
+                              <Grid ColumnDefinitions="*,Auto,64,Auto,Auto,110,52,Auto,Auto" ColumnSpacing="6">
                                 <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" IsVisible="{Binding IsExternal}" Text="Start (s)" />
                                 <TextBox Grid.Column="2" Height="26" IsVisible="{Binding IsExternal}" Text="{Binding TimelineOffsetSeconds, Mode=TwoWay}" />
@@ -785,6 +786,8 @@
                                 <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding ContextualGainLabel}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
                                 <Slider Grid.Column="5" AutomationProperties.Name="{Binding ContextualGainLabel}" Minimum="-60" Maximum="12" Value="{Binding ContextualGainDb, Mode=TwoWay}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
                                 <TextBlock Grid.Column="6" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Text="{Binding ContextualGainText}" />
+                                <Button Grid.Column="7" Height="24" Padding="7,1" Classes="secondary" Click="ToggleAudioClipMembership_Click" Content="{Binding ContextualClipActionText}" IsVisible="{Binding CanToggleContextualClip}" ToolTip.Tip="{Binding ContextualClipActionToolTip}" />
+                                <Button Grid.Column="8" Width="24" Height="24" Padding="2,0" Classes="secondary" AutomationProperties.Name="Remove audio track" Click="RemoveAudioTrack_Click" Content="×" FontSize="14" ToolTip.Tip="Remove this complete audio lane from the project mix" />
                               </Grid>
                               <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">

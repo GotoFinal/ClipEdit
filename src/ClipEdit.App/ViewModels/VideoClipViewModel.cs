@@ -14,13 +14,15 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     private CropRegion _sourceWindow;
     private ClipCanvasTransform _canvasTransform;
     private IReadOnlyList<TimelineThumbnailFrame> _timelineThumbnails = [];
+    private HashSet<int> _excludedAudioLaneIndices;
     private bool _isTimelineLoading;
 
     public VideoClipViewModel(
         MediaItemViewModel source,
         SequenceClip model,
         CropRegion sourceWindow,
-        ClipCanvasTransform? canvasTransform = null)
+        ClipCanvasTransform? canvasTransform = null,
+        IEnumerable<int>? excludedAudioLaneIndices = null)
     {
         Source = source ?? throw new ArgumentNullException(nameof(source));
         if (model.SourceId != source.Id)
@@ -36,6 +38,9 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         _model = model;
         _sourceWindow = sourceWindow;
         _canvasTransform = canvasTransform ?? ClipCanvasTransform.Identity;
+        _excludedAudioLaneIndices = (excludedAudioLaneIndices ?? [])
+            .Where(index => index >= 0)
+            .ToHashSet();
     }
 
     public MediaItemViewModel Source { get; }
@@ -280,6 +285,27 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
 
     public bool IsTrimmed => Model.SourceRange != Model.AvailableRange;
 
+    public IReadOnlyCollection<int> ExcludedAudioLaneIndices => _excludedAudioLaneIndices;
+
+    public bool IncludesAudioLane(int laneIndex) => !_excludedAudioLaneIndices.Contains(laneIndex);
+
+    public bool SetAudioLaneIncluded(int laneIndex, bool included)
+    {
+        if (laneIndex < 0)
+        {
+            return false;
+        }
+
+        var changed = included
+            ? _excludedAudioLaneIndices.Remove(laneIndex)
+            : _excludedAudioLaneIndices.Add(laneIndex);
+        if (changed)
+        {
+            OnPropertyChanged(nameof(ExcludedAudioLaneIndices));
+        }
+        return changed;
+    }
+
     public IReadOnlyList<TimelineThumbnailFrame> TimelineThumbnails
     {
         get => _timelineThumbnails;
@@ -318,7 +344,7 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     }
 
     public VideoClipViewModel CreateSibling(SequenceClip model) =>
-        new(Source, model, SourceWindow, CanvasTransform);
+        new(Source, model, SourceWindow, CanvasTransform, ExcludedAudioLaneIndices);
 
     public void SetTimelineThumbnails(IReadOnlyList<TimelineThumbnailFrame> thumbnails) =>
         TimelineThumbnails = thumbnails ?? throw new ArgumentNullException(nameof(thumbnails));

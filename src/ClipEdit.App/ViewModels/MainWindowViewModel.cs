@@ -714,6 +714,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool HasAudioTracks => AudioTracks.Count > 0;
 
+    public bool CanRestoreMissingAudioTracks => MediaItems.Any(item =>
+    {
+        if (item.Media is null)
+        {
+            return false;
+        }
+
+        return item.Media.Probe.AudioStreams.Select((stream, laneIndex) => (stream, laneIndex)).Any(entry =>
+            item.IsExternalAudio
+                ? !AudioTracks.Any(track =>
+                    track.IsExternal &&
+                    PathComparer.Equals(track.SourcePath, item.SourcePath) &&
+                    track.StreamIndex == entry.stream.Index)
+                : !AudioTracks.Any(track =>
+                    !track.IsExternal &&
+                    track.EmbeddedLaneIndex == entry.laneIndex &&
+                    track.HasEmbeddedSource(item.SourcePath, entry.stream.Index)));
+    });
+
     public bool IsAdvancedMode
     {
         get => _isAdvancedMode;
@@ -752,28 +771,51 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public string AudioTrackCountText =>
         $"{AudioTracks.Count} track{(AudioTracks.Count == 1 ? string.Empty : "s")}";
 
-    public IReadOnlyList<PreviewAudioTrack> PreviewAudioTracks => SelectedMedia is null
-        ? []
-        : AudioTracks
-            .Where(track =>
-                track.IsExternal ||
-                PathComparer.Equals(track.SourcePath, SelectedMedia.SourcePath))
-            .Select(track => track.IsExternal
-                ? new PreviewAudioTrack(
+    public IReadOnlyList<PreviewAudioTrack> PreviewAudioTracks => CreatePreviewAudioTracks();
+
+    public string AudioMixerButtonText => IsAdvancedMode ? "Basic" : "Advanced";
+
+    private IReadOnlyList<PreviewAudioTrack> CreatePreviewAudioTracks()
+    {
+        if (SelectedMedia is null)
+        {
+            return [];
+        }
+
+        var previewTracks = new List<PreviewAudioTrack>();
+        foreach (var track in AudioTracks)
+        {
+            if (track.IsExternal)
+            {
+                previewTracks.Add(new PreviewAudioTrack(
                     track.SourcePath,
                     track.StreamIndex,
                     track.GainDb,
                     track.IsMuted || track.Edit.IsEmpty,
                     track.TimelineOffset,
-                    track.Edit)
-                : new PreviewAudioTrack(
-                    track.StreamIndex,
-                    CombineAudioGain(track.GainDb, SelectedVideoClip?.AudioGainDb ?? 0),
-                    track.IsMuted || track.Edit.IsEmpty,
-                    track.Edit))
-            .ToArray();
+                    track.Edit));
+                continue;
+            }
 
-    public string AudioMixerButtonText => IsAdvancedMode ? "Basic" : "Advanced";
+            if (SelectedVideoClip is not { } clip ||
+                !ReferenceEquals(clip.Source, SelectedMedia) ||
+                track.EmbeddedLaneIndex is not { } laneIndex ||
+                !clip.IncludesAudioLane(laneIndex) ||
+                !track.TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex))
+            {
+                continue;
+            }
+
+            var edit = track.CreateEditForClip(clip);
+            previewTracks.Add(new PreviewAudioTrack(
+                streamIndex,
+                CombineAudioGain(track.GainDb, clip.AudioGainDb),
+                track.IsMuted || edit.IsEmpty,
+                edit));
+        }
+
+        return previewTracks;
+    }
 
     public string EditingModeText => ShowTimeline ? "TIMELINE" : "QUICK EDIT";
 
@@ -936,7 +978,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             clip.Model.AvailableRange,
             clip.SourceWindow,
             clip.CanvasTransform,
-            clip.AudioGainDb);
+            clip.AudioGainDb,
+            clip.ExcludedAudioLaneIndices.ToImmutableArray());
         StatusText = $"Copied {clip.DisplayName}; press Ctrl+V on the timeline to paste";
         return true;
     }
@@ -968,7 +1011,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             copied.AudioGainDb,
             timelineStart,
             selectClip: true,
-            collapseSelection: true);
+            collapseSelection: true,
+            copied.ExcludedAudioLaneIndices);
         StatusText = $"Pasted {clip.DisplayName} at {FormatSequenceTimestamp(timelineStart)}";
         MarkProjectDirty();
         return true;
@@ -1010,12 +1054,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     .Where(track =>
                         !track.IsExternal &&
                         !track.IsMuted &&
-                        !track.Edit.IsEmpty &&
-                        PathComparer.Equals(track.SourcePath, slice.Clip.SourcePath))
-                    .Select(track => new ExportAudioTrackPlan(
-                        track.StreamIndex,
-                        CombineAudioGain(track.GainDb, slice.Clip.AudioGainDb),
-                        track.Edit))
+                        track.EmbeddedLaneIndex is { } laneIndex &&
+                        slice.Clip.IncludesAudioLane(laneIndex) &&
+                        track.TryGetEmbeddedStreamIndex(slice.Clip.SourcePath, out _))
+                    .Select(track =>
+                    {
+                        track.TryGetEmbeddedStreamIndex(slice.Clip.SourcePath, out var streamIndex);
+                        var edit = track.CreateEditForClip(slice.Clip);
+                        return new ExportAudioTrackPlan(
+                            streamIndex,
+                            CombineAudioGain(track.GainDb, slice.Clip.AudioGainDb),
+                            edit);
+                    })
+                    .Where(plan => plan.AudioEdit is { IsEmpty: false })
                     .ToImmutableArray();
                 return new ExportVideoSegmentPlan(
                     slice.Clip.SourcePath,
@@ -1593,14 +1644,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         UpdateSequenceLayout(resetSelectionIfEmpty: true);
-        foreach (var audioTrack in AudioTracks
-                     .Where(track => PathComparer.Equals(track.SourcePath, mediaItem.SourcePath))
-                     .ToArray())
+        foreach (var audioTrack in AudioTracks.ToArray())
         {
-            audioTrack.PropertyChanged -= OnAudioTrackPropertyChanged;
-            CancelWaveformAnalysis(audioTrack);
-            audioTrack.Dispose();
-            AudioTracks.Remove(audioTrack);
+            if (audioTrack.IsExternal)
+            {
+                if (PathComparer.Equals(audioTrack.SourcePath, mediaItem.SourcePath))
+                {
+                    RemoveAudioTrackCore(audioTrack);
+                }
+                continue;
+            }
+
+            if (audioTrack.RemoveEmbeddedSource(mediaItem.SourcePath) &&
+                audioTrack.EmbeddedSourcePaths.Count == 0)
+            {
+                RemoveAudioTrackCore(audioTrack);
+            }
         }
 
         MediaItems.Remove(mediaItem);
@@ -1619,6 +1678,74 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         MarkProjectDirty();
         RaiseWorkspaceStateChanged();
         return true;
+    }
+
+    public bool RemoveAudioTrack(AudioTrackViewModel? track)
+    {
+        if (track is null || !AudioTracks.Contains(track) || IsBusy || IsExporting)
+        {
+            return false;
+        }
+
+        RemoveAudioTrackCore(track);
+        RefreshAudioTimelineSegments(refreshWaveforms: ShowAudioMixer);
+        StatusText = $"Removed {track.DisplayName} from the project mix";
+        MarkProjectDirty();
+        RaiseWorkspaceStateChanged();
+        return true;
+    }
+
+    public bool RestoreMissingAudioTracks()
+    {
+        if (!CanRestoreMissingAudioTracks)
+        {
+            return false;
+        }
+
+        foreach (var item in MediaItems.Where(item => item.Media is not null))
+        {
+            AddAudioTracks(item);
+        }
+        StatusText = "Restored available source audio to the project mix";
+        MarkProjectDirty();
+        RaiseWorkspaceStateChanged();
+        return true;
+    }
+
+    public bool ToggleSelectedClipAudioMembership(AudioTrackViewModel? track)
+    {
+        if (track is null ||
+            track.IsExternal ||
+            track.EmbeddedLaneIndex is not { } laneIndex ||
+            SelectedVideoClip is not { } clip ||
+            !track.HasEmbeddedSource(clip.SourcePath))
+        {
+            return false;
+        }
+
+        var include = !clip.IncludesAudioLane(laneIndex);
+        if (!clip.SetAudioLaneIncluded(laneIndex, include))
+        {
+            return false;
+        }
+
+        RefreshAudioTimelineSegments(refreshWaveforms: ShowAudioMixer);
+        SynchronizeAudioGainTargets();
+        OnPropertyChanged(nameof(PreviewAudioTracks));
+        RaiseExportStateChanged();
+        StatusText = include
+            ? $"Added {clip.DisplayName} audio to {track.DisplayName}"
+            : $"Removed {clip.DisplayName} audio from {track.DisplayName}";
+        MarkProjectDirty();
+        return true;
+    }
+
+    private void RemoveAudioTrackCore(AudioTrackViewModel track)
+    {
+        track.PropertyChanged -= OnAudioTrackPropertyChanged;
+        CancelWaveformAnalysis(track);
+        track.Dispose();
+        AudioTracks.Remove(track);
     }
 
     public async Task<bool> SaveProjectAsync(
@@ -1731,6 +1858,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             await ImportFilesAsync(document.Media.Select(media => media.SourcePath), cancellationToken);
             _pendingMediaIds.Clear();
             var warnings = new List<string>();
+            if (document.SchemaVersion >= 7)
+            {
+                RebuildAudioTracksFromProject(document, warnings);
+            }
             foreach (var savedMedia in document.Media)
             {
                 var mediaItem = MediaItems.FirstOrDefault(item =>
@@ -1742,7 +1873,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     continue;
                 }
 
-                if (!TryRestoreMedia(mediaItem, savedMedia, out var warning))
+                if (!TryRestoreMedia(mediaItem, savedMedia, document.SchemaVersion, out var warning))
                 {
                     _unavailableProjectMedia.Add(savedMedia);
                     warnings.Add(warning!);
@@ -1882,6 +2013,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ShowAudioMixer));
         OnPropertyChanged(nameof(ShowAdvancedClipControls));
         OnPropertyChanged(nameof(HasAudioTracks));
+        OnPropertyChanged(nameof(CanRestoreMissingAudioTracks));
         OnPropertyChanged(nameof(AudioMixerButtonText));
         OnPropertyChanged(nameof(ShowRangeStrip));
         OnPropertyChanged(nameof(VideoItems));
@@ -1990,7 +2122,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             var selectedClip = !track.IsExternal &&
                                SelectedVideoClip is { } clip &&
-                               PathComparer.Equals(track.SourcePath, clip.SourcePath)
+                               track.HasEmbeddedSource(clip.SourcePath)
                 ? clip
                 : null;
             track.SetContextualGainClip(selectedClip);
@@ -2008,18 +2140,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     null,
                     track.DisplayName,
                     track.TimelineOffset,
-                    new MediaRange(MediaTime.Zero, track.Edit.SourceDuration)),
+                    new MediaRange(MediaTime.Zero, track.Edit.SourceDuration),
+                    track.SourcePath,
+                    track.StreamIndex),
             ];
         }
 
         return VideoClips
-            .Where(clip => PathComparer.Equals(clip.SourcePath, track.SourcePath))
+            .Where(clip =>
+                track.EmbeddedLaneIndex is { } laneIndex &&
+                clip.IncludesAudioLane(laneIndex) &&
+                track.HasEmbeddedSource(clip.SourcePath))
             .OrderBy(clip => clip.TimelineStart)
-            .Select((clip, index) => new AudioTimelineSegmentViewModel(
-                clip,
-                $"{index + 1}. {clip.DisplayName}",
-                clip.TimelineStart,
-                clip.Model.SourceRange))
+            .Select((clip, index) =>
+            {
+                track.TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex);
+                return new AudioTimelineSegmentViewModel(
+                    clip,
+                    $"{index + 1}. {clip.DisplayName}",
+                    clip.TimelineStart,
+                    clip.Model.SourceRange,
+                    clip.SourcePath,
+                    streamIndex);
+            })
             .ToArray();
     }
 
@@ -2127,22 +2270,44 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        foreach (var stream in mediaItem.Media.Probe.AudioStreams)
+        var streams = mediaItem.Media.Probe.AudioStreams.ToArray();
+        for (var laneIndex = 0; laneIndex < streams.Length; laneIndex++)
         {
-            if (AudioTracks.Any(track =>
-                    PathComparer.Equals(track.SourcePath, mediaItem.SourcePath) &&
-                    track.StreamIndex == stream.Index))
+            var stream = streams[laneIndex];
+            if (mediaItem.IsExternalAudio)
             {
+                if (AudioTracks.Any(track =>
+                        track.IsExternal &&
+                        PathComparer.Equals(track.SourcePath, mediaItem.SourcePath) &&
+                        track.StreamIndex == stream.Index))
+                {
+                    continue;
+                }
+            }
+            else if (AudioTracks.FirstOrDefault(track =>
+                         !track.IsExternal && track.EmbeddedLaneIndex == laneIndex) is { } lane)
+            {
+                try
+                {
+                    lane.AddEmbeddedSource(mediaItem.Media, stream);
+                }
+                catch (ArgumentException)
+                {
+                    // Streams without usable duration remain visible in probe details only.
+                }
                 continue;
             }
 
             try
             {
-                var track = new AudioTrackViewModel(mediaItem.Media, stream);
+                var track = new AudioTrackViewModel(
+                    mediaItem.Media,
+                    stream,
+                    mediaItem.IsExternalAudio ? null : laneIndex);
                 track.PropertyChanged += OnAudioTrackPropertyChanged;
                 if (!track.IsExternal &&
                     SelectedVideoClip is { } selectedClip &&
-                    PathComparer.Equals(track.SourcePath, selectedClip.SourcePath))
+                    track.HasEmbeddedSource(selectedClip.SourcePath))
                 {
                     track.SetContextualGainClip(selectedClip);
                 }
@@ -2198,7 +2363,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         double audioGainDb,
         MediaTime timelineStart,
         bool selectClip,
-        bool collapseSelection)
+        bool collapseSelection,
+        IEnumerable<int>? excludedAudioLaneIndices = null)
     {
         var previousDuration = SequenceDurationSeconds;
         var selectionCoveredWholeSequence =
@@ -2217,7 +2383,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             availableRange,
             timelineStart,
             audioGainDb);
-        var clip = new VideoClipViewModel(mediaItem, model, sourceWindow, canvasTransform);
+        var clip = new VideoClipViewModel(
+            mediaItem,
+            model,
+            sourceWindow,
+            canvasTransform,
+            excludedAudioLaneIndices);
         AttachVideoClip(clip);
         VideoClips.Add(clip);
         UpdateSequenceLayout(resetSelectionIfEmpty: false);
@@ -2756,16 +2927,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var ranges = item.Edit?.KeptRanges ??
                      [new MediaRange(MediaTime.Zero, duration.Value)];
         var audioTracks = AudioTracks
-            .Where(track => PathComparer.Equals(track.SourcePath, item.SourcePath))
-            .Select(track => new ProjectAudioTrackDocument(
-                track.StreamIndex,
-                track.GainDb,
-                track.IsMuted,
-                track.Edit.SourceDuration.Numerator,
-                track.Edit.SourceDuration.Denominator,
-                track.KeptRanges.Select(CreateRangeDocument).ToArray(),
-                track.TimelineOffset.Numerator,
-                track.TimelineOffset.Denominator))
+            .Select(track => CreateAudioTrackDocumentForMedia(track, item))
+            .OfType<ProjectAudioTrackDocument>()
             .ToArray();
         document = new ProjectMediaDocument(
             item.SourcePath,
@@ -2813,7 +2976,57 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             transform.ScaleY,
             clip.TimelineStart.Numerator,
             clip.TimelineStart.Denominator,
-            clip.AudioGainDb);
+            clip.AudioGainDb,
+            clip.ExcludedAudioLaneIndices.Order().ToArray());
+    }
+
+    private static ProjectAudioTrackDocument? CreateAudioTrackDocumentForMedia(
+        AudioTrackViewModel track,
+        MediaItemViewModel item)
+    {
+        SourceEdit edit;
+        int streamIndex;
+        int? laneIndex;
+        IReadOnlyList<ProjectRangeDocument>? timelineSilencedRanges;
+        MediaTime timelineOffset;
+        if (track.IsExternal)
+        {
+            if (!PathComparer.Equals(track.SourcePath, item.SourcePath))
+            {
+                return null;
+            }
+            edit = track.Edit;
+            streamIndex = track.StreamIndex;
+            laneIndex = null;
+            timelineSilencedRanges = null;
+            timelineOffset = track.TimelineOffset;
+        }
+        else
+        {
+            if (track.EmbeddedLaneIndex is not { } embeddedLaneIndex ||
+                !track.TryGetEmbeddedStreamIndex(item.SourcePath, out streamIndex))
+            {
+                return null;
+            }
+            edit = track.GetEmbeddedSourceEdit(item.SourcePath);
+            laneIndex = embeddedLaneIndex;
+            timelineSilencedRanges = track.TimelineSilencedRanges
+                .Select(CreateRangeDocument)
+                .ToArray();
+            timelineOffset = MediaTime.Zero;
+        }
+
+        return new ProjectAudioTrackDocument(
+            streamIndex,
+            track.GainDb,
+            track.IsMuted,
+            edit.SourceDuration.Numerator,
+            edit.SourceDuration.Denominator,
+            edit.KeptRanges.Select(CreateRangeDocument).ToArray(),
+            timelineOffset.Numerator,
+            timelineOffset.Denominator,
+            laneIndex,
+            timelineSilencedRanges);
     }
 
     private void RestoreVideoSequence(ProjectDocument document, ICollection<string> warnings)
@@ -2899,7 +3112,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                                 : savedClip.CanvasScale,
                             savedClip.CanvasRotationDegrees)
                         : CreateLegacyCanvasTransform(source.VideoSize, CanvasSize, CanvasCrop, window);
-                    replacements.Add(new VideoClipViewModel(source, model, window, transform));
+                    replacements.Add(new VideoClipViewModel(
+                        source,
+                        model,
+                        window,
+                        transform,
+                        document.SchemaVersion >= 7
+                            ? savedClip.ExcludedAudioLaneIndices
+                            : null));
                     if (document.SchemaVersion < 5)
                     {
                         legacyTimelineCursor += model.Duration;
@@ -2967,6 +3187,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private bool TryRestoreMedia(
         MediaItemViewModel item,
         ProjectMediaDocument document,
+        int schemaVersion,
         out string? warning)
     {
         warning = null;
@@ -3001,22 +3222,43 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
             foreach (var savedAudio in document.AudioTracks ?? [])
             {
-                var track = AudioTracks.FirstOrDefault(candidate =>
-                    PathComparer.Equals(candidate.SourcePath, item.SourcePath) &&
-                    candidate.StreamIndex == savedAudio.StreamIndex) ??
-                    throw new ArgumentException($"Audio stream {savedAudio.StreamIndex} is no longer available.");
                 var audioEdit = SourceEdit.FromKeptRanges(
                     new MediaTime(
                         savedAudio.SourceDurationNumerator,
                         savedAudio.SourceDurationDenominator),
                     savedAudio.KeptRanges.Select(CreateMediaRange));
-                track.Restore(
-                    audioEdit,
-                    savedAudio.GainDb,
-                    savedAudio.IsMuted,
-                    new MediaTime(
-                        savedAudio.TimelineOffsetNumerator,
-                        savedAudio.TimelineOffsetDenominator));
+                if (item.IsExternalAudio)
+                {
+                    var track = AudioTracks.FirstOrDefault(candidate =>
+                        candidate.IsExternal &&
+                        PathComparer.Equals(candidate.SourcePath, item.SourcePath) &&
+                        candidate.StreamIndex == savedAudio.StreamIndex) ??
+                        throw new ArgumentException($"Audio stream {savedAudio.StreamIndex} is no longer available.");
+                    track.Restore(
+                        audioEdit,
+                        savedAudio.GainDb,
+                        savedAudio.IsMuted,
+                        new MediaTime(
+                            savedAudio.TimelineOffsetNumerator,
+                            savedAudio.TimelineOffsetDenominator));
+                }
+                else
+                {
+                    var track = AudioTracks.FirstOrDefault(candidate =>
+                        !candidate.IsExternal &&
+                        candidate.HasEmbeddedSource(item.SourcePath, savedAudio.StreamIndex) &&
+                        (schemaVersion < 7 || candidate.EmbeddedLaneIndex == savedAudio.LaneIndex)) ??
+                        throw new ArgumentException($"Audio stream {savedAudio.StreamIndex} is no longer available.");
+                    track.RestoreEmbeddedSource(
+                        item.SourcePath,
+                        savedAudio.StreamIndex,
+                        audioEdit,
+                        savedAudio.GainDb,
+                        savedAudio.IsMuted,
+                        schemaVersion >= 7
+                            ? (savedAudio.TimelineSilencedRanges ?? []).Select(CreateMediaRange)
+                            : null);
+                }
             }
 
             return true;
@@ -3026,6 +3268,71 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             warning = $"{item.DisplayName} could not restore its saved edits: {exception.Message}";
             return false;
         }
+    }
+
+    private void RebuildAudioTracksFromProject(ProjectDocument document, ICollection<string> warnings)
+    {
+        foreach (var existing in AudioTracks.ToArray())
+        {
+            RemoveAudioTrackCore(existing);
+        }
+
+        var mediaById = MediaItems.ToDictionary(item => item.Id);
+        foreach (var savedMedia in document.Media)
+        {
+            if (!mediaById.TryGetValue(savedMedia.MediaId, out var item) || item.Media is null)
+            {
+                continue;
+            }
+
+            foreach (var savedAudio in savedMedia.AudioTracks ?? [])
+            {
+                var stream = item.Media.Probe.AudioStreams.FirstOrDefault(candidate =>
+                    candidate.Index == savedAudio.StreamIndex);
+                if (stream is null)
+                {
+                    warnings.Add($"{item.DisplayName} audio stream {savedAudio.StreamIndex} is unavailable");
+                    continue;
+                }
+
+                try
+                {
+                    if (item.IsExternalAudio)
+                    {
+                        var external = new AudioTrackViewModel(item.Media, stream);
+                        external.PropertyChanged += OnAudioTrackPropertyChanged;
+                        AudioTracks.Add(external);
+                        continue;
+                    }
+
+                    if (savedAudio.LaneIndex is not { } laneIndex)
+                    {
+                        warnings.Add($"{item.DisplayName} has an embedded audio binding without a lane");
+                        continue;
+                    }
+
+                    var lane = AudioTracks.FirstOrDefault(candidate =>
+                        !candidate.IsExternal && candidate.EmbeddedLaneIndex == laneIndex);
+                    if (lane is null)
+                    {
+                        lane = new AudioTrackViewModel(item.Media, stream, laneIndex);
+                        lane.PropertyChanged += OnAudioTrackPropertyChanged;
+                        AudioTracks.Add(lane);
+                    }
+                    else
+                    {
+                        lane.AddEmbeddedSource(item.Media, stream);
+                    }
+                }
+                catch (ArgumentException exception)
+                {
+                    warnings.Add($"{item.DisplayName} audio could not be restored: {exception.Message}");
+                }
+            }
+        }
+
+        RaiseWorkspaceStateChanged();
+        RefreshAudioTimelineSegments(refreshWaveforms: false);
     }
 
     private static ProjectRangeDocument CreateRangeDocument(MediaRange range)
@@ -3383,8 +3690,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 try
                 {
                     image = await _waveformRenderer!.RenderAsync(
-                        track.SourcePath,
-                        track.StreamIndex,
+                        visible.Segment.SourcePath ?? track.SourcePath,
+                        visible.Segment.StreamIndex >= 0
+                            ? visible.Segment.StreamIndex
+                            : track.StreamIndex,
                         new MediaRange(ToMediaTime(sourceStart), ToMediaTime(sourceEnd)),
                         new PixelSize(pixelWidth, 72),
                         cancellationToken);
@@ -3504,4 +3813,5 @@ internal readonly record struct VideoClipClipboard(
     MediaRange AvailableRange,
     CropRegion SourceWindow,
     ClipCanvasTransform CanvasTransform,
-    double AudioGainDb);
+    double AudioGainDb,
+    ImmutableArray<int> ExcludedAudioLaneIndices);

@@ -9,7 +9,9 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
         VideoClipViewModel? clip,
         string label,
         MediaTime timelineStart,
-        MediaRange sourceRange)
+        MediaRange sourceRange,
+        string? sourcePath = null,
+        int streamIndex = -1)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         if (timelineStart < MediaTime.Zero || sourceRange.IsEmpty)
@@ -21,6 +23,8 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
         Label = label;
         TimelineStart = timelineStart;
         SourceRange = sourceRange;
+        SourcePath = sourcePath ?? clip?.SourcePath;
+        StreamIndex = streamIndex;
         if (Clip is not null)
         {
             Clip.PropertyChanged += OnClipPropertyChanged;
@@ -38,6 +42,10 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
     public MediaTime TimelineEnd => TimelineStart + SourceRange.Duration;
 
     public MediaRange SourceRange { get; }
+
+    public string? SourcePath { get; }
+
+    public int StreamIndex { get; }
 
     public double TimelineStartSeconds => TimelineStart.TotalSeconds;
 

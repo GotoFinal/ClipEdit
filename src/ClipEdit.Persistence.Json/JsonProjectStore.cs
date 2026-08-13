@@ -243,7 +243,12 @@ public sealed class JsonProjectStore : IProjectStore
                 (document.SchemaVersion >= 5 &&
                  (clip.TimelineStartNumerator < 0 || clip.TimelineStartDenominator <= 0)) ||
                 (document.SchemaVersion >= 6 &&
-                 (!double.IsFinite(clip.AudioGainDb) || clip.AudioGainDb is < -60 or > 12)))
+                 (!double.IsFinite(clip.AudioGainDb) || clip.AudioGainDb is < -60 or > 12)) ||
+                (document.SchemaVersion >= 7 &&
+                 clip.ExcludedAudioLaneIndices is { } excluded &&
+                 (excluded.Count > MaximumAudioTracksPerMedia ||
+                  excluded.Any(index => index < 0 || index >= MaximumAudioTracksPerMedia) ||
+                  excluded.Distinct().Count() != excluded.Count)))
             {
                 throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "A saved video clip is invalid.");
             }
@@ -378,7 +383,9 @@ public sealed class JsonProjectStore : IProjectStore
                 audioTrack.TimelineOffsetNumerator < 0 ||
                 audioTrack.TimelineOffsetDenominator <= 0 ||
                 audioTrack.KeptRanges is null ||
-                audioTrack.KeptRanges.Count > MaximumRangesPerMedia)
+                audioTrack.KeptRanges.Count > MaximumRangesPerMedia ||
+                audioTrack.LaneIndex is < 0 or >= MaximumAudioTracksPerMedia ||
+                (audioTrack.TimelineSilencedRanges?.Count ?? 0) > MaximumRangesPerMedia)
             {
                 throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "A saved audio track is invalid.");
             }
@@ -395,6 +402,12 @@ public sealed class JsonProjectStore : IProjectStore
                     new MediaTime(range.StartNumerator, range.StartDenominator),
                     new MediaTime(range.EndNumerator, range.EndDenominator)));
                 _ = SourceEdit.FromKeptRanges(duration, ranges);
+                foreach (var silence in audioTrack.TimelineSilencedRanges ?? [])
+                {
+                    _ = new MediaRange(
+                        new MediaTime(silence.StartNumerator, silence.StartDenominator),
+                        new MediaTime(silence.EndNumerator, silence.EndDenominator));
+                }
             }
             catch (Exception exception) when (exception is ArgumentException or OverflowException or DivideByZeroException)
             {

@@ -671,6 +671,31 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ToggleAudioClipMembership_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is Control { DataContext: AudioTrackViewModel track })
+        {
+            ViewModel?.ToggleSelectedClipAudioMembership(track);
+        }
+    }
+
+    private void RemoveAudioTrack_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is Control { DataContext: AudioTrackViewModel track })
+        {
+            ViewModel?.RemoveAudioTrack(track);
+        }
+    }
+
+    private void RestoreAudioTracks_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.RestoreMissingAudioTracks();
+    }
+
     private static void AudioTimelineZoomOut_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = eventArgs;

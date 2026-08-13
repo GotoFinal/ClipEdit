@@ -51,6 +51,70 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Embedded_audio_from_later_videos_joins_existing_logical_lanes()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        var firstPath = Path.Combine(Path.GetTempPath(), "lane-first.mkv");
+        var secondPath = Path.Combine(Path.GetTempPath(), "lane-second.mkv");
+
+        await viewModel.ImportFilesAsync([firstPath, secondPath]);
+
+        var lane = Assert.Single(viewModel.AudioTracks, track => !track.IsExternal);
+        Assert.Equal(0, lane.EmbeddedLaneIndex);
+        Assert.True(lane.HasEmbeddedSource(firstPath, 1));
+        Assert.True(lane.HasEmbeddedSource(secondPath, 1));
+        Assert.Equal([firstPath, secondPath], lane.TimelineSegments.Select(segment => segment.SourcePath));
+
+        viewModel.SelectedVideoClip = viewModel.VideoClips[1];
+        Assert.True(viewModel.ToggleSelectedClipAudioMembership(lane));
+        Assert.Single(lane.TimelineSegments);
+        Assert.False(viewModel.VideoClips[1].IncludesAudioLane(0));
+
+        await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "lane-membership.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.Single(renderer.Plan!.VideoSegments[0].AudioTracks);
+        Assert.Empty(renderer.Plan.VideoSegments[1].AudioTracks);
+        Assert.Equal([0], viewModel.CreateProjectDocument().VideoClips![1].ExcludedAudioLaneIndices);
+    }
+
+    [Fact]
+    public async Task Removed_audio_lane_stays_removed_after_project_round_trip_and_can_be_restored()
+    {
+        var projectPath = Path.Combine(Path.GetTempPath(), $"audio-lane-{Guid.NewGuid():N}.clipedit");
+        try
+        {
+            var store = new JsonProjectStore();
+            using (var original = new MainWindowViewModel(new StubProbe(), projectStore: store))
+            {
+                await original.ImportFilesAsync(
+                [
+                    Path.Combine(Path.GetTempPath(), "remove-lane-first.mkv"),
+                    Path.Combine(Path.GetTempPath(), "remove-lane-second.mkv"),
+                ]);
+                Assert.True(original.RemoveAudioTrack(Assert.Single(original.AudioTracks)));
+                Assert.Empty(original.AudioTracks);
+                Assert.True(original.CanRestoreMissingAudioTracks);
+                Assert.True(await original.SaveProjectAsync(projectPath));
+            }
+
+            using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.True(await restored.OpenProjectAsync(projectPath));
+            Assert.Empty(restored.AudioTracks);
+            Assert.True(restored.CanRestoreMissingAudioTracks);
+            Assert.True(restored.RestoreMissingAudioTracks());
+            var restoredLane = Assert.Single(restored.AudioTracks);
+            Assert.Equal(2, restoredLane.EmbeddedSourcePaths.Count);
+        }
+        finally
+        {
+            File.Delete(projectPath);
+        }
+    }
+
+    [Fact]
     public async Task Import_ignores_duplicate_paths()
     {
         var sourcePath = Path.Combine(Path.GetTempPath(), "same.mkv");

@@ -9,7 +9,7 @@ public sealed record ProjectDocument(
     ProjectCropSettingsDocument? CropSettings = null,
     ProjectCanvasDocument? Canvas = null)
 {
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
 }
 
 public sealed record ProjectMediaDocument(
@@ -50,7 +50,8 @@ public sealed record ProjectVideoClipDocument(
     double? CanvasScaleY = null,
     long TimelineStartNumerator = 0,
     int TimelineStartDenominator = 1,
-    double AudioGainDb = 0);
+    double AudioGainDb = 0,
+    IReadOnlyList<int>? ExcludedAudioLaneIndices = null);
 
 public sealed record ProjectCropSettingsDocument(
     string PresetId,
@@ -78,4 +79,6 @@ public sealed record ProjectAudioTrackDocument(
     int SourceDurationDenominator,
     IReadOnlyList<ProjectRangeDocument> KeptRanges,
     long TimelineOffsetNumerator = 0,
-    int TimelineOffsetDenominator = 1);
+    int TimelineOffsetDenominator = 1,
+    int? LaneIndex = null,
+    IReadOnlyList<ProjectRangeDocument>? TimelineSilencedRanges = null);
