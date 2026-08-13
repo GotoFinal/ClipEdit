@@ -49,7 +49,7 @@ public sealed partial class MainWindowViewModel
                 StatusText = "Crop resized manually; preset changed to Custom";
             }
 
-            MarkProjectDirty();
+            MarkProjectDirty("canvas-crop");
             RaiseExportStateChanged();
         }
     }

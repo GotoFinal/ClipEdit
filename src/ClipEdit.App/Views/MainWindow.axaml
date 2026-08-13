@@ -135,6 +135,19 @@
               <MenuItem Header="Save project" Click="SaveProject_Click" IsEnabled="{Binding CanSaveProject}" />
               <Separator />
               <MenuItem
+                  x:Name="UndoMenuItem"
+                  Header="Undo"
+                  HotKey="Ctrl+Z"
+                  Click="Undo_Click"
+                  IsEnabled="{Binding CanUndo}" />
+              <MenuItem
+                  x:Name="RedoMenuItem"
+                  Header="Redo"
+                  HotKey="Ctrl+Y"
+                  Click="Redo_Click"
+                  IsEnabled="{Binding CanRedo}" />
+              <Separator />
+              <MenuItem
                   x:Name="RegisterProjectFileAssociationMenuItem"
                   Header="Use ClipEdit for .clipedit files"
                   Click="RegisterProjectFileAssociation_Click" />

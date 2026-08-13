@@ -229,6 +229,21 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Project_menu_exposes_undo_and_redo_hotkeys()
+    {
+        var window = new MainWindow();
+        var undo = window.FindControl<MenuItem>("UndoMenuItem");
+        var redo = window.FindControl<MenuItem>("RedoMenuItem");
+
+        Assert.NotNull(undo);
+        Assert.NotNull(redo);
+        Assert.Equal(new KeyGesture(Key.Z, KeyModifiers.Control), undo.HotKey);
+        Assert.Equal(new KeyGesture(Key.Y, KeyModifiers.Control), redo.HotKey);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Project_menu_exposes_windows_file_association_setup_when_available()
     {
         var association = new FakeProjectFileAssociationService();

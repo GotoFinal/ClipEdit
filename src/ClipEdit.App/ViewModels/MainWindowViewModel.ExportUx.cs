@@ -73,7 +73,7 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ExportScaleSliderValue));
                 RaiseExportStateChanged();
-                MarkProjectDirty();
+                MarkProjectDirty("export-scale");
             }
         }
     }
@@ -94,7 +94,7 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ExportQualitySliderValue));
                 RaiseExportStateChanged();
-                MarkProjectDirty();
+                MarkProjectDirty("export-quality");
             }
         }
     }
@@ -115,7 +115,7 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(GifFrameRateSliderValue));
                 RaiseExportStateChanged();
-                MarkProjectDirty();
+                MarkProjectDirty("export-gif-frame-rate");
             }
         }
     }

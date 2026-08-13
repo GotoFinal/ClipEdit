@@ -270,6 +270,20 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void Undo_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.Undo();
+    }
+
+    private void Redo_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.Redo();
+    }
+
     private async Task<bool> OpenProjectFromUserActionAsync(string projectPath)
     {
         if (ViewModel is not { CanOpenProject: true } viewModel)

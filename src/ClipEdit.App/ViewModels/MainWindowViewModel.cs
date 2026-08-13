@@ -118,6 +118,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             StatusText = "ffprobe was not found. Configure CLIPEDIT_FFPROBE_PATH to import media.";
         }
+
+        ResetEditHistory();
     }
 
     public string ProductName => "ClipEdit";
@@ -638,6 +640,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(CanOpenProject));
                 OnPropertyChanged(nameof(CanNewProject));
                 OnPropertyChanged(nameof(CanRemoveSelectedMedia));
+                OnPropertyChanged(nameof(CanUndo));
+                OnPropertyChanged(nameof(CanRedo));
             }
         }
     }
@@ -735,6 +739,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(CanOpenProject));
                 OnPropertyChanged(nameof(CanNewProject));
                 OnPropertyChanged(nameof(CanRemoveSelectedMedia));
+                OnPropertyChanged(nameof(CanUndo));
+                OnPropertyChanged(nameof(CanRedo));
             }
         }
     }
@@ -1748,6 +1754,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(SelectedCropAspectPreset));
             OnPropertyChanged(nameof(IsCropAspectLocked));
             IsProjectDirty = false;
+            ResetEditHistory();
             ExportProgress = 0;
             ExportPhaseText = string.Empty;
             StatusText = "New project ready";
@@ -1906,6 +1913,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             await _projectStore.SaveAsync(fullPath, CreateProjectDocument(), cancellationToken);
             ProjectPath = fullPath;
             IsProjectDirty = false;
+            SynchronizeEditHistoryBaseline();
             StatusText = $"Saved {Path.GetFileName(fullPath)}";
             await DeleteRecoveryAsync(cancellationToken);
             return true;
@@ -2331,6 +2339,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
             ProjectPath = Path.GetFullPath(projectPath);
             IsProjectDirty = false;
+            ResetEditHistory();
             StatusText = warnings.Count == 0
                 ? $"Opened {Path.GetFileName(ProjectPath)}"
                 : $"Opened with {warnings.Count} warning{(warnings.Count == 1 ? string.Empty : "s")}: {warnings[0]}";
@@ -2360,6 +2369,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         ProjectPath = null;
         IsProjectDirty = true;
+        SynchronizeEditHistoryBaseline();
         StatusText = "Recovered autosaved edits from the previous session; save the project to keep them";
         ScheduleAutosave();
         return true;
@@ -2555,7 +2565,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (eventArgs.PropertyName is nameof(MediaItemViewModel.Crop) or nameof(MediaItemViewModel.Edit))
         {
             RaiseExportStateChanged();
-            MarkProjectDirty();
+            var mediaId = (sender as MediaItemViewModel)?.Id;
+            MarkProjectDirty($"media:{mediaId}:{eventArgs.PropertyName}");
         }
 
         if (eventArgs.PropertyName is nameof(MediaItemViewModel.SelectionStart) or
@@ -2705,7 +2716,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             nameof(AudioTrackViewModel.IsMuted) or
             nameof(AudioTrackViewModel.TimelineOffset))
         {
-            MarkProjectDirty();
+            MarkProjectDirty($"audio:{track.StableId}:{eventArgs.PropertyName}");
             RaiseExportStateChanged();
             OnPropertyChanged(nameof(PreviewAudioTracks));
         }
@@ -2937,12 +2948,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             UpdateSequenceLayout(resetSelectionIfEmpty: false);
             StartSequenceTimelineAnalysis(debounce: true);
-            MarkProjectDirty();
+            MarkProjectDirty($"clip:{clip.Id}:model");
         }
 
         if (eventArgs.PropertyName == nameof(VideoClipViewModel.AudioGainDb))
         {
-            MarkProjectDirty();
+            MarkProjectDirty($"clip:{clip.Id}:audio-gain");
             RaiseExportStateChanged();
             OnPropertyChanged(nameof(PreviewAudioTracks));
         }
@@ -2950,7 +2961,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (eventArgs.PropertyName is nameof(VideoClipViewModel.SourceWindow) or
             nameof(VideoClipViewModel.CanvasTransform))
         {
-            MarkProjectDirty();
+            MarkProjectDirty($"clip:{clip.Id}:visual-transform");
             RaiseExportStateChanged();
         }
     }
@@ -3838,14 +3849,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             new MediaTime(range.EndNumerator, range.EndDenominator));
     }
 
-    private void MarkProjectDirty()
+    private void MarkProjectDirty(string? historyMergeKey = null)
     {
-        if (_isLoadingProject)
+        if (_isLoadingProject || _isApplyingEditHistory)
         {
             return;
         }
 
         IsProjectDirty = true;
+        RecordEditHistory(historyMergeKey);
         ScheduleAutosave();
     }
 

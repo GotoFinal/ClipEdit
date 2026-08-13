@@ -498,6 +498,95 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Undo_and_redo_restore_timeline_edits_without_reimporting_media()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "undo-split.mkv")]);
+        var originalClipId = Assert.Single(viewModel.VideoClips).Id;
+        Assert.False(viewModel.CanUndo);
+        viewModel.SequencePlayheadSeconds = 30;
+
+        Assert.True(viewModel.SplitSelectedVideoClip());
+        Assert.Equal(2, viewModel.VideoClips.Count);
+        Assert.True(viewModel.CanUndo);
+        Assert.False(viewModel.CanRedo);
+
+        Assert.True(viewModel.Undo());
+        Assert.Single(viewModel.VideoClips);
+        Assert.Equal(originalClipId, viewModel.VideoClips[0].Id);
+        Assert.True(viewModel.CanRedo);
+
+        Assert.True(viewModel.Redo());
+        Assert.Equal(2, viewModel.VideoClips.Count);
+        Assert.True(viewModel.CanUndo);
+    }
+
+    [Fact]
+    public async Task Undo_and_redo_restore_keep_selection_while_preserving_other_clips()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync(
+        [
+            Path.Combine(Path.GetTempPath(), "undo-keep-first.mkv"),
+            Path.Combine(Path.GetTempPath(), "undo-keep-second.mkv"),
+        ]);
+        var originalModels = viewModel.VideoClips.Select(clip => clip.Model).ToArray();
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 12;
+        Assert.True(viewModel.KeepSequenceSelectionOnly());
+
+        Assert.True(viewModel.Undo());
+        Assert.Equal(originalModels, viewModel.VideoClips.Select(clip => clip.Model));
+
+        Assert.True(viewModel.Redo());
+        Assert.Equal(2, viewModel.VideoClips.Count);
+        Assert.Equal(
+            new MediaRange(new MediaTime(5, 1), new MediaTime(12, 1)),
+            viewModel.VideoClips[0].Model.SourceRange);
+        Assert.Equal(originalModels[1], viewModel.VideoClips[1].Model);
+    }
+
+    [Fact]
+    public async Task A_new_edit_after_undo_clears_redo_history()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "undo-branch.mkv")]);
+        viewModel.SequencePlayheadSeconds = 30;
+        Assert.True(viewModel.SplitSelectedVideoClip());
+        Assert.True(viewModel.Undo());
+        Assert.True(viewModel.CanRedo);
+
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 10;
+        Assert.True(viewModel.KeepSequenceSelectionOnly());
+
+        Assert.False(viewModel.CanRedo);
+    }
+
+    [Fact]
+    public async Task Undo_restores_clip_transforms_and_audio_settings_in_order()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "undo-properties.mkv")]);
+        var clip = Assert.Single(viewModel.VideoClips);
+        var initialTransform = clip.CanvasTransform;
+        clip.CanvasTransform = new ClipCanvasTransform(120, -40, 1.25, 17);
+        Assert.Single(viewModel.AudioTracks).GainDb = 6;
+
+        Assert.True(viewModel.Undo());
+        Assert.Equal(0, Assert.Single(viewModel.AudioTracks).GainDb);
+        Assert.Equal(new ClipCanvasTransform(120, -40, 1.25, 17), Assert.Single(viewModel.VideoClips).CanvasTransform);
+
+        Assert.True(viewModel.Undo());
+        Assert.Equal(initialTransform, Assert.Single(viewModel.VideoClips).CanvasTransform);
+
+        Assert.True(viewModel.Redo());
+        Assert.Equal(new ClipCanvasTransform(120, -40, 1.25, 17), Assert.Single(viewModel.VideoClips).CanvasTransform);
+        Assert.True(viewModel.Redo());
+        Assert.Equal(6, Assert.Single(viewModel.AudioTracks).GainDb);
+    }
+
+    [Fact]
     public async Task Split_and_delete_operate_on_the_selected_timeline_clip_not_the_source_asset()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
