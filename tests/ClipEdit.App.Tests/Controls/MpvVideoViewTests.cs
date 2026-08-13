@@ -15,6 +15,16 @@ public sealed class MpvVideoViewTests
     ];
 
     [Fact]
+    public void Rendering_starts_before_media_load_completes()
+    {
+        Assert.True(MpvVideoView.CanRenderFrame(
+            isEngineReady: true,
+            isMediaLoaded: false));
+        Assert.True(MpvVideoView.ShouldContinueRenderingDuringLoad(isLoadCompleted: false));
+        Assert.False(MpvVideoView.ShouldContinueRenderingDuringLoad(isLoadCompleted: true));
+    }
+
+    [Fact]
     public void Position_inside_kept_range_continues()
     {
         var decision = MpvVideoView.GetPlaybackRangeDecision(new MediaTime(3, 1), Ranges);

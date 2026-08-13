@@ -347,7 +347,8 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     protected override void OnOpenGlRender(GlInterface gl, int framebuffer)
     {
-        if (_engine is null)
+        var engine = _engine;
+        if (!CanRenderFrame(engine is not null, _mediaLoaded))
         {
             return;
         }
@@ -356,21 +357,20 @@ public sealed class MpvVideoView : OpenGlControlBase
         {
             if (_renderContext is null)
             {
-                _renderContext = _engine.CreateOpenGlRenderContext(
+                _renderContext = engine!.CreateOpenGlRenderContext(
                     gl.GetProcAddress,
                     RequestRenderFromNativeCallback);
                 TryStartPendingLoad();
-            }
-
-            if (!_mediaLoaded)
-            {
-                return;
             }
 
             var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
             var width = Math.Max(1, (int)(Bounds.Width * scaling));
             var height = Math.Max(1, (int)(Bounds.Height * scaling));
             _renderContext.Render(framebuffer, width, height);
+            if (ShouldContinueRenderingDuringLoad(_loadTask.IsCompleted))
+            {
+                RequestNextFrameRendering();
+            }
         }
         catch (Exception exception)
         {
@@ -723,6 +723,12 @@ public sealed class MpvVideoView : OpenGlControlBase
             canvasTransform.ScaleX / uniformScale,
             canvasTransform.ScaleY / uniformScale);
     }
+
+    internal static bool CanRenderFrame(bool isEngineReady, bool isMediaLoaded) =>
+        isEngineReady;
+
+    internal static bool ShouldContinueRenderingDuringLoad(bool isLoadCompleted) =>
+        !isLoadCompleted;
 
     private void StartAudioMixChange()
     {
