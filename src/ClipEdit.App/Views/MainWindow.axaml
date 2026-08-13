@@ -270,35 +270,43 @@
                   <Flyout Placement="BottomEdgeAlignedRight">
                     <Border
                         Width="430"
-                        Padding="16"
+                        Padding="10"
                         Background="#222630"
                         BorderBrush="#3D4352"
                         BorderThickness="1"
                         CornerRadius="8">
                       <ScrollViewer MaxHeight="560" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                      <StackPanel Margin="0,0,6,0" Spacing="15">
+                      <StackPanel Margin="0,0,4,0" Spacing="10">
                         <StackPanel Spacing="3">
                           <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="#F5F5F8" Text="Export settings" />
                           <TextBlock Classes="muted" FontSize="11" Text="Adjust output size and compression before exporting." />
                         </StackPanel>
 
-                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,84" ColumnSpacing="12" RowSpacing="5">
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,72" ColumnSpacing="8" RowSpacing="2">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Scale" />
                           <NumericUpDown
                               Grid.Column="1"
-                              Height="30"
+                              Height="26"
+                              Padding="6,0"
                               Minimum="10"
                               Maximum="100"
                               Increment="1"
-                              FormatString="0'%'"
+                              FormatString="0"
+                              ShowButtonSpinner="False"
+                              HorizontalContentAlignment="Right"
                               Background="#151820"
                               BorderBrush="#555C6C"
                               Foreground="#F5F5F8"
-                              Value="{Binding ExportScalePercent, Mode=TwoWay}" />
+                              Value="{Binding ExportScalePercent, Mode=TwoWay}">
+                            <NumericUpDown.InnerRightContent>
+                              <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Foreground="#A8AFC0" Text="%" />
+                            </NumericUpDown.InnerRightContent>
+                          </NumericUpDown>
                           <Slider
                               Grid.Row="1"
                               Grid.ColumnSpan="2"
-                              Height="24"
+                              Height="20"
+                              Margin="8,0"
                               Minimum="10"
                               Maximum="100"
                               SmallChange="1"
@@ -308,23 +316,31 @@
                               Value="{Binding ExportScaleSliderValue, Mode=TwoWay}" />
                         </Grid>
 
-                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,84" ColumnSpacing="12" RowSpacing="5">
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,72" ColumnSpacing="8" RowSpacing="2">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Quality" />
                           <NumericUpDown
                               Grid.Column="1"
-                              Height="30"
+                              Height="26"
+                              Padding="6,0"
                               Minimum="1"
                               Maximum="100"
                               Increment="1"
-                              FormatString="0'%'"
+                              FormatString="0"
+                              ShowButtonSpinner="False"
+                              HorizontalContentAlignment="Right"
                               Background="#151820"
                               BorderBrush="#555C6C"
                               Foreground="#F5F5F8"
-                              Value="{Binding ExportQuality, Mode=TwoWay}" />
+                              Value="{Binding ExportQuality, Mode=TwoWay}">
+                            <NumericUpDown.InnerRightContent>
+                              <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Foreground="#A8AFC0" Text="%" />
+                            </NumericUpDown.InnerRightContent>
+                          </NumericUpDown>
                           <Slider
                               Grid.Row="1"
                               Grid.ColumnSpan="2"
-                              Height="24"
+                              Height="20"
+                              Margin="8,0"
                               Minimum="1"
                               Maximum="100"
                               SmallChange="1"
@@ -336,17 +352,21 @@
 
                         <Grid
                             RowDefinitions="Auto,Auto"
-                            ColumnDefinitions="*,84"
-                            ColumnSpacing="12"
-                            RowSpacing="5"
+                            ColumnDefinitions="*,72"
+                            ColumnSpacing="8"
+                            RowSpacing="2"
                             IsVisible="{Binding IsGifExport}">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="GIF frame rate" />
                           <NumericUpDown
                               Grid.Column="1"
-                              Height="30"
+                              Height="26"
+                              Padding="6,0"
                               Minimum="1"
                               Maximum="60"
                               Increment="1"
+                              FormatString="0"
+                              ShowButtonSpinner="False"
+                              HorizontalContentAlignment="Right"
                               Background="#151820"
                               BorderBrush="#555C6C"
                               Foreground="#F5F5F8"
@@ -354,7 +374,8 @@
                           <Slider
                               Grid.Row="1"
                               Grid.ColumnSpan="2"
-                              Height="24"
+                              Height="20"
+                              Margin="8,0"
                               Minimum="1"
                               Maximum="60"
                               SmallChange="1"
@@ -365,18 +386,18 @@
                         </Grid>
 
                         <Border
-                            Padding="12"
+                            Padding="9"
                             Background="#1B1E26"
                             BorderBrush="#3A4050"
                             BorderThickness="1"
                             CornerRadius="7"
                             IsVisible="{Binding IsCustomExport}">
-                          <StackPanel Spacing="11">
+                          <StackPanel Spacing="8">
                             <StackPanel Spacing="2">
                               <TextBlock FontWeight="SemiBold" Foreground="#D8D0FF" Text="Custom format" />
                               <TextBlock Classes="muted" FontSize="10" Text="Only compatible codec combinations are shown." />
                             </StackPanel>
-                            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+                            <Grid ColumnDefinitions="96,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="5">
                               <TextBlock VerticalAlignment="Center" Text="Container" />
                               <ComboBox Grid.Column="1" ItemsSource="{Binding CustomExportContainerChoices}" SelectedItem="{Binding CustomExportContainer}">
                                 <ComboBox.ItemTemplate>
@@ -408,17 +429,21 @@
                                 IsVisible="{Binding CustomCanSetFrameRate}" />
                             <Grid
                                 RowDefinitions="Auto,Auto"
-                                ColumnDefinitions="*,84"
-                                ColumnSpacing="12"
-                                RowSpacing="5"
+                                ColumnDefinitions="*,72"
+                                ColumnSpacing="8"
+                                RowSpacing="2"
                                 IsVisible="{Binding CustomUsesFixedFrameRate}">
                               <TextBlock VerticalAlignment="Center" Text="Frame rate" />
                               <NumericUpDown
                                   Grid.Column="1"
-                                  Height="30"
+                                  Height="26"
+                                  Padding="6,0"
                                   Minimum="1"
                                   Maximum="120"
                                   Increment="1"
+                                  FormatString="0"
+                                  ShowButtonSpinner="False"
+                                  HorizontalContentAlignment="Right"
                                   Background="#151820"
                                   BorderBrush="#555C6C"
                                   Foreground="#F5F5F8"
@@ -426,7 +451,8 @@
                               <Slider
                                   Grid.Row="1"
                                   Grid.ColumnSpan="2"
-                                  Height="24"
+                                  Height="20"
+                                  Margin="8,0"
                                   Minimum="1"
                                   Maximum="120"
                                   SmallChange="1"
@@ -446,19 +472,19 @@
                                   </DataTemplate>
                                 </ComboBox.ItemTemplate>
                               </ComboBox>
-                              <Button Grid.Column="1" Height="30" Padding="8,4" Classes="secondary" Click="LoadExportPreset_Click" Content="Load" IsEnabled="{Binding HasSelectedSavedExportPreset}" />
-                              <Button Grid.Column="2" Width="30" Height="30" Padding="7" Classes="secondary" Click="DeleteExportPreset_Click" IsEnabled="{Binding HasSelectedSavedExportPreset}" ToolTip.Tip="Delete selected preset">
+                              <Button Grid.Column="1" Height="27" Padding="8,3" Classes="secondary" Click="LoadExportPreset_Click" Content="Load" IsEnabled="{Binding HasSelectedSavedExportPreset}" />
+                              <Button Grid.Column="2" Width="27" Height="27" Padding="6" Classes="secondary" Click="DeleteExportPreset_Click" IsEnabled="{Binding HasSelectedSavedExportPreset}" ToolTip.Tip="Delete selected preset">
                                 <PathIcon Width="12" Height="12" Data="M3,4 H13 M5,4 V14 H11 V4 M6,2 H10 L11,4 H5 Z" />
                               </Button>
                             </Grid>
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
                               <TextBox MaxLength="60" PlaceholderText="Preset name" Text="{Binding CustomPresetName, Mode=TwoWay}" />
-                              <Button Grid.Column="1" Height="30" Padding="10,4" Classes="secondary" Click="SaveExportPreset_Click" Content="Save preset" IsEnabled="{Binding CanSaveCustomExportPreset}" />
+                              <Button Grid.Column="1" Height="27" Padding="9,3" Classes="secondary" Click="SaveExportPreset_Click" Content="Save preset" IsEnabled="{Binding CanSaveCustomExportPreset}" />
                             </Grid>
                           </StackPanel>
                         </Border>
 
-                        <Border Padding="10,8" Background="#171A21" BorderBrush="#353A47" BorderThickness="1" CornerRadius="6">
+                        <Border Padding="8,5" Background="#171A21" BorderBrush="#353A47" BorderThickness="1" CornerRadius="6">
                           <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Classes="muted" FontSize="11" Text="Final output size" />
                             <TextBlock Grid.Column="1" FontWeight="SemiBold" Foreground="#BBAEFF" Text="{Binding ExportOutputSizeText}" />
