@@ -66,7 +66,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private string? _projectPath;
     private bool _isProjectDirty;
     private bool _isLoadingProject;
-    private bool _isAudioMixerExpanded;
+    private bool _isAdvancedMode;
+    private bool _isTimelineSnappingEnabled = true;
     private CropAspectPreset _selectedCropAspectPreset = BuiltInCropAspectPresets.Custom;
     private bool _isCropAspectLocked;
     private bool _isApplyingCropPreset;
@@ -313,6 +314,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 SelectedMedia = value.Source;
             }
 
+            SynchronizeAudioGainTargets();
+
             OnPropertyChanged(nameof(CanDeleteSelectedVideoClip));
             OnPropertyChanged(nameof(PreviewAudioTracks));
             OnPropertyChanged(nameof(CanSplitSelectedVideoClip));
@@ -410,6 +413,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         SelectedVideoClip is { } clip &&
         _sequencePlayhead > clip.TimelineStart &&
         _sequencePlayhead < clip.TimelineEnd;
+
+    public bool IsTimelineSnappingEnabled
+    {
+        get => _isTimelineSnappingEnabled;
+        set
+        {
+            if (SetProperty(ref _isTimelineSnappingEnabled, value))
+            {
+                StatusText = value
+                    ? "Timeline snapping enabled"
+                    : "Timeline snapping disabled";
+            }
+        }
+    }
 
     public bool IsSequenceTimelineFreeMode
     {
@@ -678,8 +695,34 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool HasAudioTracks => AudioTracks.Count > 0;
 
-    public bool ShowAudioMixer =>
-        HasAudioTracks && (_isAudioMixerExpanded || ExternalAudioItems.Any());
+    public bool IsAdvancedMode
+    {
+        get => _isAdvancedMode;
+        set
+        {
+            if (!SetProperty(ref _isAdvancedMode, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(ShowAdvancedClipControls));
+            OnPropertyChanged(nameof(ShowAudioMixer));
+            OnPropertyChanged(nameof(AudioMixerButtonText));
+            StatusText = value ? "Advanced controls shown" : "Advanced controls hidden";
+            if (ShowAudioMixer)
+            {
+                RefreshAudioTimelineSegments(refreshWaveforms: false);
+                foreach (var track in AudioTracks)
+                {
+                    StartWaveformAnalysis(track, debounce: false);
+                }
+            }
+        }
+    }
+
+    public bool ShowAdvancedClipControls => IsAdvancedMode && HasReadyMedia;
+
+    public bool ShowAudioMixer => HasAudioTracks && IsAdvancedMode;
 
     public bool ShowRangeStrip => false;
 
@@ -711,7 +754,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     track.Edit))
             .ToArray();
 
-    public string AudioMixerButtonText => ShowAudioMixer ? "Hide mixer" : "Mixer";
+    public string AudioMixerButtonText => IsAdvancedMode ? "Basic" : "Advanced";
 
     public string EditingModeText => ShowTimeline ? "TIMELINE" : "QUICK EDIT";
 
@@ -948,17 +991,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void ToggleAudioMixer()
     {
-        _isAudioMixerExpanded = !_isAudioMixerExpanded;
-        OnPropertyChanged(nameof(ShowAudioMixer));
-        OnPropertyChanged(nameof(AudioMixerButtonText));
-        if (ShowAudioMixer)
-        {
-            RefreshAudioTimelineSegments(refreshWaveforms: false);
-            foreach (var track in AudioTracks)
-            {
-                StartWaveformAnalysis(track, debounce: false);
-            }
-        }
+        IsAdvancedMode = !IsAdvancedMode;
     }
 
     public void MarkSequenceSelectionStart()
@@ -1736,6 +1769,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ShowQuickWorkspace));
         OnPropertyChanged(nameof(ShowTimeline));
         OnPropertyChanged(nameof(ShowAudioMixer));
+        OnPropertyChanged(nameof(ShowAdvancedClipControls));
         OnPropertyChanged(nameof(HasAudioTracks));
         OnPropertyChanged(nameof(AudioMixerButtonText));
         OnPropertyChanged(nameof(ShowRangeStrip));
@@ -1788,7 +1822,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _pendingMediaIds.Clear();
         _unavailableProjectMedia.Clear();
         _timelineFrameCache.Clear();
-        _isAudioMixerExpanded = false;
+        _isAdvancedMode = false;
         _sequencePlayhead = MediaTime.Zero;
         _sequenceSelectionStart = MediaTime.Zero;
         _sequenceSelectionEnd = MediaTime.Zero;
@@ -1835,6 +1869,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         SynchronizeAudioTimelineState(refreshWaveforms);
+    }
+
+    private void SynchronizeAudioGainTargets()
+    {
+        foreach (var track in AudioTracks)
+        {
+            var selectedClip = !track.IsExternal &&
+                               SelectedVideoClip is { } clip &&
+                               PathComparer.Equals(track.SourcePath, clip.SourcePath)
+                ? clip
+                : null;
+            track.SetContextualGainClip(selectedClip);
+        }
     }
 
     private IReadOnlyList<AudioTimelineSegmentViewModel> CreateAudioTimelineSegments(
@@ -1980,6 +2027,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             {
                 var track = new AudioTrackViewModel(mediaItem.Media, stream);
                 track.PropertyChanged += OnAudioTrackPropertyChanged;
+                if (!track.IsExternal &&
+                    SelectedVideoClip is { } selectedClip &&
+                    PathComparer.Equals(track.SourcePath, selectedClip.SourcePath))
+                {
+                    track.SetContextualGainClip(selectedClip);
+                }
                 AudioTracks.Add(track);
             }
             catch (ArgumentException)

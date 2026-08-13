@@ -191,4 +191,14 @@ public sealed class SourceRangeCanvasTests
         Assert.Equal(-360, TimelineViewportMath.ClampStart(100, 0.25, -1_000, freeViewport: true));
         Assert.Equal(60, TimelineViewportMath.ClampStart(100, 0.25, 1_000, freeViewport: true));
     }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(12, 1.9952623149688795)]
+    [InlineData(-12, 0.5011872336272722)]
+    [InlineData(-60, 0.03162277660168379)]
+    public void Waveform_height_tracks_effective_audio_gain(double gainDb, double expectedScale)
+    {
+        Assert.Equal(expectedScale, SourceRangeCanvas.GainToWaveformScale(gainDb), 9);
+    }
 }

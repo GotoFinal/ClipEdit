@@ -23,6 +23,8 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private IReadOnlyList<TimelineBitmapVisual> _waveforms = [];
     private IReadOnlyList<AudioTimelineSegmentViewModel> _timelineSegments = [];
     private IReadOnlyList<AudioTimelineSegmentViewModel> _adjustableTimelineSegments = [];
+    private VideoClipViewModel? _contextualGainClip;
+    private int _waveformVisualRevision;
     private ImmutableArray<MediaRange> _timelineKeptRanges = [];
     private MediaTime _timelinePlayhead;
     private MediaTime _timelineSelectionStart;
@@ -139,11 +141,43 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
             {
                 OnPropertyChanged(nameof(GainText));
                 OnPropertyChanged(nameof(IsEdited));
+                if (_contextualGainClip is null)
+                {
+                    OnPropertyChanged(nameof(ContextualGainDb));
+                    OnPropertyChanged(nameof(ContextualGainText));
+                }
+                IncrementWaveformVisualRevision();
             }
         }
     }
 
     public string GainText => GainDb <= -59.95 ? "−∞ dB" : $"{GainDb:+0.0;-0.0;0.0} dB";
+
+    public double ContextualGainDb
+    {
+        get => _contextualGainClip?.AudioGainDb ?? GainDb;
+        set
+        {
+            if (_contextualGainClip is { } clip)
+            {
+                clip.AudioGainDb = value;
+            }
+            else
+            {
+                GainDb = value;
+            }
+        }
+    }
+
+    public string ContextualGainText => _contextualGainClip?.AudioGainText ?? GainText;
+
+    public string ContextualGainLabel => _contextualGainClip is null ? "Track gain" : "Clip gain";
+
+    public string ContextualGainTargetText => _contextualGainClip is null
+        ? "Adjust the whole audio track"
+        : $"Adjust selected clip: {_contextualGainClip.DisplayName}";
+
+    public int WaveformVisualRevision => _waveformVisualRevision;
 
     public bool IsMuted
     {
@@ -341,12 +375,42 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         _adjustableTimelineSegments = segments.Where(segment => segment.IsGainAdjustable).ToArray();
         foreach (var segment in previous)
         {
+            segment.PropertyChanged -= OnTimelineSegmentPropertyChanged;
             segment.Dispose();
+        }
+
+        foreach (var segment in _timelineSegments)
+        {
+            segment.PropertyChanged += OnTimelineSegmentPropertyChanged;
         }
 
         OnPropertyChanged(nameof(TimelineSegments));
         OnPropertyChanged(nameof(AdjustableTimelineSegments));
         RebuildTimelineKeptRanges();
+    }
+
+    internal void SetContextualGainClip(VideoClipViewModel? clip)
+    {
+        if (ReferenceEquals(_contextualGainClip, clip))
+        {
+            return;
+        }
+
+        if (_contextualGainClip is not null)
+        {
+            _contextualGainClip.PropertyChanged -= OnContextualGainClipPropertyChanged;
+        }
+
+        _contextualGainClip = clip;
+        if (_contextualGainClip is not null)
+        {
+            _contextualGainClip.PropertyChanged += OnContextualGainClipPropertyChanged;
+        }
+
+        OnPropertyChanged(nameof(ContextualGainDb));
+        OnPropertyChanged(nameof(ContextualGainText));
+        OnPropertyChanged(nameof(ContextualGainLabel));
+        OnPropertyChanged(nameof(ContextualGainTargetText));
     }
 
     internal void SynchronizeTimelineState(
@@ -588,14 +652,47 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        SetContextualGainClip(null);
         SetWaveforms([]);
         foreach (var segment in _timelineSegments)
         {
+            segment.PropertyChanged -= OnTimelineSegmentPropertyChanged;
             segment.Dispose();
         }
         _timelineSegments = [];
         _adjustableTimelineSegments = [];
         SetWaveform(null);
+    }
+
+    private void OnContextualGainClipPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        if (eventArgs.PropertyName is nameof(VideoClipViewModel.AudioGainDb) or
+            nameof(VideoClipViewModel.AudioGainText))
+        {
+            OnPropertyChanged(nameof(ContextualGainDb));
+            OnPropertyChanged(nameof(ContextualGainText));
+            IncrementWaveformVisualRevision();
+        }
+    }
+
+    private void OnTimelineSegmentPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        if (eventArgs.PropertyName is nameof(AudioTimelineSegmentViewModel.GainDb) or
+            nameof(AudioTimelineSegmentViewModel.GainText))
+        {
+            IncrementWaveformVisualRevision();
+        }
+    }
+
+    private void IncrementWaveformVisualRevision()
+    {
+        unchecked
+        {
+            _waveformVisualRevision++;
+        }
+        OnPropertyChanged(nameof(WaveformVisualRevision));
     }
 
     public void Restore(SourceEdit edit, double gainDb, bool isMuted)

@@ -609,13 +609,30 @@
                 HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="6">
-              <Grid ColumnDefinitions="Auto,*,Auto">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
                 <TextBlock FontSize="11" FontWeight="Bold" Text="EDIT" />
                 <TextBlock
-                    Grid.Column="2"
+                    Grid.Column="1"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
                     FontSize="10"
                     Foreground="#777E91"
                     Text="{Binding EditingModeText}" />
+                <StackPanel Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="EXPORT" />
+                  <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding CanvasCropSizeText}" />
+                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="AUDIO" />
+                  <TextBlock VerticalAlignment="Center" Text="{Binding AudioSummaryText}" />
+                </StackPanel>
+                <ToggleButton
+                    Grid.Column="3"
+                    Height="24"
+                    Padding="9,2"
+                    Classes="secondary"
+                    Click="ToggleAudioMixer_Click"
+                    Content="Advanced"
+                    IsChecked="{Binding IsAdvancedMode, Mode=OneWay}"
+                    ToolTip.Tip="Show numeric crop/transform controls and the synchronized audio mixer" />
               </Grid>
 
               <Border Height="122" Padding="6" Background="#20242D" CornerRadius="6" IsVisible="{Binding ShowTimeline}">
@@ -631,7 +648,7 @@
                       </Button>
                     </StackPanel>
                   </StackPanel>
-                  <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="5">
+                  <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="5">
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                       <TextBlock Classes="muted" FontSize="9" Text="{Binding SequenceTimelineViewportText}" />
                       <TextBlock Classes="muted" FontSize="9" Text="Wheel zoom · Shift+wheel pan · drag edges to restore or trim" />
@@ -643,8 +660,11 @@
                     <Button Grid.Column="3" Width="24" Height="20" Padding="5" Classes="secondary" Click="TimelineZoomIn_Click" IsEnabled="{Binding CanZoomSequenceTimelineIn}">
                       <PathIcon Width="10" Height="10" Data="M2,8 H14 M8,2 V14" />
                     </Button>
-                    <ToggleButton Grid.Column="4" Height="20" Padding="7,1" Classes="secondary" Content="Free" IsChecked="{Binding IsSequenceTimelineFreeMode, Mode=TwoWay}" ToolTip.Tip="Show workspace before and after the sequence so clips and hidden handles can be moved freely" />
-                    <Button Grid.Column="5" Height="20" Padding="7,1" Classes="secondary" Click="TimelineFit_Click" Content="Fit" />
+                    <ToggleButton Grid.Column="4" Width="24" Height="20" Padding="4" Classes="secondary" AutomationProperties.Name="Timeline snapping" IsChecked="{Binding IsTimelineSnappingEnabled, Mode=TwoWay}" ToolTip.Tip="Snap nearby clip edges together; hold Ctrl while dragging to bypass">
+                      <PathIcon Width="12" Height="12" Data="M2,1 H6 V7 A4,4 0 0 0 14,7 V1 H18 V7 A8,8 0 0 1 2,7 Z M2,1 H6 V4 H2 Z M14,1 H18 V4 H14 Z" />
+                    </ToggleButton>
+                    <ToggleButton Grid.Column="5" Height="20" Padding="7,1" Classes="secondary" Content="Free" IsChecked="{Binding IsSequenceTimelineFreeMode, Mode=TwoWay}" ToolTip.Tip="Show workspace before and after the sequence so clips and hidden handles can be moved freely" />
+                    <Button Grid.Column="6" Height="20" Padding="7,1" Classes="secondary" Click="TimelineFit_Click" Content="Fit" />
                   </Grid>
                   <controls:SequenceTimelineCanvas
                       x:Name="SequenceTimeline"
@@ -662,6 +682,7 @@
                       MoveRightRequested="SequenceTimeline_MoveRightRequested"
                       Playhead="{Binding SequencePlayheadSeconds, Mode=TwoWay}"
                       SelectedClip="{Binding SelectedVideoClip, Mode=TwoWay}"
+                      SnappingEnabled="{Binding IsTimelineSnappingEnabled}"
                       SelectionEnd="{Binding SequenceSelectionEndSeconds, Mode=TwoWay}"
                       SelectionStart="{Binding SequenceSelectionStartSeconds, Mode=TwoWay}"
                       SplitRequested="SequenceTimeline_SplitRequested"
@@ -685,7 +706,7 @@
                 </StackPanel>
               </Grid>
 
-              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="5">
+              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="5" IsVisible="{Binding IsAdvancedMode}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CROP" />
                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="X" />
                 <TextBox Grid.Column="2" Width="54" Text="{Binding CanvasCropX, Mode=TwoWay}" />
@@ -696,23 +717,12 @@
                 <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="H" />
                 <TextBox Grid.Column="8" Width="60" Text="{Binding CanvasCropHeight, Mode=TwoWay}" />
                 <Button Grid.Column="9" Classes="secondary" Click="ResetCrop_Click" Content="Reset crop" />
-                <StackPanel Grid.Column="10" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
-                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="EXPORT" />
-                  <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding CanvasCropSizeText}" />
-                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="AUDIO" />
-                  <TextBlock VerticalAlignment="Center" Text="{Binding AudioSummaryText}" />
-                  <Button
-                      Classes="secondary"
-                      Click="ToggleAudioMixer_Click"
-                      Content="{Binding AudioMixerButtonText}"
-                      IsVisible="{Binding HasAudioTracks}" />
-                </StackPanel>
               </Grid>
 
               <Grid
                   ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,Auto,*"
                   ColumnSpacing="5"
-                  IsVisible="{Binding HasReadyMedia}">
+                  IsVisible="{Binding ShowAdvancedClipControls}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CLIP" />
                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="X" />
                 <TextBox Grid.Column="2" Text="{Binding SelectedVideoClip.CanvasOffsetX, Mode=TwoWay}" />
@@ -743,31 +753,32 @@
 
               <Border
                   x:Name="AudioMixerPanel"
-                  Padding="10"
+                  Padding="7"
                   Background="#151820"
                   CornerRadius="7"
                   IsVisible="{Binding ShowAudioMixer}">
-                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                <Grid RowDefinitions="Auto,*" RowSpacing="5">
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
-                      <TextBlock Classes="muted" FontSize="10" Text="Waveforms, cuts, selection and playhead share the video timeline" />
+                      <TextBlock Classes="muted" FontSize="9" Text="Synced to video timeline" />
                     </StackPanel>
                     <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding AudioTrackCountText}" />
                   </Grid>
-                  <ScrollViewer Grid.Row="1" MaxHeight="230" VerticalScrollBarVisibility="Auto">
+                  <ScrollViewer Grid.Row="1" MaxHeight="210" VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding AudioTracks}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:AudioTrackViewModel">
-                          <Border Margin="0,0,0,7" Padding="9" Background="#20242D" CornerRadius="6">
-                            <Grid RowDefinitions="Auto,Auto,Auto,64,Auto" RowSpacing="7">
-                              <Grid ColumnDefinitions="*,Auto,72,Auto,150,58" ColumnSpacing="8">
+                          <Border Margin="0,0,0,5" Padding="7" Background="#20242D" CornerRadius="6">
+                            <Grid RowDefinitions="Auto,Auto,52,Auto" RowSpacing="4">
+                              <Grid ColumnDefinitions="*,Auto,64,Auto,Auto,110,52" ColumnSpacing="6">
                                 <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" IsVisible="{Binding IsExternal}" Text="Start (s)" />
-                                <TextBox Grid.Column="2" IsVisible="{Binding IsExternal}" Text="{Binding TimelineOffsetSeconds, Mode=TwoWay}" />
+                                <TextBox Grid.Column="2" Height="26" IsVisible="{Binding IsExternal}" Text="{Binding TimelineOffsetSeconds, Mode=TwoWay}" />
                                 <CheckBox Grid.Column="3" VerticalAlignment="Center" Content="Mute" IsChecked="{Binding IsMuted, Mode=TwoWay}" />
-                                <Slider Grid.Column="4" Minimum="-60" Maximum="12" Value="{Binding GainDb, Mode=TwoWay}" />
-                                <TextBlock Grid.Column="5" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Text="{Binding GainText}" />
+                                <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding ContextualGainLabel}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
+                                <Slider Grid.Column="5" AutomationProperties.Name="{Binding ContextualGainLabel}" Minimum="-60" Maximum="12" Value="{Binding ContextualGainDb, Mode=TwoWay}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
+                                <TextBlock Grid.Column="6" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Text="{Binding ContextualGainText}" />
                               </Grid>
                               <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
@@ -781,28 +792,8 @@
                                 <Button Grid.Column="3" Padding="8,1" Classes="secondary" Click="AudioTimelineZoomIn_Click" Content="+" IsEnabled="{Binding CanZoomTimelineIn}" ToolTip.Tip="Zoom waveform in" />
                                 <Button Grid.Column="4" Padding="8,1" Classes="secondary" Click="AudioTimelineFit_Click" Content="Fit" IsEnabled="{Binding CanZoomTimelineOut}" />
                               </Grid>
-                              <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                                <ItemsControl ItemsSource="{Binding AdjustableTimelineSegments}">
-                                  <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                      <StackPanel Orientation="Horizontal" Spacing="6" />
-                                    </ItemsPanelTemplate>
-                                  </ItemsControl.ItemsPanel>
-                                  <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:AudioTimelineSegmentViewModel">
-                                      <Border Padding="6,3" Background="#292E39" CornerRadius="4" ToolTip.Tip="Adjust this clip segment without changing its siblings">
-                                        <Grid ColumnDefinitions="90,84,48" ColumnSpacing="6">
-                                          <TextBlock VerticalAlignment="Center" FontSize="9" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                                          <Slider Grid.Column="1" Minimum="-60" Maximum="12" Value="{Binding GainDb, Mode=TwoWay}" />
-                                          <TextBlock Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="9" Text="{Binding GainText}" />
-                                        </Grid>
-                                      </Border>
-                                    </DataTemplate>
-                                  </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                              </ScrollViewer>
                               <controls:SourceRangeCanvas
-                                  Grid.Row="3"
+                                  Grid.Row="2"
                                   AutomationProperties.Name="Audio audible ranges and silence selection"
                                   AutomationProperties.HelpText="Uses the shared video timeline viewport. Delete silences the selected range on this track."
                                   DeleteRequested="AudioTimeline_DeleteRequested"
@@ -814,10 +805,12 @@
                                   SelectionStart="{Binding TimelineSelectionStartSeconds, Mode=TwoWay}"
                                   Step="{Binding FrameStepSeconds}"
                                   TimelineSegments="{Binding TimelineSegments}"
+                                  TrackGainDb="{Binding GainDb}"
                                   ViewportStart="{Binding TimelineViewportStart, Mode=TwoWay}"
+                                  VisualRevision="{Binding WaveformVisualRevision}"
                                   Waveforms="{Binding Waveforms}"
                                   Zoom="{Binding TimelineZoom, Mode=TwoWay}" />
-                              <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                              <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
                                 <Button
                                     Classes="secondary"
                                     Click="RemoveAudioSelection_Click"

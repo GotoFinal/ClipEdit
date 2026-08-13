@@ -43,6 +43,8 @@ public sealed class MainWindowViewModelTests
         await viewModel.ImportFilesAsync([music]);
 
         Assert.True(viewModel.ShowTimeline);
+        Assert.False(viewModel.ShowAudioMixer);
+        viewModel.IsAdvancedMode = true;
         Assert.True(viewModel.ShowAudioMixer);
         Assert.Equal(2, viewModel.VideoItems.Count());
         Assert.Single(viewModel.ExternalAudioItems);
@@ -869,9 +871,11 @@ public sealed class MainWindowViewModelTests
                 Assert.Equal(new MediaTime(70, 1), second.TimelineEnd);
             });
 
-        var adjustable = track.AdjustableTimelineSegments[1];
-        adjustable.GainDb = -3.5;
+        var previousWaveformRevision = track.WaveformVisualRevision;
+        Assert.Equal("Clip gain", track.ContextualGainLabel);
+        track.ContextualGainDb = -3.5;
         Assert.Equal(-3.5, secondClip.AudioGainDb);
+        Assert.True(track.WaveformVisualRevision > previousWaveformRevision);
         Assert.True(track.SilenceTimelineSelection());
         Assert.Contains(
             new MediaRange(new MediaTime(40, 1), new MediaTime(42, 1)),

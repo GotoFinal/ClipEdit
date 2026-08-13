@@ -46,6 +46,12 @@ public sealed class SourceRangeCanvas : Control
     public static readonly StyledProperty<bool> FreeViewportProperty =
         AvaloniaProperty.Register<SourceRangeCanvas, bool>(nameof(FreeViewport));
 
+    public static readonly StyledProperty<double> TrackGainDbProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, double>(nameof(TrackGainDb));
+
+    public static readonly StyledProperty<int> VisualRevisionProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, int>(nameof(VisualRevision));
+
 
     public static readonly StyledProperty<IReadOnlyList<TimelineThumbnailFrame>?> ThumbnailFramesProperty =
         AvaloniaProperty.Register<SourceRangeCanvas, IReadOnlyList<TimelineThumbnailFrame>?>(nameof(ThumbnailFrames));
@@ -88,7 +94,9 @@ public sealed class SourceRangeCanvas : Control
             WaveformProperty,
             WaveformsProperty,
             TimelineSegmentsProperty,
-            FreeViewportProperty);
+            FreeViewportProperty,
+            TrackGainDbProperty,
+            VisualRevisionProperty);
     }
 
     public SourceRangeCanvas()
@@ -175,6 +183,18 @@ public sealed class SourceRangeCanvas : Control
     {
         get => GetValue(FreeViewportProperty);
         set => SetValue(FreeViewportProperty, value);
+    }
+
+    public double TrackGainDb
+    {
+        get => GetValue(TrackGainDbProperty);
+        set => SetValue(TrackGainDbProperty, value);
+    }
+
+    public int VisualRevision
+    {
+        get => GetValue(VisualRevisionProperty);
+        set => SetValue(VisualRevisionProperty, value);
     }
 
     public override void Render(DrawingContext context)
@@ -483,12 +503,12 @@ public sealed class SourceRangeCanvas : Control
         using var clip = context.PushClip(new Rect(Bounds.Size));
         if (Waveform is { } waveform)
         {
-            DrawBitmapRange(context, waveform.Image, waveform.Start, waveform.End);
+            DrawBitmapRange(context, waveform.Image, waveform.Start, waveform.End, waveform.Start, waveform.End, TrackGainDb);
         }
 
         foreach (var timelineWaveform in Waveforms ?? [])
         {
-            DrawBitmapRange(context, timelineWaveform.Image, timelineWaveform.Start, timelineWaveform.End);
+            DrawTimelineWaveform(context, timelineWaveform);
         }
 
         foreach (var thumbnail in ThumbnailFrames ?? [])
@@ -514,26 +534,88 @@ public sealed class SourceRangeCanvas : Control
         }
     }
 
-    private void DrawBitmapRange(DrawingContext context, Avalonia.Media.Imaging.Bitmap image, double start, double end)
+    private void DrawTimelineWaveform(DrawingContext context, TimelineBitmapVisual waveform)
     {
-        var visibleStart = Math.Max(start, EffectiveViewportStart);
-        var visibleEnd = Math.Min(end, EffectiveViewportEnd);
+        var cursor = waveform.Start;
+        foreach (var segment in (TimelineSegments ?? [])
+                     .Where(segment => segment.TimelineEndSeconds > waveform.Start &&
+                                       segment.TimelineStartSeconds < waveform.End)
+                     .OrderBy(segment => segment.TimelineStartSeconds))
+        {
+            var segmentStart = Math.Max(waveform.Start, segment.TimelineStartSeconds);
+            var segmentEnd = Math.Min(waveform.End, segment.TimelineEndSeconds);
+            if (segmentStart > cursor)
+            {
+                DrawBitmapRange(
+                    context,
+                    waveform.Image,
+                    waveform.Start,
+                    waveform.End,
+                    cursor,
+                    segmentStart,
+                    TrackGainDb);
+            }
+
+            DrawBitmapRange(
+                context,
+                waveform.Image,
+                waveform.Start,
+                waveform.End,
+                segmentStart,
+                segmentEnd,
+                Math.Clamp(TrackGainDb + segment.GainDb, -60, 12));
+            cursor = Math.Max(cursor, segmentEnd);
+        }
+
+        if (cursor < waveform.End)
+        {
+            DrawBitmapRange(
+                context,
+                waveform.Image,
+                waveform.Start,
+                waveform.End,
+                cursor,
+                waveform.End,
+                TrackGainDb);
+        }
+    }
+
+    private void DrawBitmapRange(
+        DrawingContext context,
+        Avalonia.Media.Imaging.Bitmap image,
+        double imageStart,
+        double imageEnd,
+        double requestedStart,
+        double requestedEnd,
+        double gainDb)
+    {
+        var visibleStart = Math.Max(requestedStart, EffectiveViewportStart);
+        var visibleEnd = Math.Min(requestedEnd, EffectiveViewportEnd);
         if (visibleEnd <= visibleStart)
         {
             return;
         }
 
         var imageWidth = image.PixelSize.Width;
-        var sourceLeft = ((visibleStart - start) / (end - start)) * imageWidth;
-        var sourceRight = ((visibleEnd - start) / (end - start)) * imageWidth;
+        var sourceLeft = ((visibleStart - imageStart) / (imageEnd - imageStart)) * imageWidth;
+        var sourceRight = ((visibleEnd - imageStart) / (imageEnd - imageStart)) * imageWidth;
+        var amplitudeScale = GainToWaveformScale(gainDb);
+        var destinationHeight = Bounds.Height * amplitudeScale;
+        var destinationTop = (Bounds.Height - destinationHeight) / 2;
         context.DrawImage(
             image,
             new Rect(sourceLeft, 0, sourceRight - sourceLeft, image.PixelSize.Height),
             new Rect(
                 TimeToX(visibleStart),
-                0,
+                destinationTop,
                 TimeToX(visibleEnd) - TimeToX(visibleStart),
-                Bounds.Height));
+                destinationHeight));
+    }
+
+    internal static double GainToWaveformScale(double gainDb)
+    {
+        var bounded = Math.Clamp(double.IsFinite(gainDb) ? gainDb : 0, -60, 12);
+        return Math.Pow(10, bounded / 40);
     }
 
     private void DrawTimelineSegments(DrawingContext context)

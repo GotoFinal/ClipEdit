@@ -40,6 +40,9 @@ public sealed class SequenceTimelineCanvas : Control
     public static readonly StyledProperty<bool> FreeViewportProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, bool>(nameof(FreeViewport));
 
+    public static readonly StyledProperty<bool> SnappingEnabledProperty =
+        AvaloniaProperty.Register<SequenceTimelineCanvas, bool>(nameof(SnappingEnabled), true);
+
     public static readonly StyledProperty<double> HoverTimeProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, double>(nameof(HoverTime), -1);
 
@@ -86,6 +89,7 @@ public sealed class SequenceTimelineCanvas : Control
             ZoomProperty,
             ViewportStartProperty,
             FreeViewportProperty,
+            SnappingEnabledProperty,
             HoverTimeProperty,
             VisualRevisionProperty);
     }
@@ -157,6 +161,12 @@ public sealed class SequenceTimelineCanvas : Control
     {
         get => GetValue(FreeViewportProperty);
         set => SetValue(FreeViewportProperty, value);
+    }
+
+    public bool SnappingEnabled
+    {
+        get => GetValue(SnappingEnabledProperty);
+        set => SetValue(SnappingEnabledProperty, value);
     }
 
 
@@ -325,9 +335,12 @@ public sealed class SequenceTimelineCanvas : Control
                 ApplyTrim(point.X - _pointerStartX);
                 break;
             case SequenceTimelineDragMode.MoveClip:
-                _previewTimelineStart = Math.Max(
+                var requestedStart = Math.Max(
                     0,
                     _dragTimelineStart + ((point.X - _pointerStartX) * EffectiveViewportDuration / Math.Max(1, Bounds.Width)));
+                _previewTimelineStart = SnapClipTimelineStart(
+                    requestedStart,
+                    SnappingEnabled && !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control));
                 InvalidateVisual();
                 break;
         }
@@ -576,6 +589,54 @@ public sealed class SequenceTimelineCanvas : Control
         TrySetTrim(_dragMode == SequenceTimelineDragMode.TrimStart
             ? _dragSourceStart + sourceDelta
             : _dragSourceEnd + sourceDelta);
+    }
+
+    private double SnapClipTimelineStart(double requestedStart, bool enabled)
+    {
+        if (!enabled || _dragClip is null)
+        {
+            return requestedStart;
+        }
+
+        var tolerance = 9 * EffectiveViewportDuration / Math.Max(1, Bounds.Width);
+        return SnapTimelineStart(
+            requestedStart,
+            _dragClip.DurationSeconds,
+            (Clips ?? [])
+                .Where(clip => !ReferenceEquals(clip, _dragClip))
+                .Select(clip => (clip.TimelineStartSeconds, clip.TimelineEndSeconds)),
+            tolerance);
+    }
+
+    internal static double SnapTimelineStart(
+        double requestedStart,
+        double clipDuration,
+        IEnumerable<(double Start, double End)> otherClips,
+        double tolerance)
+    {
+        var requested = Math.Max(0, requestedStart);
+        if (!double.IsFinite(requested) || !double.IsFinite(clipDuration) || clipDuration <= 0 ||
+            !double.IsFinite(tolerance) || tolerance <= 0)
+        {
+            return requested;
+        }
+
+        var others = otherClips
+            .Where(other => double.IsFinite(other.Start) && double.IsFinite(other.End) && other.End > other.Start)
+            .ToArray();
+        var targets = others
+            .SelectMany(other => new[] { other.Start, other.End })
+            .Append(0d);
+        return targets
+            .SelectMany(target => new[] { target, target - clipDuration })
+            .Where(candidate => candidate >= 0 && Math.Abs(candidate - requested) <= tolerance)
+            .Where(candidate => others.All(other =>
+                candidate + clipDuration <= other.Start + 0.000001 ||
+                candidate >= other.End - 0.000001))
+            .OrderBy(candidate => Math.Abs(candidate - requested))
+            .ThenBy(candidate => candidate)
+            .Cast<double?>()
+            .FirstOrDefault() ?? requested;
     }
 
     private void TrySetTrim(double requestedSourceTime)
