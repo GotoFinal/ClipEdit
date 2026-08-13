@@ -1491,28 +1491,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             .Where(candidate => !ReferenceEquals(candidate, clip))
             .OrderBy(candidate => candidate.TimelineStartSeconds)
             .ToArray();
-        var candidates = new List<double>
-        {
-            requested,
-            0,
-            others.Length == 0 ? 0 : others.Max(candidate => candidate.TimelineEndSeconds),
-        };
-        foreach (var other in others)
-        {
-            candidates.Add(other.TimelineEndSeconds);
-            candidates.Add(Math.Max(0, other.TimelineStartSeconds - duration));
-        }
-
-        var snapped = candidates
-            .Where(candidate => others.All(other =>
-                candidate + duration <= other.TimelineStartSeconds + 0.000001 ||
-                candidate >= other.TimelineEndSeconds - 0.000001))
-            .Distinct()
-            .OrderBy(candidate => Math.Abs(candidate - requested))
-            .ThenBy(candidate => candidate)
-            .First();
-        var timelineStart = NonNegativeTimelineTime(snapped);
-        if (timelineStart == clip.TimelineStart)
+        var overlapsOccupiedTime = others.Any(other =>
+            requested + duration > other.TimelineStartSeconds + 0.000001 &&
+            requested < other.TimelineEndSeconds - 0.000001);
+        var timelineStart = NonNegativeTimelineTime(overlapsOccupiedTime
+            ? InsertClipAtRequestedPosition(requested, duration, others)
+            : requested);
+        if (timelineStart == clip.TimelineStart && !overlapsOccupiedTime)
         {
             return false;
         }
@@ -1542,6 +1527,43 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         SelectedVideoClip = clip;
         StatusText = $"Moved {clip.DisplayName} to {FormatSequenceTimestamp(timelineStart)}";
         return true;
+    }
+
+    private static double InsertClipAtRequestedPosition(
+        double requestedStart,
+        double clipDuration,
+        IReadOnlyList<VideoClipViewModel> orderedOtherClips)
+    {
+        var requestedCenter = requestedStart + (clipDuration / 2);
+        var insertionIndex = 0;
+        while (insertionIndex < orderedOtherClips.Count)
+        {
+            var candidate = orderedOtherClips[insertionIndex];
+            var candidateCenter = candidate.TimelineStartSeconds + (candidate.DurationSeconds / 2);
+            if (requestedCenter <= candidateCenter)
+            {
+                break;
+            }
+
+            insertionIndex++;
+        }
+
+        var insertionStart = insertionIndex == 0
+            ? Math.Max(0, Math.Min(requestedStart, orderedOtherClips[0].TimelineStartSeconds))
+            : orderedOtherClips[insertionIndex - 1].TimelineEndSeconds;
+        var cursor = insertionStart + clipDuration;
+        for (var index = insertionIndex; index < orderedOtherClips.Count; index++)
+        {
+            var candidate = orderedOtherClips[index];
+            if (candidate.TimelineStartSeconds < cursor - 0.000001)
+            {
+                candidate.TimelineStart = NonNegativeTimelineTime(cursor);
+            }
+
+            cursor = Math.Max(cursor, candidate.TimelineEndSeconds);
+        }
+
+        return insertionStart;
     }
 
     public bool ReorderVideoClip(

@@ -563,6 +563,24 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Dropping_a_clip_on_an_occupied_sequence_position_inserts_it_there()
+    {
+        var firstPath = Path.Combine(Path.GetTempPath(), "insert-first.mkv");
+        var secondPath = Path.Combine(Path.GetTempPath(), "insert-second.mkv");
+        var thirdPath = Path.Combine(Path.GetTempPath(), "insert-third.mkv");
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([firstPath, secondPath, thirdPath]);
+        var third = viewModel.VideoClips[2];
+
+        Assert.True(viewModel.MoveVideoClipTo(third, viewModel.VideoClips[1].TimelineStartSeconds));
+
+        Assert.Equal(
+            [firstPath, thirdPath, secondPath],
+            viewModel.VideoClips.Select(clip => clip.SourcePath));
+        Assert.Equal([0, 60, 120], viewModel.VideoClips.Select(clip => clip.TimelineStartSeconds));
+    }
+
+    [Fact]
     public async Task Clip_timeline_placement_survives_project_round_trip()
     {
         var path = Path.Combine(Path.GetTempPath(), $"timeline-placement-{Guid.NewGuid():N}.clipedit");

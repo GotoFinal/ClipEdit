@@ -33,6 +33,15 @@
       <Setter Property="Height" Value="28" />
       <Setter Property="Padding" Value="6" />
     </Style>
+    <Style Selector="Button.timeline-tool">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="CornerRadius" Value="5" />
+    </Style>
     <Style Selector="Border.panel">
       <Setter Property="Background" Value="#181B22" />
       <Setter Property="BorderBrush" Value="#303543" />
@@ -41,7 +50,7 @@
     </Style>
     <Style Selector="Button.caption">
       <Setter Property="Width" Value="38" />
-      <Setter Property="Height" Value="55" />
+      <Setter Property="Height" Value="47" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="Background" Value="#20242D" />
       <Setter Property="Foreground" Value="#D8DAE3" />
@@ -57,7 +66,7 @@
       <Setter Property="Foreground" Value="White" />
     </Style>
     <Style Selector="Button.brand">
-      <Setter Property="Height" Value="38" />
+      <Setter Property="Height" Value="34" />
       <Setter Property="Padding" Value="2,2,6,2" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="#F5F5F8" />
@@ -72,7 +81,7 @@
     </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="56,*,28">
+  <Grid RowDefinitions="48,*,28">
     <Border
         Grid.Row="0"
         Padding="12,0"
@@ -89,11 +98,11 @@
             ToolTip.Tip="Project menu"
             chrome:WindowDecorationProperties.ElementRole="User">
           <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <Border Width="30" Height="30" Background="#7C5CFC" CornerRadius="8">
+            <Border Width="28" Height="28" Background="#7C5CFC" CornerRadius="7">
               <TextBlock
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  FontSize="16"
+                  FontSize="15"
                   FontWeight="Bold"
                   Text="C" />
             </Border>
@@ -116,19 +125,19 @@
 
         <StackPanel x:Name="ProjectActionButtons" Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <Button
-              Height="32"
+              Height="30"
               Classes="secondary"
               Click="NewProject_Click"
               Content="New"
               IsEnabled="{Binding CanNewProject}" />
           <Button
-              Height="32"
+              Height="30"
               Classes="secondary"
               Click="OpenProject_Click"
               Content="Open"
               IsEnabled="{Binding CanOpenProject}" />
           <Button
-              Height="32"
+              Height="30"
               Classes="secondary"
               Click="SaveProject_Click"
               Content="Save"
@@ -137,7 +146,7 @@
 
         <StackPanel x:Name="CropToolbar" Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <ToggleButton
-              Height="32"
+              Height="30"
               Padding="9,5"
               Classes="secondary"
               Click="UseCropTool_Click"
@@ -145,7 +154,7 @@
               IsChecked="{Binding IsCropToolActive, Mode=OneWay}"
               ToolTip.Tip="Edit the one shared output crop" />
           <ToggleButton
-              Height="32"
+              Height="30"
               Padding="9,5"
               Classes="secondary"
               Click="UseTransformTool_Click"
@@ -153,7 +162,7 @@
               IsChecked="{Binding IsTransformToolActive, Mode=OneWay}"
               ToolTip.Tip="Move, resize, or rotate the selected clip under the crop" />
           <ToggleButton
-              Height="32"
+              Height="30"
               Padding="9,5"
               Classes="secondary"
               Click="UseAutoTool_Click"
@@ -161,7 +170,7 @@
               IsChecked="{Binding IsAutoToolActive, Mode=OneWay}"
               ToolTip.Tip="Crop inside the frame; Ctrl drags the clip; clip handles always work" />
           <TextBlock x:Name="CropPresetLabel" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="CROP" />
-          <ComboBox Width="132" Height="32" VerticalAlignment="Center" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
+          <ComboBox Width="132" Height="30" VerticalAlignment="Center" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="vm:CropAspectPreset">
                 <TextBlock Text="{Binding DisplayName}" />
@@ -170,7 +179,7 @@
           </ComboBox>
           <ToggleButton
               Width="30"
-              Height="32"
+              Height="30"
               Padding="6"
               Classes="secondary"
               IsChecked="{Binding IsCropAspectLocked, Mode=TwoWay}"
@@ -207,7 +216,7 @@
         <StackPanel x:Name="ExportControls" Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <ComboBox
               Width="154"
-              Height="32"
+              Height="30"
               VerticalAlignment="Center"
               ItemsSource="{Binding ExportPresets}"
               SelectedItem="{Binding SelectedExportPreset}" ToolTip.Tip="{Binding ExportPlanSummary}">
@@ -218,21 +227,21 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
           <Button
-              Height="32"
+              Height="30"
               Classes="primary"
               Click="Export_Click"
               Content="Export"
               IsEnabled="{Binding CanExport}"
               ToolTip.Tip="{Binding ExportAvailabilityText}" />
           <Button
-              Height="32"
+              Height="30"
               Classes="secondary"
               Click="CancelExport_Click"
               Content="Cancel"
               IsVisible="{Binding CanCancelExport}" />
           <StackPanel
               x:Name="WindowsCaptionButtons"
-              Height="55"
+              Height="47"
               Margin="6,0,-12,0"
               IsVisible="False"
               Orientation="Horizontal">
@@ -654,20 +663,20 @@
                       </Button>
                     </StackPanel>
                   </StackPanel>
-                  <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="5">
+                  <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="4">
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                       <TextBlock Classes="muted" FontSize="9" Text="{Binding SequenceTimelineViewportText}" />
                       <TextBlock Classes="muted" FontSize="9" Text="Drag selects · Ctrl+drag moves · drag clip edges to trim" />
                     </StackPanel>
-                    <Button Grid.Column="1" Width="24" Height="20" Padding="2,0" Classes="secondary" Click="TimelineZoomOut_Click" Content="−" FontSize="14" IsEnabled="{Binding CanZoomSequenceTimelineOut}" ToolTip.Tip="Zoom timeline out" />
+                    <Button Grid.Column="1" Width="26" Classes="secondary timeline-tool" Click="TimelineZoomOut_Click" Content="−" FontSize="14" IsEnabled="{Binding CanZoomSequenceTimelineOut}" ToolTip.Tip="Zoom timeline out" />
                     <TextBlock Grid.Column="2" MinWidth="35" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" Text="{Binding SequenceTimelineZoomText}" />
-                    <Button Grid.Column="3" Width="24" Height="20" Padding="2,0" Classes="secondary" Click="TimelineZoomIn_Click" Content="+" FontSize="14" IsEnabled="{Binding CanZoomSequenceTimelineIn}" ToolTip.Tip="Zoom timeline in" />
-                    <ToggleButton Grid.Column="4" Width="50" Height="20" Padding="6,1" Classes="secondary" AutomationProperties.Name="Timeline pointer mode" Content="{Binding TimelinePointerModeText}" IsChecked="{Binding MoveTimelineClipsByDefault, Mode=TwoWay}" ToolTip.Tip="Range: drag selects and Ctrl+drag moves. Move: drag clip bodies directly." />
-                    <ToggleButton Grid.Column="5" Width="24" Height="20" Padding="4" Classes="secondary" AutomationProperties.Name="Timeline snapping" IsChecked="{Binding IsTimelineSnappingEnabled, Mode=TwoWay}" ToolTip.Tip="Snap nearby clip edges together; hold Alt while dragging to bypass">
+                    <Button Grid.Column="3" Width="26" Classes="secondary timeline-tool" Click="TimelineZoomIn_Click" Content="+" FontSize="14" IsEnabled="{Binding CanZoomSequenceTimelineIn}" ToolTip.Tip="Zoom timeline in" />
+                    <ToggleButton Grid.Column="4" Width="58" Classes="secondary timeline-tool" AutomationProperties.Name="Timeline pointer mode" Content="{Binding TimelinePointerModeText}" IsChecked="{Binding MoveTimelineClipsByDefault, Mode=TwoWay}" ToolTip.Tip="Range: drag selects and Ctrl+drag moves. Move: drag clip bodies directly." />
+                    <ToggleButton Grid.Column="5" Width="26" Classes="secondary timeline-tool" AutomationProperties.Name="Timeline snapping" IsChecked="{Binding IsTimelineSnappingEnabled, Mode=TwoWay}" ToolTip.Tip="Snap nearby clip edges together; hold Alt while dragging to bypass">
                       <PathIcon Width="12" Height="12" Data="M2,1 H6 V7 A4,4 0 0 0 14,7 V1 H18 V7 A8,8 0 0 1 2,7 Z M2,1 H6 V4 H2 Z M14,1 H18 V4 H14 Z" />
                     </ToggleButton>
-                    <ToggleButton Grid.Column="6" Height="20" Padding="7,1" Classes="secondary" Content="Free" IsChecked="{Binding IsSequenceTimelineFreeMode, Mode=TwoWay}" ToolTip.Tip="Show workspace before and after the sequence so clips and hidden handles can be moved freely" />
-                    <Button Grid.Column="7" Height="20" Padding="7,1" Classes="secondary" Click="TimelineFit_Click" Content="Fit" />
+                    <ToggleButton Grid.Column="6" Width="44" Classes="secondary timeline-tool" Content="Free" IsChecked="{Binding IsSequenceTimelineFreeMode, Mode=TwoWay}" ToolTip.Tip="Show workspace before and after the sequence so clips and hidden handles can be moved freely" />
+                    <Button Grid.Column="7" Width="34" Classes="secondary timeline-tool" Click="TimelineFit_Click" Content="Fit" />
                   </Grid>
                   <controls:SequenceTimelineCanvas
                       x:Name="SequenceTimeline"
