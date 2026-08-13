@@ -59,10 +59,23 @@ internal sealed class MpvClient : IDisposable
             throw new FileNotFoundException("Preview source media was not found.", fullPath);
         }
 
+        foreach (var property in GetMediaLoadAudioResetProperties())
+        {
+            SetProperty(property.Name, property.Value);
+        }
+
+        _loadedExternalAudioSources = [];
         RunCommand("loadfile", fullPath, "replace");
         WaitUntilLoaded(cancellationToken);
-        _loadedExternalAudioSources = [];
     }
+
+    internal static IReadOnlyList<(string Name, string Value)> GetMediaLoadAudioResetProperties() =>
+    [
+        // Audio filter labels belong to the currently loaded media. Keeping the
+        // previous graph can make a following video-only clip fail during load.
+        ("lavfi-complex", string.Empty),
+        ("aid", "no"),
+    ];
 
     public void Seek(MediaTime position, bool exact)
     {
