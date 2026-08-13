@@ -119,6 +119,8 @@
               <MenuItem Header="New project" Click="NewProject_Click" IsEnabled="{Binding CanNewProject}" />
               <MenuItem Header="Open project…" Click="OpenProject_Click" IsEnabled="{Binding CanOpenProject}" />
               <MenuItem Header="Save project" Click="SaveProject_Click" IsEnabled="{Binding CanSaveProject}" />
+              <Separator />
+              <MenuItem Header="Legal notices…" Click="LegalNotices_Click" />
             </MenuFlyout>
           </Button.Flyout>
         </Button>

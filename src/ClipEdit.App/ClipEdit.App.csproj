@@ -34,4 +34,12 @@
     <ProjectReference Include="..\ClipEdit.Media.Mpv\ClipEdit.Media.Mpv.csproj" />
     <ProjectReference Include="..\ClipEdit.Persistence.Json\ClipEdit.Persistence.Json.csproj" />
   </ItemGroup>
+
+  <Target Name="CopyClipEditReleaseDeps"
+          BeforeTargets="GenerateSingleFileBundle"
+          Condition="'$(ClipEditComplianceDepsOutput)' != ''">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(ClipEditComplianceDepsOutput)'))" />
+    <Copy SourceFiles="$(ProjectDepsFilePath)"
+          DestinationFiles="$(ClipEditComplianceDepsOutput)" />
+  </Target>
 </Project>

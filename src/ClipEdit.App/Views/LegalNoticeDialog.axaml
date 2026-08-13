@@ -1,0 +1,58 @@
+<Window
+    x:Class="ClipEdit.App.Views.LegalNoticeDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="640"
+    Height="500"
+    MinWidth="480"
+    MinHeight="360"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner"
+    Title="ClipEdit legal notices"
+    Background="#181B22">
+  <Grid Margin="20" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
+    <StackPanel Spacing="3">
+      <TextBlock FontSize="19" FontWeight="SemiBold" Text="ClipEdit legal notices" />
+      <TextBlock Foreground="#A9AFC0" Text="License, warranty and corresponding-source information" />
+    </StackPanel>
+
+    <TextBox
+        x:Name="NoticeTextBox"
+        Grid.Row="1"
+        AcceptsReturn="True"
+        AutomationProperties.Name="Legal notice text"
+        IsReadOnly="True"
+        ScrollViewer.VerticalScrollBarVisibility="Auto"
+        TextWrapping="Wrap"
+        />
+
+    <TextBlock
+        x:Name="LicenseLocationText"
+        Grid.Row="2"
+        Foreground="#A9AFC0"
+        TextWrapping="Wrap" />
+
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+      <Button
+          x:Name="OpenLicensesButton"
+          AutomationProperties.Name="Open bundled license folder"
+          Click="OpenLicenses_Click"
+          Content="Open license folder" />
+      <Button
+          Grid.Column="1"
+          AutomationProperties.Name="Copy legal notice text"
+          Click="CopyNotice_Click"
+          Content="Copy notice" />
+      <TextBlock
+          x:Name="ActionStatusText"
+          Grid.Column="2"
+          VerticalAlignment="Center"
+          Foreground="#A9AFC0" />
+      <Button
+          Grid.Column="3"
+          AutomationProperties.Name="Close legal notices"
+          Click="Close_Click"
+          Content="Close" />
+    </Grid>
+  </Grid>
+</Window>

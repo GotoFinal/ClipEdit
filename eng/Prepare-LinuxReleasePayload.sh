@@ -212,11 +212,14 @@ if [[ "$client_api" != '2.5' ]]; then
 fi
 
 mkdir -p -- "$staging_path/tools/ffmpeg" "$staging_path/native" "$staging_path/licenses"
+payload_origin_map="$staging_path/licenses/PAYLOAD-ORIGINS.tsv"
+printf 'payloadPath\toriginPath\n' > "$payload_origin_map"
 install -m 0755 "$ffmpeg_binary" "$staging_path/tools/ffmpeg/ffmpeg"
 install -m 0755 "$ffprobe_binary" "$staging_path/tools/ffmpeg/ffprobe"
 install -m 0755 "$libmpv_binary" "$staging_path/libmpv.so.2"
 for library_name in "${platform_library_names[@]}"; do
     install -m 0755 "${platform_library_paths[$library_name]}" "$staging_path/$library_name"
+    printf '%s\t%s\n' "$library_name" "${platform_library_paths[$library_name]}" >> "$payload_origin_map"
 done
 
 declare -a dependency_queue=(
@@ -244,6 +247,10 @@ while (( ${#dependency_queue[@]} > 0 )); do
     done < <(ldd "$current_binary" | awk '/=> \/[^ ]+/ { print $3 }')
 done
 
+for dependency_name in "${!visited_dependencies[@]}"; do
+    printf 'native/%s\t%s\n' "$dependency_name" "${visited_dependencies[$dependency_name]}" >> "$payload_origin_map"
+done
+
 patchelf --set-rpath '$ORIGIN/../../native' "$staging_path/tools/ffmpeg/ffmpeg"
 patchelf --set-rpath '$ORIGIN/../../native' "$staging_path/tools/ffmpeg/ffprobe"
 patchelf --set-rpath '$ORIGIN/native' "$staging_path/libmpv.so.2"
@@ -262,6 +269,11 @@ install -m 0644 "$mpv_build_root/mpv/Copyright" "$staging_path/licenses/mpv-Copy
 install -m 0644 "$mpv_build_root/libass/COPYING" "$staging_path/licenses/libass-ISC.txt"
 install -m 0644 "$mpv_build_root/libplacebo/LICENSE" "$staging_path/licenses/libplacebo-LGPL-2.1.txt"
 printf '%s\n' "$expected_revisions" > "$staging_path/licenses/native-build-revisions.txt"
+
+"$workspace_root/eng/compliance/Collect-LinuxPayloadProvenance.sh" \
+    "$staging_path" \
+    "$payload_origin_map" \
+    "$staging_path/licenses/linux-system-provenance"
 
 (
     cd -- "$staging_path"

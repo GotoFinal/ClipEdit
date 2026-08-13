@@ -27,6 +27,7 @@ export DEBIAN_FRONTEND=noninteractive
     automake \
     build-essential \
     ca-certificates \
+    dpkg-dev \
     git \
     libasound2-dev \
     libfontconfig1-dev \
@@ -47,4 +48,5 @@ export DEBIAN_FRONTEND=noninteractive
     pkg-config \
     python3-venv \
     yasm \
-    zlib1g-dev
+    zlib1g-dev \
+    zstd

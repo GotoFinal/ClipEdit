@@ -180,6 +180,34 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Legal_notice_is_available_from_the_persistent_project_menu()
+    {
+        var window = new MainWindow();
+        var projectMenu = window.FindControl<Button>("ProjectMenuButton");
+
+        Assert.NotNull(projectMenu);
+        var flyout = Assert.IsType<MenuFlyout>(projectMenu.Flyout);
+        var legalItem = flyout.Items
+            .OfType<MenuItem>()
+            .Single(item => Equals(item.Header, "Legal notices…"));
+
+        Assert.True(legalItem.IsEnabled);
+        Assert.Contains("WITHOUT ANY WARRANTY", LegalNoticeDialog.NoticeText);
+        Assert.Contains("corresponding-source", LegalNoticeDialog.NoticeText);
+
+        var dialog = new LegalNoticeDialog();
+        var notice = dialog.FindControl<TextBox>("NoticeTextBox");
+        var openLicenses = dialog.FindControl<Button>("OpenLicensesButton");
+        Assert.NotNull(notice);
+        Assert.NotNull(openLicenses);
+        Assert.True(notice.IsReadOnly);
+        Assert.Equal(LegalNoticeDialog.NoticeText, notice.Text);
+
+        dialog.Close();
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Caption_buttons_explicitly_minimize_and_toggle_maximized_state()
     {
         var window = new MainWindow();

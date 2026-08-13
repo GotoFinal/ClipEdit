@@ -69,6 +69,13 @@ public sealed partial class MainWindow : Window
         UpdateCaptionButtonState();
     }
 
+    private async void LegalNotices_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        await new LegalNoticeDialog().ShowDialog(this);
+    }
+
     private void AppCommandBar_PointerPressed(object? sender, PointerPressedEventArgs eventArgs)
     {
         _ = sender;

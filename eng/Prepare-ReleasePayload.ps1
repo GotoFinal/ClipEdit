@@ -37,15 +37,15 @@ if ($RuntimeId -eq 'linux-x64') {
         & bash $linuxScript $fullOutputPath
     }
     else {
-        $linuxWorkspace = (& wsl.exe -d $WslDistribution -- wslpath -a $workspaceRoot).Trim()
-        $linuxOutput = (& wsl.exe -d $WslDistribution -- wslpath -a $fullOutputPath).Trim()
+        $linuxWorkspace = (& wsl.exe -d $WslDistribution --exec wslpath -a $workspaceRoot).Trim()
+        $linuxOutput = (& wsl.exe -d $WslDistribution --exec wslpath -a $fullOutputPath).Trim()
         if ($LASTEXITCODE -ne 0 -or
             [string]::IsNullOrWhiteSpace($linuxWorkspace) -or
             [string]::IsNullOrWhiteSpace($linuxOutput)) {
             throw "Could not map the workspace into WSL distribution '$WslDistribution'."
         }
 
-        & wsl.exe -d $WslDistribution -- bash `
+        & wsl.exe -d $WslDistribution --exec bash `
             "$linuxWorkspace/eng/Prepare-LinuxReleasePayload.sh" `
             $linuxOutput
     }
