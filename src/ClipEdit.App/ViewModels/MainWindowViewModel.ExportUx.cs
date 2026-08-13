@@ -1,9 +1,74 @@
 using ClipEdit.Domain.Geometry;
+using ClipEdit.Media.Export;
 
 namespace ClipEdit.App.ViewModels;
 
 public sealed partial class MainWindowViewModel
 {
+    public int ExportScalePercent
+    {
+        get => _exportScalePercent;
+        set
+        {
+            var next = Math.Clamp(value, 10, 100);
+            if (SetProperty(ref _exportScalePercent, next))
+            {
+                RaiseExportStateChanged();
+                MarkProjectDirty();
+            }
+        }
+    }
+
+    public int ExportQuality
+    {
+        get => _exportQuality;
+        set
+        {
+            var next = Math.Clamp(value, 1, 100);
+            if (SetProperty(ref _exportQuality, next))
+            {
+                RaiseExportStateChanged();
+                MarkProjectDirty();
+            }
+        }
+    }
+
+    public int GifFrameRate
+    {
+        get => _gifFrameRate;
+        set
+        {
+            var next = Math.Clamp(value, 1, 60);
+            if (SetProperty(ref _gifFrameRate, next))
+            {
+                RaiseExportStateChanged();
+                MarkProjectDirty();
+            }
+        }
+    }
+
+    public bool IsGifExport => GetEffectiveExportPreset().VideoCodec == VideoCodecFamily.Gif;
+
+    public string ExportOutputSizeText
+    {
+        get
+        {
+            var size = CurrentExportEncodingSettings.CalculateOutputSize(
+                CanvasCrop.ExportSize,
+                GetEffectiveExportPreset().RequiresEvenDimensions);
+            return $"{size.Width} × {size.Height}";
+        }
+    }
+
+    public string ExportSettingsSummary => IsGifExport
+        ? $"{ExportOutputSizeText} · quality {ExportQuality}% · {GifFrameRate} fps"
+        : $"{ExportOutputSizeText} · quality {ExportQuality}%";
+
+    private ExportEncodingSettings CurrentExportEncodingSettings => new(
+        ExportQuality,
+        ExportScalePercent,
+        GifFrameRate);
+
     public bool HasExportBlockingIssue => !IsExporting && ExportAvailabilityText != "Ready to export";
 
     public bool CanFixExportCompatibility => TryGetCompatibleOutputSize(out _);
@@ -51,7 +116,8 @@ public sealed partial class MainWindowViewModel
         }
 
         var crop = CanvasCrop;
-        if ((crop.Width & 1) == 0 && (crop.Height & 1) == 0)
+        var output = CurrentExportEncodingSettings.CalculateOutputSize(crop.ExportSize, false);
+        if ((output.Width & 1) == 0 && (output.Height & 1) == 0)
         {
             return false;
         }

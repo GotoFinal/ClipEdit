@@ -13,6 +13,61 @@ public sealed class FfmpegExportRendererLocalTests
 {
     [Fact]
     [Trait("Category", "LocalMedia")]
+    public async Task Renderer_exports_a_scaled_palette_gif_from_the_opt_in_sample()
+    {
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
+        var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+        var ffprobePath = FfprobeExecutableLocator.Find();
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            !File.Exists(sourcePath) ||
+            ffmpegPath is null ||
+            ffprobePath is null)
+        {
+            return;
+        }
+
+        var probe = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(sourcePath);
+        var video = probe.VideoStreams.First();
+        var cropSize = new PixelSize(
+            Math.Min(video.OrientedSize.Width, 320),
+            Math.Min(video.OrientedSize.Height, 180));
+        var destinationPath = Path.Combine(
+            Path.GetTempPath(),
+            $"clipedit-gif-{Guid.NewGuid():N}.gif");
+        var plan = new ExportPlan(
+            sourcePath,
+            destinationPath,
+            video.Index,
+            audioStreamIndex: null,
+            new CropRegion(video.OrientedSize, 0, 0, cropSize.Width, cropSize.Height),
+            [new MediaRange(MediaTime.Zero, new MediaTime(1, 1))],
+            new ExportPreset(
+                "gif-local",
+                "GIF local",
+                ".gif",
+                ExportContainer.Gif,
+                VideoCodecFamily.Gif,
+                AudioCodecFamily.None,
+                requiresEvenDimensions: false),
+            encodingSettings: new ExportEncodingSettings(50, 50, 10));
+
+        try
+        {
+            var result = await new FfmpegExportRenderer(ffmpegPath).RenderAsync(plan);
+            var rendered = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(result.DestinationPath);
+
+            Assert.True(result.FileSizeBytes > 0);
+            Assert.Equal(plan.OutputSize, rendered.VideoStreams.Single().OrientedSize);
+            Assert.Empty(rendered.AudioStreams);
+        }
+        finally
+        {
+            File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "LocalMedia")]
     public async Task Renderer_pads_and_mixes_external_audio_that_ends_before_the_video()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");

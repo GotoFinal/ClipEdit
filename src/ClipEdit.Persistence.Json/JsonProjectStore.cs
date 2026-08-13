@@ -213,6 +213,17 @@ public sealed class JsonProjectStore : IProjectStore
             ValidateSequence(document);
         }
 
+        if (document.SchemaVersion >= 8 &&
+            (document.ExportSettings is not { } settings ||
+             settings.Quality is < 1 or > 100 ||
+             settings.ScalePercent is < 10 or > 100 ||
+             settings.GifFrameRate is < 1 or > 60))
+        {
+            throw new ProjectStoreException(
+                ProjectStoreFailure.InvalidDocument,
+                "The saved export settings are invalid.");
+        }
+
         return document;
     }
 

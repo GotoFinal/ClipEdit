@@ -7,10 +7,16 @@ public sealed record ProjectDocument(
     IReadOnlyList<ProjectMediaDocument> Media,
     IReadOnlyList<ProjectVideoClipDocument>? VideoClips = null,
     ProjectCropSettingsDocument? CropSettings = null,
-    ProjectCanvasDocument? Canvas = null)
+    ProjectCanvasDocument? Canvas = null,
+    ProjectExportSettingsDocument? ExportSettings = null)
 {
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
 }
+
+public sealed record ProjectExportSettingsDocument(
+    int Quality,
+    int ScalePercent,
+    int GifFrameRate);
 
 public sealed record ProjectMediaDocument(
     string SourcePath,

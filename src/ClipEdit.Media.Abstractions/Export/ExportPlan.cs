@@ -28,7 +28,8 @@ public sealed record ExportPlan
         ImmutableArray<MediaRange> sourceRanges,
         ExportPreset preset,
         bool replaceExistingDestination = false,
-        ImmutableArray<ExportAudioTrackPlan> audioTracks = default)
+        ImmutableArray<ExportAudioTrackPlan> audioTracks = default,
+        ExportEncodingSettings? encodingSettings = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
@@ -59,11 +60,15 @@ public sealed record ExportPlan
         }
 
         ValidateRanges(sourceRanges);
+        EncodingSettings = encodingSettings ?? ExportEncodingSettings.Default;
+        _outputSize = EncodingSettings.CalculateOutputSize(
+            crop.ExportSize,
+            preset.RequiresEvenDimensions);
         if (preset.RequiresEvenDimensions &&
-            ((crop.Width & 1) != 0 || (crop.Height & 1) != 0))
+            (((_outputSize.Width & 1) != 0) || ((_outputSize.Height & 1) != 0)))
         {
             throw new ExportPlanException(
-                $"{preset.DisplayName} requires even dimensions, but the crop is {crop.Width} × {crop.Height}.");
+                $"{preset.DisplayName} requires even dimensions, but the output is {_outputSize.Width} × {_outputSize.Height}.");
         }
 
         SourcePath = Path.GetFullPath(sourcePath);
@@ -85,7 +90,6 @@ public sealed record ExportPlan
         Preset = preset;
         ReplaceExistingDestination = replaceExistingDestination;
         VideoSegments = [];
-        _outputSize = crop.ExportSize;
         SequenceTimelineStart = MediaTime.Zero;
         _expectedDuration = SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
         _videoSegmentTimelineStarts = [];
@@ -99,7 +103,8 @@ public sealed record ExportPlan
         bool replaceExistingDestination = false,
         ImmutableArray<ExportAudioTrackPlan> externalAudioTracks = default,
         MediaTime sequenceTimelineStart = default,
-        MediaTime? sequenceDuration = null)
+        MediaTime? sequenceDuration = null,
+        ExportEncodingSettings? encodingSettings = null)
     {
         if (videoSegments.IsDefaultOrEmpty || videoSegments.Any(segment => segment is null))
         {
@@ -117,11 +122,15 @@ public sealed record ExportPlan
             throw new ArgumentException("The export destination path must be absolute.", nameof(destinationPath));
         }
 
+        EncodingSettings = encodingSettings ?? ExportEncodingSettings.Default;
+        var scaledOutputSize = EncodingSettings.CalculateOutputSize(
+            outputSize,
+            preset.RequiresEvenDimensions);
         if (preset.RequiresEvenDimensions &&
-            (((outputSize.Width & 1) != 0) || ((outputSize.Height & 1) != 0)))
+            (((scaledOutputSize.Width & 1) != 0) || ((scaledOutputSize.Height & 1) != 0)))
         {
             throw new ExportPlanException(
-                $"{preset.DisplayName} requires even dimensions, but the output is {outputSize.Width} × {outputSize.Height}.");
+                $"{preset.DisplayName} requires even dimensions, but the output is {scaledOutputSize.Width} × {scaledOutputSize.Height}.");
         }
 
         var externalTracks = externalAudioTracks.IsDefault ? [] : externalAudioTracks;
@@ -165,7 +174,7 @@ public sealed record ExportPlan
         _videoSegmentTimelineStarts = starts.MoveToImmutable();
         _expectedDuration = resolvedDuration;
         VideoSegments = videoSegments;
-        _outputSize = outputSize;
+        _outputSize = scaledOutputSize;
         DestinationPath = Path.GetFullPath(destinationPath);
         Preset = preset;
         ReplaceExistingDestination = replaceExistingDestination;
@@ -206,6 +215,8 @@ public sealed record ExportPlan
     }
 
     public ExportPreset Preset { get; }
+
+    public ExportEncodingSettings EncodingSettings { get; }
 
     public bool ReplaceExistingDestination { get; }
 

@@ -85,7 +85,9 @@ internal static class FfmpegExportArguments
         }
 
         var filters = new List<string>();
-        var hasEmbeddedAudio = plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty);
+        var includeAudio = plan.Preset.SupportsAudio;
+        var hasEmbeddedAudio = includeAudio &&
+                               plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty);
         for (var segmentIndex = 0; segmentIndex < plan.VideoSegments.Length; segmentIndex++)
         {
             var segment = plan.VideoSegments[segmentIndex];
@@ -226,7 +228,7 @@ internal static class FfmpegExportArguments
             mixInputs.Add("abase");
         }
 
-        for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
+        for (var trackIndex = 0; includeAudio && trackIndex < plan.AudioTracks.Length; trackIndex++)
         {
             var track = plan.AudioTracks[trackIndex];
             var inputIndex = plan.VideoSegments.Length +
@@ -243,7 +245,7 @@ internal static class FfmpegExportArguments
             mixInputs.Add(output);
         }
 
-        filters.Add("[vbase]null[vout]");
+        AddVideoOutputFilters(filters, "vbase", plan);
         if (mixInputs.Count == 1)
         {
             filters.Add($"[{mixInputs[0]}]anull[aout]");
@@ -264,13 +266,14 @@ internal static class FfmpegExportArguments
         var filters = new List<string>();
         var rangeCount = plan.SourceRanges.Length;
         var externalAudioSources = GetExternalAudioSources(plan);
+        var audioTracks = plan.Preset.SupportsAudio ? plan.AudioTracks : [];
 
         if (rangeCount > 1)
         {
             filters.Add(CreateSplit($"0:{plan.VideoStreamIndex}", "split", "vsrc", rangeCount));
-            for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
+            for (var trackIndex = 0; trackIndex < audioTracks.Length; trackIndex++)
             {
-                var track = plan.AudioTracks[trackIndex];
+                var track = audioTracks[trackIndex];
                 var inputIndex = GetAudioInputIndex(track, externalAudioSources);
                 filters.Add(
                     $"[{inputIndex}:{track.StreamIndex}]" +
@@ -285,15 +288,15 @@ internal static class FfmpegExportArguments
         {
             var range = plan.SourceRanges[index];
             var videoInput = rangeCount == 1 ? $"0:{plan.VideoStreamIndex}" : $"vsrc{index}";
-            var videoOutput = rangeCount == 1 ? "vout" : $"vseg{index}";
+            var videoOutput = $"vseg{index}";
             filters.Add(
                 $"[{videoInput}]trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
                 $"setpts=PTS-STARTPTS,crop={plan.Crop.Width}:{plan.Crop.Height}:{plan.Crop.X}:{plan.Crop.Y}," +
                 $"setsar=1[{videoOutput}]");
 
-            for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
+            for (var trackIndex = 0; trackIndex < audioTracks.Length; trackIndex++)
             {
-                var track = plan.AudioTracks[trackIndex];
+                var track = audioTracks[trackIndex];
                 var inputIndex = GetAudioInputIndex(track, externalAudioSources);
                 var audioInput = rangeCount == 1
                     ? $"{inputIndex}:{track.StreamIndex}"
@@ -311,10 +314,16 @@ internal static class FfmpegExportArguments
         {
             filters.Add(
                 string.Concat(Enumerable.Range(0, rangeCount).Select(index => $"[vseg{index}]")) +
-                $"concat=n={rangeCount}:v=1:a=0[vout]");
+                $"concat=n={rangeCount}:v=1:a=0[vbase]");
+        }
+        else
+        {
+            filters.Add("[vseg0]null[vbase]");
         }
 
-        for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
+        AddVideoOutputFilters(filters, "vbase", plan);
+
+        for (var trackIndex = 0; trackIndex < audioTracks.Length; trackIndex++)
         {
             var trackInput = $"aseg{trackIndex}_0";
             if (rangeCount > 1)
@@ -325,19 +334,19 @@ internal static class FfmpegExportArguments
                     $"concat=n={rangeCount}:v=0:a=1[{trackInput}]");
             }
 
-            var mixedInput = plan.AudioTracks.Length == 1 ? "aout" : $"amixin{trackIndex}";
-            var conform = plan.AudioTracks.Length == 1
+            var mixedInput = audioTracks.Length == 1 ? "aout" : $"amixin{trackIndex}";
+            var conform = audioTracks.Length == 1
                 ? string.Empty
                 : "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,";
             filters.Add(
-                $"[{trackInput}]{conform}volume={FormatGain(plan.AudioTracks[trackIndex].GainDb)}dB[{mixedInput}]");
+                $"[{trackInput}]{conform}volume={FormatGain(audioTracks[trackIndex].GainDb)}dB[{mixedInput}]");
         }
 
-        if (plan.AudioTracks.Length > 1)
+        if (audioTracks.Length > 1)
         {
             filters.Add(
-                string.Concat(Enumerable.Range(0, plan.AudioTracks.Length).Select(index => $"[amixin{index}]")) +
-                $"amix=inputs={plan.AudioTracks.Length}:duration=longest:normalize=0,alimiter=limit=0.95[aout]");
+                string.Concat(Enumerable.Range(0, audioTracks.Length).Select(index => $"[amixin{index}]")) +
+                $"amix=inputs={audioTracks.Length}:duration=longest:normalize=0,alimiter=limit=0.95[aout]");
         }
 
         return string.Join(';', filters);
@@ -355,6 +364,11 @@ internal static class FfmpegExportArguments
 
     private static IReadOnlyList<string> GetExternalAudioSources(ExportPlan plan)
     {
+        if (!plan.Preset.SupportsAudio)
+        {
+            return [];
+        }
+
         var pathComparer = OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
@@ -390,16 +404,18 @@ internal static class FfmpegExportArguments
 
     private static IEnumerable<string> CreatePresetArguments(ExportPlan plan)
     {
+        var quality = plan.EncodingSettings.Quality;
         var arguments = plan.Preset.VideoCodec switch
         {
             VideoCodecFamily.H264 => new List<string>
             {
-                "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+                "-c:v", "libx264", "-preset", "medium", "-crf", MapQualityAroundDefault(quality, 36, 20, 16).ToString(CultureInfo.InvariantCulture), "-pix_fmt", "yuv420p",
             },
             VideoCodecFamily.Vp9 =>
             [
-                "-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p",
+                "-c:v", "libvpx-vp9", "-crf", MapQualityAroundDefault(quality, 50, 30, 20).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p",
             ],
+            VideoCodecFamily.Gif => ["-c:v", "gif", "-loop", "0"],
             _ => throw new ExportPlanException($"Unsupported video codec family: {plan.Preset.VideoCodec}."),
         };
         if (plan.Preset.VideoBitRateBitsPerSecond is { } videoBitRate)
@@ -407,7 +423,7 @@ internal static class FfmpegExportArguments
             RemoveOption(arguments, "-crf");
             RemoveOption(arguments, "-b:v");
             arguments.Add("-b:v");
-            arguments.Add(videoBitRate.ToString(CultureInfo.InvariantCulture));
+            arguments.Add(ScaleBitRate(videoBitRate, quality).ToString(CultureInfo.InvariantCulture));
         }
         if (plan.Preset.FrameRate is { } frameRate)
         {
@@ -415,8 +431,10 @@ internal static class FfmpegExportArguments
             arguments.Add($"{frameRate.Numerator}/{frameRate.Denominator}");
         }
 
-        var audioBitRate = (plan.Preset.AudioBitRateBitsPerSecond ??
-                            (plan.Preset.AudioCodec == AudioCodecFamily.Aac ? 192_000 : 160_000))
+        var audioBitRate = ScaleBitRate(
+                plan.Preset.AudioBitRateBitsPerSecond ??
+                (plan.Preset.AudioCodec == AudioCodecFamily.Aac ? 192_000 : 160_000),
+                quality)
             .ToString(CultureInfo.InvariantCulture);
 
         if (HasAnyAudio(plan))
@@ -455,16 +473,22 @@ internal static class FfmpegExportArguments
         ExportContainer.Mp4 => "mp4",
         ExportContainer.WebM => "webm",
         ExportContainer.Matroska => "matroska",
+        ExportContainer.Gif => "gif",
         _ => throw new ArgumentOutOfRangeException(nameof(container), container, "Unsupported output container."),
     };
 
     private static bool HasAnyAudio(ExportPlan plan) =>
-        plan.IsSequence
+        plan.Preset.SupportsAudio && (plan.IsSequence
             ? plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty) || !plan.AudioTracks.IsEmpty
-            : !plan.AudioTracks.IsEmpty;
+            : !plan.AudioTracks.IsEmpty);
 
     private static IReadOnlyList<string> GetSequenceExternalAudioSources(ExportPlan plan)
     {
+        if (!plan.Preset.SupportsAudio)
+        {
+            return [];
+        }
+
         var pathComparer = OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
@@ -542,5 +566,66 @@ internal static class FfmpegExportArguments
             audioEdit.KeptRanges.Select(range =>
                 $"gte(t,{FormatTime(range.Start)})*lt(t,{FormatTime(range.End)})"));
         return $"aeval='if(gt({keptExpression},0),val(ch),0)':c=same,";
+    }
+
+    private static void AddVideoOutputFilters(
+        ICollection<string> filters,
+        string input,
+        ExportPlan plan)
+    {
+        if (plan.Preset.VideoCodec != VideoCodecFamily.Gif)
+        {
+            filters.Add(
+                $"[{input}]scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos," +
+                "format=yuv420p,setsar=1[vout]");
+            return;
+        }
+
+        var maximumColors = MapQuality(plan.EncodingSettings.Quality, 32, 256);
+        filters.Add(
+            $"[{input}]fps={plan.EncodingSettings.GifFrameRate}," +
+            $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos," +
+            "split=2[gifsource][gifpaletteinput]");
+        filters.Add(
+            $"[gifpaletteinput]palettegen=max_colors={maximumColors}:stats_mode=diff[gifpalette]");
+        filters.Add(
+            "[gifsource][gifpalette]paletteuse=dither=sierra2_4a:diff_mode=rectangle[vout]");
+    }
+
+    private static int MapQuality(int quality, int lowQualityValue, int highQualityValue)
+    {
+        var progress = (quality - 1) / 99d;
+        return (int)Math.Round(
+            lowQualityValue + ((highQualityValue - lowQualityValue) * progress),
+            MidpointRounding.AwayFromZero);
+    }
+
+    private static int MapQualityAroundDefault(
+        int quality,
+        int lowQualityValue,
+        int defaultValue,
+        int highQualityValue)
+    {
+        if (quality <= ExportEncodingSettings.DefaultQuality)
+        {
+            var progress = (quality - 1) / (double)(ExportEncodingSettings.DefaultQuality - 1);
+            return (int)Math.Round(
+                lowQualityValue + ((defaultValue - lowQualityValue) * progress),
+                MidpointRounding.AwayFromZero);
+        }
+
+        var highProgress = (quality - ExportEncodingSettings.DefaultQuality) /
+                           (double)(100 - ExportEncodingSettings.DefaultQuality);
+        return (int)Math.Round(
+            defaultValue + ((highQualityValue - defaultValue) * highProgress),
+            MidpointRounding.AwayFromZero);
+    }
+
+    private static long ScaleBitRate(long bitRate, int quality)
+    {
+        var factor = quality <= ExportEncodingSettings.DefaultQuality
+            ? 0.25d + (((quality - 1) / 74d) * 0.75d)
+            : 1d + (((quality - ExportEncodingSettings.DefaultQuality) / 25d) * 0.5d);
+        return Math.Max(1, (long)Math.Round(bitRate * factor, MidpointRounding.AwayFromZero));
     }
 }

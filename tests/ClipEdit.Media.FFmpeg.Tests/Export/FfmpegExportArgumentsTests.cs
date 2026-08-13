@@ -27,7 +27,8 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Contains("[0:0]split=2[vsrc0][vsrc1]", graph);
         Assert.Contains("[0:2]apad,asplit=2[asrc0_0][asrc0_1]", graph);
         Assert.Contains("trim=start=0:end=1.5,setpts=PTS-STARTPTS,crop=1080:1080:420:0,setsar=1[vseg0]", graph);
-        Assert.Contains("[vseg0][vseg1]concat=n=2:v=1:a=0[vout]", graph);
+        Assert.Contains("[vseg0][vseg1]concat=n=2:v=1:a=0[vbase]", graph);
+        Assert.Contains("[vbase]scale=1080:1080:flags=lanczos,format=yuv420p,setsar=1[vout]", graph);
         Assert.Contains("[aseg0_0][aseg0_1]concat=n=2:v=0:a=1[atrack0]", graph);
         Assert.Contains("[atrack0]volume=0dB[aout]", graph);
         Assert.Contains("libx264", arguments);
@@ -159,7 +160,7 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Contains("[0:0]trim=start=2:end=5,setpts=PTS-STARTPTS,crop=1080:1080:420:0,scale=1080:1080", graph);
         Assert.Contains("[1:2]trim=start=0:end=4,setpts=PTS-STARTPTS,crop=1680:2160:1080:0,scale=1080:1080", graph);
         Assert.Contains("[vseg0][aseg0][vseg1][aseg1]concat=n=2:v=1:a=1[vbase][abase]", graph);
-        Assert.Contains("[vbase]null[vout]", graph);
+        Assert.Contains("[vbase]scale=1080:1080:flags=lanczos,format=yuv420p,setsar=1[vout]", graph);
         Assert.Contains("[abase]anull[aout]", graph);
     }
 
@@ -266,6 +267,73 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Equal("24000/1001", ValueAfter(arguments, "-r"));
         Assert.Equal("192000", ValueAfter(arguments, "-b:a"));
         Assert.Equal("matroska", ValueAfter(arguments, "-f"));
+    }
+
+    [Fact]
+    public void Gif_uses_scaled_palette_pipeline_configured_frame_rate_and_no_audio()
+    {
+        var gifPreset = new ExportPreset(
+            "gif",
+            "Animated GIF",
+            ".gif",
+            ExportContainer.Gif,
+            VideoCodecFamily.Gif,
+            AudioCodecFamily.None,
+            requiresEvenDimensions: false);
+        var basePlan = CreatePlan(
+            "C:\\source.mkv",
+            "C:\\clip.gif",
+            audioStreamIndex: 2,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
+            gifPreset);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: 2,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            gifPreset,
+            encodingSettings: new ExportEncodingSettings(50, 50, 12));
+
+        var arguments = FfmpegExportArguments.Create(plan, "C:\\.clip.partial");
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.Equal(new PixelSize(540, 540), plan.OutputSize);
+        Assert.Contains("[vbase]fps=12,scale=540:540:flags=lanczos,split=2[gifsource][gifpaletteinput]", graph);
+        Assert.Contains("palettegen=max_colors=143:stats_mode=diff[gifpalette]", graph);
+        Assert.Contains("paletteuse=dither=sierra2_4a:diff_mode=rectangle[vout]", graph);
+        Assert.Contains("-an", arguments);
+        Assert.Equal("gif", ValueAfter(arguments, "-c:v"));
+        Assert.Equal("0", ValueAfter(arguments, "-loop"));
+        Assert.Equal("gif", ValueAfter(arguments, "-f"));
+        Assert.DoesNotContain("-c:a", arguments);
+    }
+
+    [Theory]
+    [InlineData(1, "36")]
+    [InlineData(75, "20")]
+    [InlineData(100, "16")]
+    public void Global_quality_changes_h264_compression(int quality, string expectedCrf)
+    {
+        var basePlan = CreatePlan(
+            "C:\\source.mkv",
+            "C:\\clip.mp4",
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(quality));
+
+        var arguments = FfmpegExportArguments.Create(plan, "C:\\.clip.partial");
+
+        Assert.Equal(expectedCrf, ValueAfter(arguments, "-crf"));
     }
 
     private static string ValueAfter(IReadOnlyList<string> arguments, string option)

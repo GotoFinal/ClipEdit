@@ -63,6 +63,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _exportCancellation;
     private CancellationTokenSource? _autosaveCancellation;
     private ExportPreset _selectedExportPreset = BuiltInExportPresets.Mp4Compatible;
+    private int _exportScalePercent = ExportEncodingSettings.DefaultScalePercent;
+    private int _exportQuality = ExportEncodingSettings.DefaultQuality;
+    private int _gifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
     private bool _isExporting;
     private double _exportProgress;
     private string _exportPhaseText = string.Empty;
@@ -270,6 +273,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _selectedExportPreset, value))
             {
                 OnPropertyChanged(nameof(CropSizeStep));
+                OnPropertyChanged(nameof(IsGifExport));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
                 if (ResolveMatchInput(GetSequenceExportSlices()) is { } resolution)
@@ -672,11 +676,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             var preset = ResolveSelectedExportPreset(slices);
-            var outputSize = CanvasCrop.ExportSize;
+            var outputSize = CurrentExportEncodingSettings.CalculateOutputSize(
+                CanvasCrop.ExportSize,
+                preset.RequiresEvenDimensions);
             if (preset.RequiresEvenDimensions &&
                 (((outputSize.Width & 1) != 0) || ((outputSize.Height & 1) != 0)))
             {
-                return $"{preset.DisplayName} requires even output dimensions; current crop is {outputSize.Width} × {outputSize.Height}";
+                return $"{preset.DisplayName} requires even output dimensions; current output is {outputSize.Width} × {outputSize.Height}";
             }
 
             return "Ready to export";
@@ -694,12 +700,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             var preset = ResolveSelectedExportPreset(slices);
-            var outputSize = CanvasCrop.ExportSize;
+            var outputSize = CurrentExportEncodingSettings.CalculateOutputSize(
+                CanvasCrop.ExportSize,
+                preset.RequiresEvenDimensions);
             var duration = HasSequenceSelection
                 ? NormalizedSequenceSelection().Duration
                 : NonNegativeTimelineTime(SequenceDurationSeconds);
+            var gifDetails = preset.VideoCodec == VideoCodecFamily.Gif
+                ? $" · {GifFrameRate} fps"
+                : string.Empty;
             return $"{preset.DisplayName} · exact sequence re-encode · " +
-                   $"{outputSize.Width} × {outputSize.Height} · {FormatSequenceTimestamp(duration)}";
+                   $"{outputSize.Width} × {outputSize.Height} · quality {ExportQuality}%{gifDetails} · " +
+                   FormatSequenceTimestamp(duration);
         }
     }
 
@@ -1120,7 +1132,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 replaceExistingDestination,
                 externalAudio,
                 selectionStart,
-                exportRange.Duration);
+                exportRange.Duration,
+                CurrentExportEncodingSettings);
             IsExporting = true;
             ExportProgress = 0;
             ExportPhaseText = "Preparing";
@@ -1724,6 +1737,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             _projectId = Guid.NewGuid();
             ProjectPath = null;
             SelectedExportPreset = BuiltInExportPresets.Mp4Compatible;
+            ExportScalePercent = ExportEncodingSettings.DefaultScalePercent;
+            ExportQuality = ExportEncodingSettings.DefaultQuality;
+            GifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
             _selectedCropAspectPreset = BuiltInCropAspectPresets.Custom;
             _isCropAspectLocked = false;
             ResetProjectCanvasState();
@@ -2254,6 +2270,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             SelectedExportPreset = ExportPresets.FirstOrDefault(
                                        preset => preset.Id == document.ExportPresetId) ??
                                    BuiltInExportPresets.Mp4Compatible;
+            if (document.SchemaVersion >= 8 && document.ExportSettings is { } exportSettings)
+            {
+                ExportQuality = exportSettings.Quality;
+                ExportScalePercent = exportSettings.ScalePercent;
+                GifFrameRate = exportSettings.GifFrameRate;
+            }
+            else
+            {
+                ExportQuality = ExportEncodingSettings.DefaultQuality;
+                ExportScalePercent = ExportEncodingSettings.DefaultScalePercent;
+                GifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
+            }
 
             foreach (var savedMedia in document.Media)
             {
@@ -2366,7 +2394,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 CanvasCrop.X,
                 CanvasCrop.Y,
                 CanvasCrop.Width,
-                CanvasCrop.Height));
+                CanvasCrop.Height),
+            new ProjectExportSettingsDocument(
+                ExportQuality,
+                ExportScalePercent,
+                GifFrameRate));
     }
 
     public void Dispose()
@@ -3340,6 +3372,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanFixExportCompatibility));
         OnPropertyChanged(nameof(ExportCompatibilityActionText));
         OnPropertyChanged(nameof(ExportPlanSummary));
+        OnPropertyChanged(nameof(ExportOutputSizeText));
+        OnPropertyChanged(nameof(ExportSettingsSummary));
     }
 
     private bool TryCreateMediaDocument(

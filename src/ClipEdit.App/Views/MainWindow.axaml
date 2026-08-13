@@ -232,6 +232,58 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
           <Button
+              Width="30"
+              Height="30"
+              Padding="6"
+              Classes="secondary"
+              AutomationProperties.Name="Export settings"
+              ToolTip.Tip="{Binding ExportSettingsSummary}">
+            <PathIcon Width="14" Height="14" Data="M2,3 H6 M10,3 H14 M8,1 V5 M2,8 H9 M13,8 H14 M11,6 V10 M2,13 H4 M8,13 H14 M6,11 V15" />
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <Border Width="270" Padding="12" Background="#20242D" CornerRadius="7">
+                  <StackPanel Spacing="10">
+                    <TextBlock FontSize="12" FontWeight="SemiBold" Text="Export settings" />
+                    <Grid ColumnDefinitions="*,110" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="9">
+                      <TextBlock VerticalAlignment="Center" Text="Scale" />
+                      <NumericUpDown
+                          Grid.Column="1"
+                          MinWidth="110"
+                          Minimum="10"
+                          Maximum="100"
+                          Increment="1"
+                          FormatString="0'%'"
+                          Value="{Binding ExportScalePercent, Mode=TwoWay}" />
+                      <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Quality" />
+                      <NumericUpDown
+                          Grid.Row="1"
+                          Grid.Column="1"
+                          Minimum="1"
+                          Maximum="100"
+                          Increment="1"
+                          FormatString="0'%'"
+                          Value="{Binding ExportQuality, Mode=TwoWay}" />
+                      <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="GIF frame rate" IsVisible="{Binding IsGifExport}" />
+                      <NumericUpDown
+                          Grid.Row="2"
+                          Grid.Column="1"
+                          Minimum="1"
+                          Maximum="60"
+                          Increment="1"
+                          Value="{Binding GifFrameRate, Mode=TwoWay}"
+                          IsVisible="{Binding IsGifExport}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                      <TextBlock Classes="muted" FontSize="10" Text="Output" />
+                      <TextBlock FontSize="10" Text="{Binding ExportOutputSizeText}" />
+                    </StackPanel>
+                    <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="Quality changes compression for every lossy export. GIF quality controls palette size." />
+                  </StackPanel>
+                </Border>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <Button
               x:Name="ExportButton"
               Height="30"
               Classes="primary command-bar"

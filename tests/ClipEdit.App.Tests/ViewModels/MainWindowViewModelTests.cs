@@ -654,6 +654,8 @@ public sealed class MainWindowViewModelTests
         viewModel.SequenceSelectionEndSeconds = 10;
         Assert.Single(viewModel.AudioTracks).GainDb = -3;
         viewModel.SelectedExportPreset = BuiltInExportPresets.WebM;
+        viewModel.ExportScalePercent = 47;
+        viewModel.ExportQuality = 62;
         viewModel.SelectedVideoClip!.AudioGainDb = -2;
         var destination = Path.Combine(Path.GetTempPath(), "rendered clip.webm");
 
@@ -661,6 +663,8 @@ public sealed class MainWindowViewModelTests
 
         Assert.NotNull(result);
         Assert.Equal(BuiltInExportPresets.WebM, renderer.Plan!.Preset);
+        Assert.Equal(new ExportEncodingSettings(62, 47, 15), renderer.Plan.EncodingSettings);
+        Assert.Equal(new PixelSize(902, 506), renderer.Plan.OutputSize);
         var segment = Assert.Single(renderer.Plan!.VideoSegments);
         Assert.Equal(new MediaRange(new MediaTime(5, 1), new MediaTime(10, 1)), segment.SourceRange);
         Assert.Equal(viewModel.CanvasSize, segment.CanvasSize);
@@ -878,6 +882,9 @@ public sealed class MainWindowViewModelTests
             externalTrack.TimelineOffsetSeconds = 3.25;
             original.SelectedVideoClip!.AudioGainDb = -6.25;
             original.SelectedExportPreset = BuiltInExportPresets.WebM;
+            original.ExportScalePercent = 43;
+            original.ExportQuality = 58;
+            original.GifFrameRate = 21;
             Assert.True(await original.SaveProjectAsync(projectPath));
             Assert.False(original.IsProjectDirty);
 
@@ -885,6 +892,9 @@ public sealed class MainWindowViewModelTests
             Assert.True(await restored.OpenProjectAsync(projectPath));
 
             Assert.Equal(BuiltInExportPresets.WebM, restored.SelectedExportPreset);
+            Assert.Equal(43, restored.ExportScalePercent);
+            Assert.Equal(58, restored.ExportQuality);
+            Assert.Equal(21, restored.GifFrameRate);
             Assert.Equal(media.Crop, restored.SelectedMedia!.Crop);
             Assert.Equal(media.Edit!.SourceDuration, restored.SelectedMedia.Edit!.SourceDuration);
             Assert.Equal<MediaRange>(media.KeptRanges, restored.SelectedMedia.KeptRanges);

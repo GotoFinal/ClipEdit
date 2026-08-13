@@ -32,5 +32,14 @@ public static class BuiltInExportPresets
         requiresEvenDimensions: true,
         parameterMode: ExportParameterMode.MatchInput);
 
-    public static IReadOnlyList<ExportPreset> All { get; } = [Mp4Compatible, WebM, MatchInput];
+    public static ExportPreset Gif { get; } = new(
+        "gif-v1",
+        "Animated GIF",
+        ".gif",
+        ExportContainer.Gif,
+        VideoCodecFamily.Gif,
+        AudioCodecFamily.None,
+        requiresEvenDimensions: false);
+
+    public static IReadOnlyList<ExportPreset> All { get; } = [Mp4Compatible, WebM, MatchInput, Gif];
 }

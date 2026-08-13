@@ -7,16 +7,19 @@ public enum ExportContainer
     Mp4,
     WebM,
     Matroska,
+    Gif,
 }
 
 public enum VideoCodecFamily
 {
     H264,
     Vp9,
+    Gif,
 }
 
 public enum AudioCodecFamily
 {
+    None,
     Aac,
     Opus,
 }
@@ -97,4 +100,6 @@ public sealed record ExportPreset
     public long? VideoBitRateBitsPerSecond { get; }
 
     public long? AudioBitRateBitsPerSecond { get; }
+
+    public bool SupportsAudio => AudioCodec != AudioCodecFamily.None;
 }
