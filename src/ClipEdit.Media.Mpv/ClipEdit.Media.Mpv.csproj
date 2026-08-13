@@ -8,7 +8,7 @@
     <ProjectReference Include="..\ClipEdit.Media.Abstractions\ClipEdit.Media.Abstractions.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) and Exists('$(LibMpvRuntimePath)\libmpv-2.dll')">
+  <ItemGroup Condition="'$(ClipEditNativePayloadRoot)' == '' and $([MSBuild]::IsOSPlatform('Windows')) and Exists('$(LibMpvRuntimePath)\libmpv-2.dll')">
     <None Include="$(LibMpvRuntimePath)\libmpv-2.dll"
           Link="libmpv-2.dll"
           CopyToOutputDirectory="PreserveNewest"

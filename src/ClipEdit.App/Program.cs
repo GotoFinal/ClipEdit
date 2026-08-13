@@ -7,6 +7,7 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        BundledRuntimeBootstrapper.Prepare(AppContext.BaseDirectory);
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
