@@ -95,6 +95,21 @@ public sealed partial class MainWindow : Window
         eventArgs.Handled = true;
     }
 
+    private void WindowResizeGrip_PointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!OperatingSystem.IsWindows() ||
+            WindowState == WindowState.Maximized ||
+            sender is not Control { Tag: string edgeName } ||
+            !Enum.TryParse<WindowEdge>(edgeName, out var edge) ||
+            !eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        BeginResizeDrag(edge, eventArgs);
+        eventArgs.Handled = true;
+    }
+
     private bool IsInteractiveCommandBarSource(object? source)
     {
         for (var current = source as Visual;
@@ -142,6 +157,7 @@ public sealed partial class MainWindow : Window
     private void UpdateCaptionButtonState()
     {
         var isMaximized = WindowState == WindowState.Maximized;
+        WindowsResizeGrips.IsVisible = OperatingSystem.IsWindows() && !isMaximized;
         MaximizeCaptionIcon.IsVisible = !isMaximized;
         RestoreCaptionIcon.IsVisible = isMaximized;
         ToolTip.SetTip(MaximizeCaptionButton, isMaximized ? "Restore" : "Maximize");

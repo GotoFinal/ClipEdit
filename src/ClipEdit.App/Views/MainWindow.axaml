@@ -39,7 +39,7 @@
       <Setter Property="Height" Value="28" />
       <Setter Property="Padding" Value="6" />
     </Style>
-    <Style Selector="Button.timeline-tool">
+    <Style Selector=":is(Button).timeline-tool">
       <Setter Property="Height" Value="24" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="Padding" Value="5,0" />
@@ -663,7 +663,7 @@
               </Grid>
 
               <Border Height="122" Padding="6" Background="#20242D" CornerRadius="6" IsVisible="{Binding ShowTimeline}">
-                <Grid ColumnDefinitions="44,*" RowDefinitions="22,*" RowSpacing="3">
+                <Grid x:Name="TimelineLaneLayout" ColumnDefinitions="44,*" RowDefinitions="24,*" RowSpacing="3">
                   <StackPanel Grid.RowSpan="2" VerticalAlignment="Center" Spacing="5">
                     <TextBlock FontSize="11" FontWeight="Bold" Text="V1" />
                     <StackPanel Orientation="Horizontal" Spacing="2">
@@ -675,20 +675,20 @@
                       </Button>
                     </StackPanel>
                   </StackPanel>
-                  <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="4">
+                  <Grid x:Name="TimelineToolbar" Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="4">
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                       <TextBlock Classes="muted" FontSize="9" Text="{Binding SequenceTimelineViewportText}" />
                       <TextBlock Classes="muted" FontSize="9" Text="Drag selects · Ctrl+drag moves · drag clip edges to trim" />
                     </StackPanel>
-                    <Button Grid.Column="1" Width="26" Classes="secondary timeline-tool" Click="TimelineZoomOut_Click" Content="−" FontSize="14" IsEnabled="{Binding CanZoomSequenceTimelineOut}" ToolTip.Tip="Zoom timeline out" />
+                    <Button x:Name="TimelineZoomOutButton" Grid.Column="1" Width="26" Classes="secondary timeline-tool" Click="TimelineZoomOut_Click" Content="−" FontSize="14" IsEnabled="{Binding CanZoomSequenceTimelineOut}" ToolTip.Tip="Zoom timeline out" />
                     <TextBlock Grid.Column="2" MinWidth="35" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" Text="{Binding SequenceTimelineZoomText}" />
-                    <Button Grid.Column="3" Width="26" Classes="secondary timeline-tool" Click="TimelineZoomIn_Click" Content="+" FontSize="14" IsEnabled="{Binding CanZoomSequenceTimelineIn}" ToolTip.Tip="Zoom timeline in" />
-                    <ToggleButton Grid.Column="4" Width="58" Classes="secondary timeline-tool" AutomationProperties.Name="Timeline pointer mode" Content="{Binding TimelinePointerModeText}" IsChecked="{Binding MoveTimelineClipsByDefault, Mode=TwoWay}" ToolTip.Tip="Range: drag selects and Ctrl+drag moves. Move: drag clip bodies directly." />
-                    <ToggleButton Grid.Column="5" Width="26" Classes="secondary timeline-tool" AutomationProperties.Name="Timeline snapping" IsChecked="{Binding IsTimelineSnappingEnabled, Mode=TwoWay}" ToolTip.Tip="Snap nearby clip edges together; hold Alt while dragging to bypass">
+                    <Button x:Name="TimelineZoomInButton" Grid.Column="3" Width="26" Classes="secondary timeline-tool" Click="TimelineZoomIn_Click" Content="+" FontSize="14" IsEnabled="{Binding CanZoomSequenceTimelineIn}" ToolTip.Tip="Zoom timeline in" />
+                    <ToggleButton x:Name="TimelinePointerModeToggle" Grid.Column="4" Width="58" Classes="secondary timeline-tool" AutomationProperties.Name="Timeline pointer mode" Content="{Binding TimelinePointerModeText}" IsChecked="{Binding MoveTimelineClipsByDefault, Mode=TwoWay}" ToolTip.Tip="Range: drag selects and Ctrl+drag moves. Move: drag clip bodies directly." />
+                    <ToggleButton x:Name="TimelineSnappingToggle" Grid.Column="5" Width="26" Classes="secondary timeline-tool" AutomationProperties.Name="Timeline snapping" IsChecked="{Binding IsTimelineSnappingEnabled, Mode=TwoWay}" ToolTip.Tip="Snap nearby clip edges together; hold Alt while dragging to bypass">
                       <PathIcon Width="12" Height="12" Data="M2,1 H6 V7 A4,4 0 0 0 14,7 V1 H18 V7 A8,8 0 0 1 2,7 Z M2,1 H6 V4 H2 Z M14,1 H18 V4 H14 Z" />
                     </ToggleButton>
-                    <ToggleButton Grid.Column="6" Width="44" Classes="secondary timeline-tool" Content="Free" IsChecked="{Binding IsSequenceTimelineFreeMode, Mode=TwoWay}" ToolTip.Tip="Show workspace before and after the sequence so clips and hidden handles can be moved freely" />
-                    <Button Grid.Column="7" Width="34" Classes="secondary timeline-tool" Click="TimelineFit_Click" Content="Fit" />
+                    <ToggleButton x:Name="TimelineFreeModeToggle" Grid.Column="6" Width="44" Classes="secondary timeline-tool" Content="Free" IsChecked="{Binding IsSequenceTimelineFreeMode, Mode=TwoWay}" ToolTip.Tip="Show workspace before and after the sequence so clips and hidden handles can be moved freely" />
+                    <Button x:Name="TimelineFitButton" Grid.Column="7" Width="34" Classes="secondary timeline-tool" Click="TimelineFit_Click" Content="Fit" />
                   </Grid>
                   <controls:SequenceTimelineCanvas
                       x:Name="SequenceTimeline"
@@ -940,5 +940,20 @@
         ZIndex="100">
       <Image Source="{Binding TimelineHoverPreviewImage}" Stretch="UniformToFill" />
     </Border>
+
+    <Grid
+        x:Name="WindowsResizeGrips"
+        Grid.RowSpan="3"
+        IsVisible="False"
+        ZIndex="200">
+      <Border Width="6" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" Tag="West" PointerPressed="WindowResizeGrip_PointerPressed" />
+      <Border Width="6" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" Tag="East" PointerPressed="WindowResizeGrip_PointerPressed" />
+      <Border Height="6" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" Tag="North" PointerPressed="WindowResizeGrip_PointerPressed" />
+      <Border Height="6" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth" Tag="South" PointerPressed="WindowResizeGrip_PointerPressed" />
+      <Border Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" Tag="NorthWest" PointerPressed="WindowResizeGrip_PointerPressed" />
+      <Border Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" Tag="NorthEast" PointerPressed="WindowResizeGrip_PointerPressed" />
+      <Border Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" Tag="SouthWest" PointerPressed="WindowResizeGrip_PointerPressed" />
+      <Border Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" Tag="SouthEast" PointerPressed="WindowResizeGrip_PointerPressed" />
+    </Grid>
   </Grid>
 </Window>

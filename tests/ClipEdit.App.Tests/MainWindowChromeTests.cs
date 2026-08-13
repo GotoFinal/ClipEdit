@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Chrome;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Layout;
 using Avalonia.Input;
@@ -66,6 +67,61 @@ public sealed class MainWindowChromeTests
             Assert.Equal(HorizontalAlignment.Center, button.HorizontalContentAlignment);
             Assert.Equal(VerticalAlignment.Center, button.VerticalContentAlignment);
         }
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Timeline_tool_style_includes_toggle_buttons_without_clipping()
+    {
+        var window = new MainWindow();
+        var laneLayout = window.FindControl<Grid>("TimelineLaneLayout");
+        var pointerMode = window.FindControl<ToggleButton>("TimelinePointerModeToggle");
+        var snapping = window.FindControl<ToggleButton>("TimelineSnappingToggle");
+        var freeMode = window.FindControl<ToggleButton>("TimelineFreeModeToggle");
+
+        Assert.NotNull(laneLayout);
+        Assert.NotNull(pointerMode);
+        Assert.NotNull(snapping);
+        Assert.NotNull(freeMode);
+        Assert.Equal(new GridLength(24), laneLayout.RowDefinitions[0].Height);
+
+        foreach (var toggle in new[] { pointerMode, snapping, freeMode })
+        {
+            Assert.Equal(24, toggle.Height);
+            Assert.Equal(new Thickness(5, 0), toggle.Padding);
+            Assert.Equal(11, toggle.FontSize);
+            Assert.Equal(HorizontalAlignment.Center, toggle.HorizontalContentAlignment);
+            Assert.Equal(VerticalAlignment.Center, toggle.VerticalContentAlignment);
+        }
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Borderless_windows_expose_valid_resize_edges_only_while_restored()
+    {
+        var window = new MainWindow();
+        var resizeGrips = window.FindControl<Grid>("WindowsResizeGrips");
+        var maximize = window.FindControl<Button>("MaximizeCaptionButton");
+
+        Assert.NotNull(resizeGrips);
+        Assert.NotNull(maximize);
+        Assert.Equal(8, resizeGrips.Children.Count);
+        Assert.Equal(OperatingSystem.IsWindows(), resizeGrips.IsVisible);
+        Assert.All(resizeGrips.Children, child =>
+        {
+            var edgeName = Assert.IsType<string>(child.Tag);
+            Assert.True(Enum.TryParse<WindowEdge>(edgeName, out _));
+        });
+
+        maximize.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(WindowState.Maximized, window.WindowState);
+        Assert.False(resizeGrips.IsVisible);
+
+        maximize.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(WindowState.Normal, window.WindowState);
+        Assert.Equal(OperatingSystem.IsWindows(), resizeGrips.IsVisible);
 
         window.Close();
     }
