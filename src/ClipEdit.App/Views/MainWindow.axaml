@@ -10,7 +10,7 @@
     Title="{Binding ProductName}"
     Width="1240"
     Height="800"
-    MinWidth="900"
+    MinWidth="860"
     MinHeight="680"
     Background="#111318"
     DragDrop.AllowDrop="True">
@@ -40,11 +40,13 @@
       <Setter Property="CornerRadius" Value="8" />
     </Style>
     <Style Selector="Button.caption">
-      <Setter Property="Width" Value="42" />
+      <Setter Property="Width" Value="38" />
       <Setter Property="Height" Value="55" />
       <Setter Property="Padding" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Background" Value="#20242D" />
       <Setter Property="Foreground" Value="#D8DAE3" />
+      <Setter Property="BorderBrush" Value="#303543" />
+      <Setter Property="BorderThickness" Value="1,0,0,0" />
       <Setter Property="CornerRadius" Value="0" />
     </Style>
     <Style Selector="Button.caption:pointerover">
@@ -53,6 +55,17 @@
     <Style Selector="Button.caption-close:pointerover">
       <Setter Property="Background" Value="#C42B1C" />
       <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.brand">
+      <Setter Property="Height" Value="38" />
+      <Setter Property="Padding" Value="2,2,6,2" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#F5F5F8" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="7" />
+    </Style>
+    <Style Selector="Button.brand:pointerover">
+      <Setter Property="Background" Value="#252936" />
     </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="Foreground" Value="#8D93A5" />
@@ -65,46 +78,66 @@
         Padding="12,0"
         x:Name="AppCommandBar"
         chrome:WindowDecorationProperties.ElementRole="TitleBar"
+        PointerPressed="AppCommandBar_PointerPressed"
         Background="#181B22"
         BorderBrush="#292D38"
         BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="12" VerticalAlignment="Center">
-        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Border Width="30" Height="30" Background="#7C5CFC" CornerRadius="8">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8" VerticalAlignment="Center">
+        <Button
+            x:Name="ProjectMenuButton"
+            Classes="brand"
+            ToolTip.Tip="Project menu"
+            chrome:WindowDecorationProperties.ElementRole="User">
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Border Width="30" Height="30" Background="#7C5CFC" CornerRadius="8">
+              <TextBlock
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  FontSize="16"
+                  FontWeight="Bold"
+                  Text="C" />
+            </Border>
             <TextBlock
-                HorizontalAlignment="Center"
+                x:Name="ProductNameText"
                 VerticalAlignment="Center"
-                FontSize="16"
-                FontWeight="Bold"
-                Text="C" />
-          </Border>
-          <TextBlock
-              VerticalAlignment="Center"
-              FontSize="17"
-              FontWeight="SemiBold"
-              Text="{Binding ProductName}" />
-        </StackPanel>
+                FontSize="17"
+                FontWeight="SemiBold"
+                Text="{Binding ProductName}" />
+            <PathIcon Width="8" Height="8" Foreground="#8D93A5" Data="M1,2 L7,2 L4,6 Z" />
+          </StackPanel>
+          <Button.Flyout>
+            <MenuFlyout>
+              <MenuItem Header="New project" Click="NewProject_Click" IsEnabled="{Binding CanNewProject}" />
+              <MenuItem Header="Open project…" Click="OpenProject_Click" IsEnabled="{Binding CanOpenProject}" />
+              <MenuItem Header="Save project" Click="SaveProject_Click" IsEnabled="{Binding CanSaveProject}" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
 
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
+        <StackPanel x:Name="ProjectActionButtons" Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <Button
+              Height="32"
               Classes="secondary"
               Click="NewProject_Click"
               Content="New"
               IsEnabled="{Binding CanNewProject}" />
           <Button
+              Height="32"
               Classes="secondary"
               Click="OpenProject_Click"
               Content="Open"
               IsEnabled="{Binding CanOpenProject}" />
           <Button
+              Height="32"
               Classes="secondary"
               Click="SaveProject_Click"
               Content="Save"
               IsEnabled="{Binding CanSaveProject}" />
         </StackPanel>
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
+        <StackPanel x:Name="CropToolbar" Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <ToggleButton
+              Height="32"
               Padding="9,5"
               Classes="secondary"
               Click="UseCropTool_Click"
@@ -112,6 +145,7 @@
               IsChecked="{Binding IsCropToolActive, Mode=OneWay}"
               ToolTip.Tip="Edit the one shared output crop" />
           <ToggleButton
+              Height="32"
               Padding="9,5"
               Classes="secondary"
               Click="UseTransformTool_Click"
@@ -119,14 +153,15 @@
               IsChecked="{Binding IsTransformToolActive, Mode=OneWay}"
               ToolTip.Tip="Move, resize, or rotate the selected clip under the crop" />
           <ToggleButton
+              Height="32"
               Padding="9,5"
               Classes="secondary"
               Click="UseAutoTool_Click"
               Content="Auto"
               IsChecked="{Binding IsAutoToolActive, Mode=OneWay}"
               ToolTip.Tip="Crop inside the frame; Ctrl drags the clip; clip handles always work" />
-          <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="CROP" />
-          <ComboBox Width="132" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
+          <TextBlock x:Name="CropPresetLabel" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="CROP" />
+          <ComboBox Width="132" Height="32" VerticalAlignment="Center" ItemsSource="{Binding CropAspectPresets}" SelectedItem="{Binding SelectedCropAspectPreset}">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="vm:CropAspectPreset">
                 <TextBlock Text="{Binding DisplayName}" />
@@ -135,7 +170,7 @@
           </ComboBox>
           <ToggleButton
               Width="30"
-              Height="28"
+              Height="32"
               Padding="6"
               Classes="secondary"
               IsChecked="{Binding IsCropAspectLocked, Mode=TwoWay}"
@@ -144,30 +179,36 @@
           </ToggleButton>
         </StackPanel>
 
-        <StackPanel
+        <Border
+            x:Name="TitleDragRegion"
             Grid.Column="3"
+            Background="Transparent"
             HorizontalAlignment="Center"
             VerticalAlignment="Center">
-          <TextBlock
-              HorizontalAlignment="Center"
-              Foreground="#AEB3C2"
-              Text="{Binding WorkspaceTitle}"
-              TextTrimming="CharacterEllipsis" />
-          <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasExportBlockingIssue}">
+          <StackPanel x:Name="WorkspaceTitlePanel">
             <TextBlock
-                MaxWidth="310"
-                VerticalAlignment="Center"
-                FontSize="10"
-                Foreground="#FFB36B"
-                Text="{Binding ExportAvailabilityText}"
+                HorizontalAlignment="Center"
+                Foreground="#AEB3C2"
+                Text="{Binding WorkspaceTitle}"
                 TextTrimming="CharacterEllipsis" />
-            <Button Classes="secondary" Padding="7,2" Click="FixExportCompatibility_Click" Content="{Binding ExportCompatibilityActionText}" IsVisible="{Binding CanFixExportCompatibility}" chrome:WindowDecorationProperties.ElementRole="User" />
+            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasExportBlockingIssue}">
+              <TextBlock
+                  MaxWidth="310"
+                  VerticalAlignment="Center"
+                  FontSize="10"
+                  Foreground="#FFB36B"
+                  Text="{Binding ExportAvailabilityText}"
+                  TextTrimming="CharacterEllipsis" />
+              <Button Classes="secondary" Padding="7,2" Click="FixExportCompatibility_Click" Content="{Binding ExportCompatibilityActionText}" IsVisible="{Binding CanFixExportCompatibility}" chrome:WindowDecorationProperties.ElementRole="User" />
+            </StackPanel>
           </StackPanel>
-        </StackPanel>
+        </Border>
 
-        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" chrome:WindowDecorationProperties.ElementRole="User">
+        <StackPanel x:Name="ExportControls" Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
           <ComboBox
               Width="154"
+              Height="32"
+              VerticalAlignment="Center"
               ItemsSource="{Binding ExportPresets}"
               SelectedItem="{Binding SelectedExportPreset}" ToolTip.Tip="{Binding ExportPlanSummary}">
             <ComboBox.ItemTemplate>
@@ -177,12 +218,14 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
           <Button
+              Height="32"
               Classes="primary"
               Click="Export_Click"
               Content="Export"
               IsEnabled="{Binding CanExport}"
               ToolTip.Tip="{Binding ExportAvailabilityText}" />
           <Button
+              Height="32"
               Classes="secondary"
               Click="CancelExport_Click"
               Content="Cancel"
@@ -193,14 +236,17 @@
               Margin="6,0,-12,0"
               IsVisible="False"
               Orientation="Horizontal">
-            <Button x:Name="MinimizeCaptionButton" Classes="caption" AutomationProperties.Name="Minimize window" chrome:WindowDecorationProperties.ElementRole="MinimizeButton">
-              <PathIcon Width="11" Height="11" Data="M1,6 H10" />
+            <Button x:Name="MinimizeCaptionButton" Classes="caption" Click="MinimizeCaptionButton_Click" AutomationProperties.Name="Minimize window" ToolTip.Tip="Minimize" chrome:WindowDecorationProperties.ElementRole="MinimizeButton">
+              <PathIcon Width="11" Height="11" Data="M1,7 H10 V8 H1 Z" />
             </Button>
-            <Button x:Name="MaximizeCaptionButton" Classes="caption" AutomationProperties.Name="Maximize or restore window" chrome:WindowDecorationProperties.ElementRole="MaximizeButton">
-              <PathIcon Width="11" Height="11" Data="M1,1 H10 V10 H1 Z M2,2 V9 H9 V2 Z" />
+            <Button x:Name="MaximizeCaptionButton" Classes="caption" Click="MaximizeCaptionButton_Click" AutomationProperties.Name="Maximize or restore window" ToolTip.Tip="Maximize" chrome:WindowDecorationProperties.ElementRole="MaximizeButton">
+              <Grid>
+                <PathIcon x:Name="MaximizeCaptionIcon" Width="11" Height="11" Data="M1,1 H10 V10 H1 Z M2,2 V9 H9 V2 Z" />
+                <PathIcon x:Name="RestoreCaptionIcon" Width="11" Height="11" IsVisible="False" Data="M3,1 H10 V8 H8 V3 H3 Z M1,3 H8 V10 H1 Z M2,4 V9 H7 V4 Z" />
+              </Grid>
             </Button>
-            <Button x:Name="CloseCaptionButton" Classes="caption caption-close" AutomationProperties.Name="Close window" chrome:WindowDecorationProperties.ElementRole="CloseButton">
-              <PathIcon Width="11" Height="11" Data="M1,1 L10,10 M10,1 L1,10" />
+            <Button x:Name="CloseCaptionButton" Classes="caption caption-close" Click="CloseCaptionButton_Click" AutomationProperties.Name="Close window" ToolTip.Tip="Close" chrome:WindowDecorationProperties.ElementRole="CloseButton">
+              <PathIcon Width="11" Height="11" Data="M1,1.8 L1.8,1 L5.5,4.7 L9.2,1 L10,1.8 L6.3,5.5 L10,9.2 L9.2,10 L5.5,6.3 L1.8,10 L1,9.2 L4.7,5.5 Z" />
             </Button>
           </StackPanel>
         </StackPanel>

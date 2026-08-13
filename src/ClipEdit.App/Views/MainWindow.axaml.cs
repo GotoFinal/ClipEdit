@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Controls;
 using ClipEdit.Media.Preview;
@@ -42,9 +43,106 @@ public sealed partial class MainWindow : Window
             WindowsCaptionButtons.IsVisible = true;
         }
 
+        ApplyCommandBarResponsiveLayout(Width);
+        UpdateCaptionButtonState();
+
         DragDrop.AddDragOverHandler(this, OnDragOver);
         DragDrop.AddDropHandler(this, OnDrop);
+        SizeChanged += OnWindowSizeChanged;
         Closed += OnClosed;
+    }
+
+    internal void ApplyCommandBarResponsiveLayout(double width)
+    {
+        WorkspaceTitlePanel.IsVisible = width >= 1420;
+        ProjectActionButtons.IsVisible = width >= 1190;
+        CropPresetLabel.IsVisible = width >= 1050;
+        ProductNameText.IsVisible = width >= 930;
+    }
+
+    private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        ApplyCommandBarResponsiveLayout(eventArgs.NewSize.Width);
+        UpdateCaptionButtonState();
+    }
+
+    private void AppCommandBar_PointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        _ = sender;
+        if (!OperatingSystem.IsWindows() || IsInteractiveCommandBarSource(eventArgs.Source))
+        {
+            return;
+        }
+
+        var point = eventArgs.GetCurrentPoint(this);
+        if (!point.Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        if (eventArgs.ClickCount == 2)
+        {
+            ToggleMaximized();
+        }
+        else
+        {
+            BeginMoveDrag(eventArgs);
+        }
+
+        eventArgs.Handled = true;
+    }
+
+    private bool IsInteractiveCommandBarSource(object? source)
+    {
+        for (var current = source as Visual;
+             current is not null && !ReferenceEquals(current, AppCommandBar);
+             current = current.GetVisualParent())
+        {
+            if (current is Button or ComboBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void MinimizeCaptionButton_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        WindowState = WindowState.Minimized;
+    }
+
+    private void MaximizeCaptionButton_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ToggleMaximized();
+    }
+
+    private void CloseCaptionButton_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        Close();
+    }
+
+    private void ToggleMaximized()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+        UpdateCaptionButtonState();
+    }
+
+    private void UpdateCaptionButtonState()
+    {
+        var isMaximized = WindowState == WindowState.Maximized;
+        MaximizeCaptionIcon.IsVisible = !isMaximized;
+        RestoreCaptionIcon.IsVisible = isMaximized;
+        ToolTip.SetTip(MaximizeCaptionButton, isMaximized ? "Restore" : "Maximize");
     }
 
     public Task ImportPathsAsync(IEnumerable<string> sourcePaths)
