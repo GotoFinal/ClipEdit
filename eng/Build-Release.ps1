@@ -6,6 +6,9 @@ param(
     [ValidateSet('SingleFile', 'Directory')]
     [string]$BundleMode = 'SingleFile',
 
+    [ValidateSet('FrameworkDependent', 'SelfContained')]
+    [string]$ManagedDeployment = 'SelfContained',
+
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
 
@@ -99,19 +102,24 @@ if (Test-Path -LiteralPath $fullOutputPath) {
 }
 
 $stagingRoot = Join-Path $workspaceRoot 'artifacts/.staging'
-$stagingPath = Join-Path $stagingRoot ([Guid]::NewGuid().ToString('N'))
+$buildId = [Guid]::NewGuid().ToString('N')
+$stagingPath = Join-Path $stagingRoot $buildId
+$buildArtifactsPath = Join-Path $stagingRoot "$buildId-build"
 [System.IO.Directory]::CreateDirectory($stagingPath) | Out-Null
 
 try {
     $singleFile = $BundleMode -eq 'SingleFile'
-    $compressionEnabled = $singleFile -and -not $DisableCompression
+    $selfContained = $ManagedDeployment -eq 'SelfContained'
+    $compressionEnabled = $singleFile -and $selfContained -and -not $DisableCompression
     $singleFileValue = $singleFile.ToString().ToLowerInvariant()
+    $selfContainedValue = $selfContained.ToString().ToLowerInvariant()
     $publishArguments = @(
         'publish',
         $projectPath,
         '--configuration', $Configuration,
         '--runtime', $RuntimeId,
-        '--self-contained', 'true',
+        "-p:SelfContained=$selfContainedValue",
+        '--artifacts-path', $buildArtifactsPath,
         '--output', $stagingPath,
         '--nologo',
         "-p:Version=$Version",
@@ -156,7 +164,10 @@ try {
         bundleMode = $BundleMode
         executable = $executableName
         sha256 = $hash
-        includesManagedRuntime = $true
+        managedDeployment = $ManagedDeployment
+        includesManagedRuntime = $selfContained
+        requiredManagedFramework = if ($selfContained) { $null } else { 'Microsoft.NETCore.App' }
+        requiredManagedFrameworkVersion = if ($selfContained) { $null } else { '10.0.0' }
         compressionEnabled = $compressionEnabled
         nativeMediaProfile = if ($RuntimeId -eq 'win-x64') {
             'ffmpeg-9.0.1-shared+libmpv-shared-libav-v1'
@@ -176,11 +187,14 @@ try {
 
     [System.IO.Directory]::CreateDirectory((Split-Path -Parent $fullOutputPath)) | Out-Null
     [System.IO.Directory]::Move($stagingPath, $fullOutputPath)
-    Write-Host "ClipEdit $RuntimeId $BundleMode release candidate is ready at $fullOutputPath"
+    Write-Host "ClipEdit $RuntimeId $BundleMode $ManagedDeployment release candidate is ready at $fullOutputPath"
     Write-Warning 'The build is technically packaged but not cleared for public redistribution; review the embedded notices and source-offer requirements.'
 }
 finally {
     if (Test-Path -LiteralPath $stagingPath) {
         [System.IO.Directory]::Delete($stagingPath, $true)
+    }
+    if (Test-Path -LiteralPath $buildArtifactsPath) {
+        [System.IO.Directory]::Delete($buildArtifactsPath, $true)
     }
 }
