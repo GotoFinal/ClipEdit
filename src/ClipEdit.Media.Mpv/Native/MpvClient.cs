@@ -38,6 +38,7 @@ internal sealed class MpvClient : IDisposable
             SetOption("pause", "yes");
             SetOption("vo", "libmpv");
             SetOption("hwdec", "auto");
+            SetOption("hr-seek-framedrop", "yes");
             Check(_native.Initialize(_handle), "initialize libmpv");
         }
         catch
@@ -63,7 +64,7 @@ internal sealed class MpvClient : IDisposable
         _loadedExternalAudioSources = [];
     }
 
-    public void Seek(MediaTime position)
+    public void Seek(MediaTime position, bool exact)
     {
         if (position < MediaTime.Zero)
         {
@@ -73,8 +74,11 @@ internal sealed class MpvClient : IDisposable
         RunCommand(
             "seek",
             position.TotalSeconds.ToString("R", CultureInfo.InvariantCulture),
-            "absolute+exact");
+            GetSeekModeArgument(exact));
     }
+
+    internal static string GetSeekModeArgument(bool exact) =>
+        exact ? "absolute+exact" : "absolute+keyframes";
 
     public MediaTime? GetPosition()
     {

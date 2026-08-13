@@ -24,6 +24,7 @@ public sealed class MpvPreviewEngineLocalTests
         await engine.SetAudioTracksAsync(
             [new PreviewAudioTrack(streamIndex: 1, gainDb: -3, isMuted: false)],
             CancellationToken.None);
+        await engine.SeekFastAsync(new MediaTime(1, 3), CancellationToken.None);
         await engine.SeekAsync(new MediaTime(1, 2), CancellationToken.None);
         await engine.SetVolumeAsync(0.25, CancellationToken.None);
         await engine.SetPausedAsync(false, CancellationToken.None);

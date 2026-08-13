@@ -10,6 +10,9 @@ public interface IPreviewEngine : IAsyncDisposable
 
     Task SeekAsync(MediaTime position, CancellationToken cancellationToken);
 
+    Task SeekFastAsync(MediaTime position, CancellationToken cancellationToken) =>
+        SeekAsync(position, cancellationToken);
+
     Task<MediaTime?> GetPositionAsync(CancellationToken cancellationToken);
 
     Task<PreviewPlaybackSnapshot> GetPlaybackSnapshotAsync(CancellationToken cancellationToken);

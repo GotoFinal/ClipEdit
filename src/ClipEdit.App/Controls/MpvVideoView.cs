@@ -484,13 +484,22 @@ public sealed class MpvVideoView : OpenGlControlBase
             {
                 var revision = _seekRevision;
                 var target = _pendingSeekPosition;
-                await _engine!.SeekAsync(target, cancellationToken);
-                handledRevision = revision;
+                await _engine!.SeekFastAsync(target, cancellationToken);
                 await Task.Delay(TimeSpan.FromMilliseconds(16), cancellationToken);
-                if (handledRevision == _seekRevision)
+                if (revision != _seekRevision)
                 {
-                    break;
+                    continue;
                 }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(120), cancellationToken);
+                if (revision != _seekRevision)
+                {
+                    continue;
+                }
+
+                await _engine.SeekAsync(_pendingSeekPosition, cancellationToken);
+                handledRevision = revision;
+                break;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
