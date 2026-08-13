@@ -12,6 +12,7 @@
     Height="800"
     MinWidth="860"
     MinHeight="680"
+    Icon="/Assets/ClipEdit.ico"
     Background="#111318"
     DragDrop.AllowDrop="True">
 
@@ -104,14 +105,7 @@
             ToolTip.Tip="Project menu"
             chrome:WindowDecorationProperties.ElementRole="User">
           <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <Border Width="28" Height="28" Background="#7C5CFC" CornerRadius="7">
-              <TextBlock
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  FontSize="15"
-                  FontWeight="Bold"
-                  Text="C" />
-            </Border>
+            <Image x:Name="ProjectMenuIcon" Width="28" Height="28" Source="/Assets/ClipEdit.png" />
             <TextBlock
                 x:Name="ProductNameText"
                 VerticalAlignment="Center"

@@ -3,9 +3,16 @@
     <OutputType>WinExe</OutputType>
     <AssemblyName>ClipEdit</AssemblyName>
     <RootNamespace>ClipEdit.App</RootNamespace>
+    <ApplicationIcon>Assets/ClipEdit.ico</ApplicationIcon>
+    <AvaloniaIncludeApplicationIconAsWindowIcon>false</AvaloniaIncludeApplicationIconAsWindowIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/ClipEdit.ico" />
+    <AvaloniaResource Include="Assets/ClipEdit.png" />
+  </ItemGroup>
 
   <ItemGroup Condition="'$(ClipEditNativePayloadRoot)' != ''">
     <Content Include="$(ClipEditNativePayloadRoot)/**/*">

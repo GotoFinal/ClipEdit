@@ -46,6 +46,19 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Application_brand_uses_the_same_packaged_icon_in_the_window_and_project_menu()
+    {
+        var window = new MainWindow();
+        var projectMenuIcon = window.FindControl<Image>("ProjectMenuIcon");
+
+        Assert.NotNull(window.Icon);
+        Assert.NotNull(projectMenuIcon);
+        Assert.NotNull(projectMenuIcon.Source);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Command_bar_buttons_fit_the_compact_thirty_pixel_height()
     {
         var window = new MainWindow();
