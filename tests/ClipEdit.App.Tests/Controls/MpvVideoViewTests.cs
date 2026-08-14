@@ -153,6 +153,59 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
+    public void Display_seek_uses_the_last_displayable_frame_at_a_half_open_range_end()
+    {
+        var target = MpvVideoView.GetDisplaySeekPosition(
+            new MediaTime(12, 1),
+            Ranges,
+            frameStepSeconds: 1d / 30d);
+
+        Assert.Equal(11.966667, target.TotalSeconds, 6);
+        Assert.Equal(
+            new MediaTime(3, 1),
+            MpvVideoView.GetDisplaySeekPosition(
+                new MediaTime(3, 1),
+                Ranges,
+                frameStepSeconds: 1d / 30d));
+    }
+
+    [Fact]
+    public void Seek_completion_requires_the_decoder_position_to_reach_the_target()
+    {
+        Assert.False(MpvVideoView.IsSeekPositionReady(
+            MediaTime.Zero,
+            new MediaTime(665, 10),
+            frameStepSeconds: 1d / 30d));
+        Assert.True(MpvVideoView.IsSeekPositionReady(
+            new MediaTime(6647, 100),
+            new MediaTime(665, 10),
+            frameStepSeconds: 1d / 30d));
+    }
+
+    [Fact]
+    public void Cached_seek_frame_uses_the_same_centered_canvas_and_mirroring()
+    {
+        var canvasSize = new DomainPixelSize(1_920, 1_080);
+        var viewport = new Size(960, 540);
+        var identity = CachedFrameCanvas.CalculateCanvasToViewportMatrix(
+            canvasSize,
+            ClipCanvasTransform.Identity,
+            viewport);
+        var mirrored = CachedFrameCanvas.CalculateCanvasToViewportMatrix(
+            canvasSize,
+            new ClipCanvasTransform(
+                0,
+                0,
+                1,
+                0,
+                isHorizontallyMirrored: true),
+            viewport);
+
+        Assert.Equal(new Point(0, 0), identity.Transform(new Point(-960, -540)));
+        Assert.Equal(new Point(960, 0), mirrored.Transform(new Point(-960, -540)));
+    }
+
+    [Fact]
     public void Identity_canvas_transform_preserves_libmpv_fit()
     {
         var transform = MpvVideoView.CalculatePreviewVideoTransform(

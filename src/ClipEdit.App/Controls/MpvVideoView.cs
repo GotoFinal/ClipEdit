@@ -29,6 +29,11 @@ public sealed class MpvVideoView : OpenGlControlBase
     public static readonly StyledProperty<double> PlaybackSpeedProperty =
         AvaloniaProperty.Register<MpvVideoView, double>(nameof(PlaybackSpeed), defaultValue: 1);
 
+    public static readonly StyledProperty<double> FrameStepSecondsProperty =
+        AvaloniaProperty.Register<MpvVideoView, double>(
+            nameof(FrameStepSeconds),
+            defaultValue: 1d / 30d);
+
     public static readonly StyledProperty<DomainPixelSize> SourceVideoSizeProperty =
         AvaloniaProperty.Register<MpvVideoView, DomainPixelSize>(
             nameof(SourceVideoSize),
@@ -65,6 +70,11 @@ public sealed class MpvVideoView : OpenGlControlBase
             nameof(IsPlaybackAvailable),
             view => view.IsPlaybackAvailable);
 
+    public static readonly DirectProperty<MpvVideoView, bool> IsSeekPendingProperty =
+        AvaloniaProperty.RegisterDirect<MpvVideoView, bool>(
+            nameof(IsSeekPending),
+            view => view.IsSeekPending);
+
     public static readonly DirectProperty<MpvVideoView, string> PlaybackStatusProperty =
         AvaloniaProperty.RegisterDirect<MpvVideoView, string>(
             nameof(PlaybackStatus),
@@ -90,6 +100,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private Task _seekTask = Task.CompletedTask;
     private MediaTime _pendingSeekPosition;
     private int _seekRevision;
+    private int _seekReadyToRevealRevision = -1;
     private bool _seekLoopRunning;
     private bool _suppressSeekRestart;
     private CancellationTokenSource? _audioMixCancellation;
@@ -98,6 +109,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private MpvOpenGlRenderContext? _renderContext;
     private OpenGlVideoCompositor? _videoCompositor;
     private bool _isPlaybackAvailable;
+    private bool _isSeekPending;
     private string _playbackStatus = "Initializing the local preview engine…";
     private string _playButtonText = "▶";
     private string _decoderStatus = "Decoder pending";
@@ -184,6 +196,12 @@ public sealed class MpvVideoView : OpenGlControlBase
         set => SetValue(VolumeProperty, value);
     }
 
+    public double FrameStepSeconds
+    {
+        get => GetValue(FrameStepSecondsProperty);
+        set => SetValue(FrameStepSecondsProperty, value);
+    }
+
     public DomainPixelSize SourceVideoSize
     {
         get => GetValue(SourceVideoSizeProperty);
@@ -230,6 +248,12 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => _isPlaybackAvailable;
         private set => SetAndRaise(IsPlaybackAvailableProperty, ref _isPlaybackAvailable, value);
+    }
+
+    public bool IsSeekPending
+    {
+        get => _isSeekPending;
+        private set => SetAndRaise(IsSeekPendingProperty, ref _isSeekPending, value);
     }
 
     public string PlaybackStatus
@@ -297,6 +321,8 @@ public sealed class MpvVideoView : OpenGlControlBase
 
         var target = GetPlaybackStartPosition(Position, PlaybackRanges, _isEndOfFile);
         SetPositionFromPlayback(target);
+        _seekReadyToRevealRevision = -1;
+        IsSeekPending = false;
         await _engine.SeekAsync(target, cancellationToken);
         _isEndOfFile = false;
         await _engine.SetPausedAsync(false, cancellationToken);
@@ -351,6 +377,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
 
         _shutdownStarted = true;
+        IsSeekPending = false;
         _positionTimer.Stop();
         _lifetimeCancellation.Cancel();
         _loadCancellation?.Cancel();
@@ -429,6 +456,12 @@ public sealed class MpvVideoView : OpenGlControlBase
                     CanvasSize,
                     CanvasTransform,
                     physicalViewport));
+            if (_seekReadyToRevealRevision == _seekRevision)
+            {
+                _seekReadyToRevealRevision = -1;
+                IsSeekPending = false;
+            }
+
             if (ShouldContinueRenderingDuringLoad(_loadTask.IsCompleted))
             {
                 RequestNextFrameRendering();
@@ -533,6 +566,8 @@ public sealed class MpvVideoView : OpenGlControlBase
         var sourcePath = SourcePath;
         _mediaLoaded = false;
         _isEndOfFile = false;
+        _seekReadyToRevealRevision = -1;
+        IsSeekPending = false;
         DecoderStatus = "Decoder pending";
         IsPlaybackAvailable = false;
         if (string.IsNullOrWhiteSpace(sourcePath))
@@ -556,7 +591,9 @@ public sealed class MpvVideoView : OpenGlControlBase
                 cancellationToken);
             _appliedVideoTransformRevision = initialVideoTransformRevision;
             QueueRenderRequest();
-            await engine.SeekAsync(Position, cancellationToken);
+            await engine.SeekAsync(
+                GetDisplaySeekPosition(Position, PlaybackRanges, FrameStepSeconds),
+                cancellationToken);
             await engine.SetVolumeAsync(Volume, cancellationToken);
             await engine.SetPlaybackSpeedAsync(PlaybackSpeed, cancellationToken);
             string? audioWarning = null;
@@ -601,8 +638,10 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
 
         _isEndOfFile = false;
-        _pendingSeekPosition = Position;
+        _pendingSeekPosition = GetDisplaySeekPosition(Position, PlaybackRanges, FrameStepSeconds);
         _seekRevision++;
+        _seekReadyToRevealRevision = -1;
+        IsSeekPending = true;
         if (_seekLoopRunning)
         {
             return;
@@ -633,14 +672,22 @@ public sealed class MpvVideoView : OpenGlControlBase
                     continue;
                 }
 
-                await Task.Delay(TimeSpan.FromMilliseconds(120), cancellationToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(75), cancellationToken);
                 if (revision != _seekRevision)
                 {
                     continue;
                 }
 
-                await _engine.SeekAsync(_pendingSeekPosition, cancellationToken);
+                target = _pendingSeekPosition;
+                await _engine.SeekAsync(target, cancellationToken);
+                if (!await WaitForSeekCompletionAsync(target, revision, cancellationToken))
+                {
+                    continue;
+                }
+
                 handledRevision = revision;
+                _seekReadyToRevealRevision = revision;
+                QueueRenderRequest();
                 break;
             }
         }
@@ -661,11 +708,42 @@ public sealed class MpvVideoView : OpenGlControlBase
             }
 
             request.Dispose();
+            if (handledRevision == _seekRevision && _renderContext is null)
+            {
+                IsSeekPending = false;
+            }
+
             if (!_shutdownStarted && _mediaLoaded && !_suppressSeekRestart && handledRevision != _seekRevision)
             {
                 StartSeek();
             }
         }
+    }
+
+    private async Task<bool> WaitForSeekCompletionAsync(
+        MediaTime target,
+        int revision,
+        CancellationToken cancellationToken)
+    {
+        const int maximumAttempts = 750;
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
+            if (revision != _seekRevision)
+            {
+                return false;
+            }
+
+            var snapshot = await _engine!.GetPlaybackSnapshotAsync(cancellationToken);
+            if (!snapshot.IsSeeking && IsSeekPositionReady(snapshot.Position, target, FrameStepSeconds))
+            {
+                return true;
+            }
+        }
+
+        // Never leave the cached overlay stuck indefinitely if a decoder fails to
+        // report seek completion. The underlying frame remains the best fallback.
+        return true;
     }
 
     private void StartPauseChange()
@@ -1134,6 +1212,60 @@ public sealed class MpvVideoView : OpenGlControlBase
         return decision.Target ?? position;
     }
 
+    internal static MediaTime GetDisplaySeekPosition(
+        MediaTime position,
+        IReadOnlyList<MediaRange> ranges,
+        double frameStepSeconds)
+    {
+        ArgumentNullException.ThrowIfNull(ranges);
+        if (ranges.Count == 0 ||
+            !double.IsFinite(frameStepSeconds) ||
+            frameStepSeconds <= 0)
+        {
+            return position;
+        }
+
+        foreach (var range in ranges)
+        {
+            if (position < range.End)
+            {
+                return position;
+            }
+
+            if (position == range.End)
+            {
+                var frameStep = new MediaTime(
+                    Math.Max(1, checked((long)Math.Round(frameStepSeconds * 1_000_000d))),
+                    1_000_000);
+                var lastFrame = range.End - frameStep;
+                return lastFrame < range.Start ? range.Start : lastFrame;
+            }
+        }
+
+        var finalRange = ranges[^1];
+        var finalFrameStep = new MediaTime(
+            Math.Max(1, checked((long)Math.Round(frameStepSeconds * 1_000_000d))),
+            1_000_000);
+        var finalFrame = finalRange.End - finalFrameStep;
+        return finalFrame < finalRange.Start ? finalRange.Start : finalFrame;
+    }
+
+    internal static bool IsSeekPositionReady(
+        MediaTime? actual,
+        MediaTime target,
+        double frameStepSeconds)
+    {
+        if (actual is null)
+        {
+            return false;
+        }
+
+        var tolerance = double.IsFinite(frameStepSeconds) && frameStepSeconds > 0
+            ? Math.Max(0.05, frameStepSeconds * 2)
+            : 0.05;
+        return Math.Abs(actual.Value.TotalSeconds - target.TotalSeconds) <= tolerance;
+    }
+
     private void SetPositionFromPlayback(MediaTime position)
     {
         _updatingPositionFromPlayback = true;
@@ -1162,6 +1294,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             () =>
             {
                 _mediaLoaded = false;
+                _seekReadyToRevealRevision = -1;
+                IsSeekPending = false;
                 IsPlaybackAvailable = false;
                 PlaybackStatus = message;
             });

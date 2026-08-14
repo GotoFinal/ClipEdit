@@ -5,4 +5,5 @@ namespace ClipEdit.Media.Preview;
 public readonly record struct PreviewPlaybackSnapshot(
     MediaTime? Position,
     bool IsEndOfFile,
-    string? HardwareDecoder = null);
+    string? HardwareDecoder = null,
+    bool IsSeeking = false);

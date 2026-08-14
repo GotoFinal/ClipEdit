@@ -891,9 +891,20 @@
                       PlaybackCompleted="LivePreview_PlaybackCompleted"
                       PlaybackRanges="{Binding SelectedVideoClip.PlaybackRanges}"
                       PlaybackSpeed="{Binding SelectedVideoClip.PlaybackSpeed}"
+                      FrameStepSeconds="{Binding SelectedMedia.FrameStepSeconds}"
                       Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
                       SourceVideoSize="{Binding SelectedVideoClip.VideoSize}"
                       SourcePath="{Binding SelectedMedia.SourcePath}" />
+
+                  <controls:CachedFrameCanvas
+                      Margin="5"
+                      CanvasSize="{Binding CanvasSize}"
+                      CanvasTransform="{Binding SelectedVideoClip.CanvasTransform}"
+                      Image="{Binding PreviewImage}"
+                      IsHitTestVisible="False"
+                      IsVisible="{Binding IsSeekPending, ElementName=LivePreview}"
+                      SourceSize="{Binding SelectedVideoClip.VideoSize}"
+                      ZIndex="8" />
 
                   <Border
                       Margin="5"

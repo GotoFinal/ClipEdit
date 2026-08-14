@@ -47,6 +47,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private bool _isBusy;
     private bool _isPreviewLoading;
     private Bitmap? _previewImage;
+    private TimelineFrameCacheKey? _previewCacheKey;
     private string? _previewErrorText;
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _timelineAnalysisCancellation;
@@ -4319,7 +4320,39 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _previewCancellation?.Dispose();
         var request = new CancellationTokenSource();
         _previewCancellation = request;
+        if (!clearExisting)
+        {
+            ShowNearestCachedPreview(mediaItem);
+        }
         _ = RefreshPreviewAsync(mediaItem, request, debounce, clearExisting);
+    }
+
+    private void ShowNearestCachedPreview(MediaItemViewModel? mediaItem)
+    {
+        if (mediaItem?.Media?.Probe.VideoStreams.FirstOrDefault() is not { } video)
+        {
+            return;
+        }
+
+        var sourceSeconds = mediaItem.Playhead.TotalSeconds;
+        var maximumDistance = Math.Max(
+            1,
+            mediaItem.TimelineViewportDurationSeconds / SequenceViewportThumbnailCount);
+        if (!_timelineFrameCache.TryGetNearest(
+                mediaItem.SourcePath,
+                video.Index,
+                sourceSeconds,
+                maximumDistance,
+                out var key,
+                out var encodedImage) ||
+            _previewCacheKey == key)
+        {
+            return;
+        }
+
+        using var stream = new MemoryStream(encodedImage, writable: false);
+        PreviewImage = new Bitmap(stream);
+        _previewCacheKey = key;
     }
 
     private async Task RefreshPreviewAsync(
@@ -4332,6 +4365,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (clearExisting)
         {
             PreviewImage = null;
+            _previewCacheKey = null;
         }
 
         PreviewErrorText = null;
@@ -4350,16 +4384,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             IsPreviewLoading = true;
+            var previewTimestamp = ToMediaTime(Math.Min(
+                mediaItem!.Playhead.TotalSeconds,
+                Math.Max(0, mediaItem.SourceDurationSeconds - mediaItem.FrameStepSeconds)));
             var decodedFrame = await _frameDecoder.DecodeAsync(
-                mediaItem!.SourcePath,
+                mediaItem.SourcePath,
                 video.Index,
-                mediaItem.Playhead,
+                previewTimestamp,
                 new PixelSize(1_280, 720),
                 cancellationToken);
 
             await using var stream = new MemoryStream(decodedFrame.EncodedImage.ToArray(), writable: false);
             cancellationToken.ThrowIfCancellationRequested();
             PreviewImage = new Bitmap(stream);
+            _previewCacheKey = null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

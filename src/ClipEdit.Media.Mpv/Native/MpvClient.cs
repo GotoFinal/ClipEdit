@@ -140,7 +140,8 @@ internal sealed class MpvClient : IDisposable
         return new PreviewPlaybackSnapshot(
             GetPosition(),
             GetFlagProperty("eof-reached"),
-            GetStringProperty("hwdec-current"));
+            GetStringProperty("hwdec-current"),
+            GetFlagProperty("seeking"));
     }
 
     public void SetPaused(bool isPaused) => SetProperty("pause", isPaused ? "yes" : "no");
