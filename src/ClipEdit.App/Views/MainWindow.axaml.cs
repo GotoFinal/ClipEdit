@@ -74,6 +74,7 @@ public sealed partial class MainWindow : Window
             OnWindowKeyDown,
             RoutingStrategies.Tunnel,
             handledEventsToo: true);
+        PropertyChanged += OnWindowPropertyChanged;
         SizeChanged += OnWindowSizeChanged;
         Closed += OnClosed;
     }
@@ -120,6 +121,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
+            PrepareForTitleBarMoveDrag();
             BeginMoveDrag(eventArgs);
         }
 
@@ -183,6 +185,25 @@ public sealed partial class MainWindow : Window
             ? WindowState.Normal
             : WindowState.Maximized;
         UpdateCaptionButtonState();
+    }
+
+    internal void PrepareForTitleBarMoveDrag()
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        UpdateCaptionButtonState();
+    }
+
+    private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        if (eventArgs.Property == WindowStateProperty)
+        {
+            UpdateCaptionButtonState();
+        }
     }
 
     private void UpdateCaptionButtonState()
@@ -1426,6 +1447,7 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
+        PropertyChanged -= OnWindowPropertyChanged;
         _lifetimeCancellation.Cancel();
         _ = LivePreview.ShutdownAsync();
         ViewModel?.Dispose();

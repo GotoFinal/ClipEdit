@@ -161,6 +161,23 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Dragging_the_custom_title_bar_restores_a_maximized_window_and_resize_grips()
+    {
+        var window = new MainWindow();
+        var resizeGrips = window.FindControl<Grid>("WindowsResizeGrips");
+
+        Assert.NotNull(resizeGrips);
+        window.WindowState = WindowState.Maximized;
+
+        window.PrepareForTitleBarMoveDrag();
+
+        Assert.Equal(WindowState.Normal, window.WindowState);
+        Assert.Equal(OperatingSystem.IsWindows(), resizeGrips.IsVisible);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Command_bar_progressively_hides_low_priority_content_but_keeps_project_menu()
     {
         var window = new MainWindow();
