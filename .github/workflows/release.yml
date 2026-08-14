@@ -126,17 +126,17 @@ jobs:
         run: |
           release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>/dev/null || true)"
           if [[ -n "$release_json" ]]; then
-            if [[ "$(jq -r .draft <<<"$release_json")" != "true" ]]; then
-              echo "Release $TAG is already published; refusing to replace its assets." >&2
-              exit 3
+            if [[ "$(jq -r .draft <<<"$release_json")" == "true" ]]; then
+              echo "Reusing existing draft release $TAG."
+            else
+              echo "Reusing published release $TAG. Missing assets will be uploaded; existing published assets will not be replaced."
             fi
-            echo "Reusing existing draft release $TAG."
           else
             args=(release create "$TAG" --draft --title "ClipEdit $VERSION" --generate-notes --target "$GITHUB_SHA")
             if [[ "$PRERELEASE" == "true" ]]; then args+=(--prerelease); fi
             gh "${args[@]}"
           fi
-          gh release view "$TAG" --json url --jq '"Draft release: " + .url' >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$TAG" --json url --jq '"Release: " + .url' >> "$GITHUB_STEP_SUMMARY"
 
   windows:
     name: Windows x64
@@ -213,7 +213,7 @@ jobs:
             "$root/ClipEdit-$VERSION-win-x64-compliance.tar.zst"
             "$root/ClipEdit-$VERSION-win-x64-compliance.tar.zst.sha256"
           )
-          gh release upload "$TAG" --clobber "${assets[@]}"
+          ./eng/Upload-ReleaseAssets.sh "$TAG" "${assets[@]}"
 
   linux:
     name: Linux x64
@@ -285,4 +285,4 @@ jobs:
             "$root/ClipEdit-$VERSION-linux-x64-compliance.tar.zst"
             "$root/ClipEdit-$VERSION-linux-x64-compliance.tar.zst.sha256"
           )
-          gh release upload "$TAG" --clobber "${assets[@]}"
+          ./eng/Upload-ReleaseAssets.sh "$TAG" "${assets[@]}"
