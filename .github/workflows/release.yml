@@ -22,11 +22,11 @@ on:
       managed_deployment:
         description: "Bundle the .NET runtime or require .NET 10"
         required: true
-        default: "FrameworkDependent"
+        default: "SelfContained"
         type: choice
         options:
-          - FrameworkDependent
           - SelfContained
+          - FrameworkDependent
       prerelease:
         description: "Mark the draft as a beta/prerelease"
         required: true
@@ -88,7 +88,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             version="${GITHUB_REF_NAME#v}"
             platforms="both"
-            deployment="FrameworkDependent"
+            deployment="SelfContained"
             if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
           else
             version="${INPUT_VERSION#v}"
