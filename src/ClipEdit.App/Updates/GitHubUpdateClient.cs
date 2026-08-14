@@ -32,12 +32,12 @@ internal sealed class GitHubUpdateClient : IUpdateClient
 
     public async Task<AvailableUpdate?> CheckAsync(
         SemanticVersion currentVersion,
-        string runtimeId,
+        string releaseAssetId,
         bool includePrereleases,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(currentVersion);
-        var assetName = GetAssetName(runtimeId);
+        var assetName = GetAssetName(releaseAssetId);
         using var request = CreateRequest(HttpMethod.Get, ReleasesUri, acceptJson: true);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
@@ -223,11 +223,12 @@ internal sealed class GitHubUpdateClient : IUpdateClient
         }
     }
 
-    internal static string GetAssetName(string runtimeId) => runtimeId switch
+    internal static string GetAssetName(string releaseAssetId) => releaseAssetId switch
     {
         "win-x64" => "ClipEdit-win-x64.exe",
         "linux-x64" => "ClipEdit-linux-x64",
-        _ => throw new UpdateException($"Automatic updates are unavailable for {runtimeId}."),
+        "linux-x64-system" => "ClipEdit-linux-x64-system",
+        _ => throw new UpdateException($"Automatic updates are unavailable for {releaseAssetId}."),
     };
 
     private static AvailableUpdate? SelectUpdate(

@@ -9,6 +9,11 @@ param(
     [ValidateSet('FrameworkDependent', 'SelfContained')]
     [string]$ManagedDeployment = 'SelfContained',
 
+    [ValidateSet('Bundled', 'System')]
+    [string]$MediaDependencyMode = 'Bundled',
+
+    [string]$ReleaseAssetId,
+
     [Parameter(Mandatory = $true)]
     [string]$DepsJsonPath,
 
@@ -129,7 +134,15 @@ if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
     throw "Version '$Version' is not a valid semantic version."
 }
 
-if ([string]::IsNullOrWhiteSpace($NativePayloadPath)) {
+$includesNativeMedia = $MediaDependencyMode -eq 'Bundled'
+if ([string]::IsNullOrWhiteSpace($ReleaseAssetId)) {
+    $ReleaseAssetId = if ($includesNativeMedia) { $RuntimeId } else { "$RuntimeId-system" }
+}
+if ($ReleaseAssetId -notmatch '^[a-z0-9-]+$') {
+    throw "Release asset identity '$ReleaseAssetId' is invalid."
+}
+
+if ($includesNativeMedia -and [string]::IsNullOrWhiteSpace($NativePayloadPath)) {
     $NativePayloadPath = if ($RuntimeId -eq 'win-x64') {
         Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v1/payload'
     }
@@ -137,17 +150,22 @@ if ([string]::IsNullOrWhiteSpace($NativePayloadPath)) {
         Join-Path $workspaceRoot "packages/native/release/$RuntimeId/payload"
     }
 }
-if ([string]::IsNullOrWhiteSpace($NativeCompliancePath)) {
+if ($includesNativeMedia -and [string]::IsNullOrWhiteSpace($NativeCompliancePath)) {
     $NativeCompliancePath = Join-Path $workspaceRoot "artifacts/compliance/native/$RuntimeId"
 }
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $workspaceRoot "artifacts/compliance/$Version/$RuntimeId"
+    $OutputPath = Join-Path $workspaceRoot "artifacts/compliance/$Version/$ReleaseAssetId"
 }
 
-$nativePayloadFullPath = [System.IO.Path]::GetFullPath($NativePayloadPath)
-$nativeComplianceFullPath = [System.IO.Path]::GetFullPath($NativeCompliancePath)
+$nativePayloadFullPath = if ($includesNativeMedia) {
+    [System.IO.Path]::GetFullPath($NativePayloadPath)
+} else { $null }
+$nativeComplianceFullPath = if ($includesNativeMedia) {
+    [System.IO.Path]::GetFullPath($NativeCompliancePath)
+} else { $null }
 $outputFullPath = [System.IO.Path]::GetFullPath($OutputPath)
-if (-not (Test-Path -LiteralPath $nativePayloadFullPath -PathType Container)) {
+if ($includesNativeMedia -and
+    -not (Test-Path -LiteralPath $nativePayloadFullPath -PathType Container)) {
     throw "The native payload is missing: $nativePayloadFullPath"
 }
 if (Test-Path -LiteralPath $outputFullPath) {
@@ -174,18 +192,23 @@ $nativeSourceArchiveName = "$nativePrefix-native-corresponding-source.tar.zst"
 $nativeLicenseArchiveName = "$nativePrefix-native-third-party-licenses.tar.zst"
 $nativeProvenanceName = "$nativePrefix-native-source-provenance.tsv"
 $nativeLicenseManifestName = "$nativePrefix-native-license-manifest.tsv"
-foreach ($name in @(
-    $nativeSourceArchiveName,
-    $nativeLicenseArchiveName,
-    $nativeProvenanceName,
-    $nativeLicenseManifestName,
-    'SHA256SUMS')) {
-    if (-not (Test-Path -LiteralPath (Join-Path $nativeComplianceFullPath $name) -PathType Leaf)) {
-        throw "Native compliance input is incomplete. Missing $name under $nativeComplianceFullPath."
+if ($includesNativeMedia) {
+    foreach ($name in @(
+        $nativeSourceArchiveName,
+        $nativeLicenseArchiveName,
+        $nativeProvenanceName,
+        $nativeLicenseManifestName,
+        'SHA256SUMS')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $nativeComplianceFullPath $name) -PathType Leaf)) {
+            throw "Native compliance input is incomplete. Missing $name under $nativeComplianceFullPath."
+        }
     }
 }
 
-$requiredNativeFiles = if ($RuntimeId -eq 'win-x64') {
+$requiredNativeFiles = if (-not $includesNativeMedia) {
+    @()
+}
+elseif ($RuntimeId -eq 'win-x64') {
     @($nativeDependencies.windows.requiredBinaries | ForEach-Object { "tools/ffmpeg/$_" })
 }
 else {
@@ -215,15 +238,17 @@ try {
 
     $nativeSourceReleaseName = "ClipEdit-$Version-$RuntimeId-native-source.tar.zst"
     $nativeLicenseReleaseName = "ClipEdit-$Version-$RuntimeId-native-licenses.tar.zst"
-    $nativeSourceInputPath = Join-Path $nativeComplianceFullPath $nativeSourceArchiveName
-    $nativeLicenseInputPath = Join-Path $nativeComplianceFullPath $nativeLicenseArchiveName
-    Add-ComplianceFile $nativeSourceInputPath (Join-Path $sourcePath $nativeSourceReleaseName)
-    Add-ComplianceFile $nativeLicenseInputPath (Join-Path $licensesPath $nativeLicenseReleaseName)
-    Copy-Item -LiteralPath (Join-Path $nativeComplianceFullPath $nativeProvenanceName) `
-        -Destination $licensesPath
-    Copy-Item -LiteralPath (Join-Path $nativeComplianceFullPath $nativeLicenseManifestName) `
-        -Destination $licensesPath
-    Write-Verbose 'Linked native source/license archives and copied native manifests.'
+    if ($includesNativeMedia) {
+        $nativeSourceInputPath = Join-Path $nativeComplianceFullPath $nativeSourceArchiveName
+        $nativeLicenseInputPath = Join-Path $nativeComplianceFullPath $nativeLicenseArchiveName
+        Add-ComplianceFile $nativeSourceInputPath (Join-Path $sourcePath $nativeSourceReleaseName)
+        Add-ComplianceFile $nativeLicenseInputPath (Join-Path $licensesPath $nativeLicenseReleaseName)
+        Copy-Item -LiteralPath (Join-Path $nativeComplianceFullPath $nativeProvenanceName) `
+            -Destination $licensesPath
+        Copy-Item -LiteralPath (Join-Path $nativeComplianceFullPath $nativeLicenseManifestName) `
+            -Destination $licensesPath
+        Write-Verbose 'Linked native source/license archives and copied native manifests.'
+    }
 
     $dotnetRoot = Get-DotNetDistributionRoot
     foreach ($runtimeNotice in @('LICENSE.txt', 'ThirdPartyNotices.txt')) {
@@ -295,29 +320,31 @@ try {
     }
 
     $nativeComponents = @()
-    $provenanceLines = Get-Content -LiteralPath (Join-Path $nativeComplianceFullPath $nativeProvenanceName)
-    foreach ($line in $provenanceLines | Select-Object -Skip 1) {
-        if ([string]::IsNullOrWhiteSpace($line)) {
-            continue
+    if ($includesNativeMedia) {
+        $provenanceLines = Get-Content -LiteralPath (Join-Path $nativeComplianceFullPath $nativeProvenanceName)
+        foreach ($line in $provenanceLines | Select-Object -Skip 1) {
+            if ([string]::IsNullOrWhiteSpace($line)) {
+                continue
+            }
+            $parts = $line.Split("`t")
+            if ($parts.Count -ne 3) {
+                throw "Malformed native provenance row: $line"
+            }
+            $nativeComponents += [pscustomobject]@{
+                Id = $parts[0]
+                Version = $parts[1]
+                RepositoryUrl = $parts[2]
+            }
         }
-        $parts = $line.Split("`t")
-        if ($parts.Count -ne 3) {
-            throw "Malformed native provenance row: $line"
+        if ($nativeComponents.Count -eq 0) {
+            throw 'The native provenance manifest contains no components.'
         }
-        $nativeComponents += [pscustomobject]@{
-            Id = $parts[0]
-            Version = $parts[1]
-            RepositoryUrl = $parts[2]
-        }
+        Write-Verbose "Resolved $($nativeComponents.Count) native source components."
     }
-    if ($nativeComponents.Count -eq 0) {
-        throw 'The native provenance manifest contains no components.'
-    }
-    Write-Verbose "Resolved $($nativeComponents.Count) native source components."
 
     $creationTimestamp = (& git -c "safe.directory=$safeWorkspace" show -s --format=%cI $commit).Trim()
     $created = ([DateTimeOffset]::Parse($creationTimestamp)).UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ')
-    $documentNamespace = "https://spdx.clipedit.local/$Version/$RuntimeId/$commit"
+    $documentNamespace = "https://spdx.clipedit.local/$Version/$ReleaseAssetId/$commit"
     $appSpdxId = 'SPDXRef-Package-ClipEdit'
     $packages = @()
     $relationships = @(
@@ -419,7 +446,7 @@ try {
         spdxVersion = 'SPDX-2.3'
         dataLicense = 'CC0-1.0'
         SPDXID = 'SPDXRef-DOCUMENT'
-        name = "ClipEdit-$Version-$RuntimeId"
+        name = "ClipEdit-$Version-$ReleaseAssetId"
         documentNamespace = $documentNamespace
         creationInfo = [ordered]@{
             created = $created
@@ -430,7 +457,7 @@ try {
         relationships = $relationships
         hasExtractedLicensingInfos = $extractedLicenses
     }
-    $spdxPath = Join-Path $stagingPath "ClipEdit-$Version-$RuntimeId.spdx.json"
+    $spdxPath = Join-Path $stagingPath "ClipEdit-$Version-$ReleaseAssetId.spdx.json"
     [System.IO.File]::WriteAllText(
         $spdxPath,
         ($spdx | ConvertTo-Json -Depth 6) + [Environment]::NewLine,
@@ -440,11 +467,19 @@ try {
     $noticeLines = New-Object System.Collections.Generic.List[string]
     $noticeLines.Add('# ClipEdit third-party notices')
     $noticeLines.Add('')
-    $noticeLines.Add(('Release: `{0}` for `{1}`; source revision `{2}`.' -f $Version, $RuntimeId, $commit))
+    $noticeLines.Add(('Release: `{0}` for `{1}`; source revision `{2}`.' -f $Version, $ReleaseAssetId, $commit))
     $noticeLines.Add('')
-    $noticeLines.Add('ClipEdit is distributed under GNU GPL version 3. The complete application license is included as `licenses/ClipEdit-GPL-3.0.txt`. The release source directory contains the exact ClipEdit and native corresponding-source archives; the SBOM names every managed and native component known to this build.')
+    $noticeLines.Add($(if ($includesNativeMedia) {
+        'ClipEdit is distributed under GNU GPL version 3. The complete application license is included as `licenses/ClipEdit-GPL-3.0.txt`. The release source directory contains the exact ClipEdit and native corresponding-source archives; the SBOM names every managed and native component known to this build.'
+    } else {
+        'ClipEdit is distributed under GNU GPL version 3. The complete application license is included as `licenses/ClipEdit-GPL-3.0.txt`. The release source directory contains the exact ClipEdit source archive; the SBOM names the managed components included in this build.'
+    }))
     $noticeLines.Add('')
-    $noticeLines.Add('FFmpeg is built with `--enable-gpl --enable-version3` and GPL libraries including x264, so the shipped FFmpeg stack is treated as GPLv3. mpv/libmpv is dynamically linked to that shared stack. Exact configure output, source revisions, license files, and build recipes are preserved in the native source and license archives.')
+    $noticeLines.Add($(if ($includesNativeMedia) {
+        'FFmpeg is built with `--enable-gpl --enable-version3` and GPL libraries including x264, so the shipped FFmpeg stack is treated as GPLv3. mpv/libmpv is dynamically linked to that shared stack. Exact configure output, source revisions, license files, and build recipes are preserved in the native source and license archives.'
+    } else {
+        'This system-dependencies artifact does not distribute FFmpeg, ffprobe, libmpv, or the .NET runtime. They must be installed separately and retain the license terms of the user-selected system packages.'
+    }))
     $noticeLines.Add('')
     $noticeLines.Add('## Managed packages')
     $noticeLines.Add('')
@@ -463,33 +498,36 @@ try {
     $noticeLines.Add('')
     $noticeLines.Add('The canonical MIT terms are in `licenses/MIT.txt`; package-specific license files are under `licenses/managed-package-files`. The .NET runtime license and full Microsoft third-party notices are included in this directory.')
     $noticeLines.Add('')
-    $noticeLines.Add('## Native components')
-    $noticeLines.Add('')
-    $noticeLines.Add('| Component | Exact revision | Upstream |')
-    $noticeLines.Add('|---|---|---|')
-    foreach ($component in $nativeComponents) {
-        $noticeLines.Add("| $(Escape-MarkdownCell $component.Id) | $(Escape-MarkdownCell $component.Version) | $(Escape-MarkdownCell $component.RepositoryUrl) |")
+    if ($includesNativeMedia) {
+        $noticeLines.Add('## Native components')
+        $noticeLines.Add('')
+        $noticeLines.Add('| Component | Exact revision | Upstream |')
+        $noticeLines.Add('|---|---|---|')
+        foreach ($component in $nativeComponents) {
+            $noticeLines.Add("| $(Escape-MarkdownCell $component.Id) | $(Escape-MarkdownCell $component.Version) | $(Escape-MarkdownCell $component.RepositoryUrl) |")
+        }
+        $noticeLines.Add('')
+        $noticeLines.Add("The byte-for-byte collected native notices are in `licenses/$nativeLicenseReleaseName`; `$nativeLicenseManifestName` maps each component to its preserved files. Exact buildable sources and ClipEdit's build recipe are in `source/$nativeSourceReleaseName`.")
     }
-    $noticeLines.Add('')
-    $noticeLines.Add("The byte-for-byte collected native notices are in `licenses/$nativeLicenseReleaseName`; `$nativeLicenseManifestName` maps each component to its preserved files. Exact buildable sources and ClipEdit's build recipe are in `source/$nativeSourceReleaseName`.")
     $noticePath = Join-Path $stagingPath 'THIRD_PARTY_NOTICES.md'
     [System.IO.File]::WriteAllLines($noticePath, $noticeLines, (New-Object System.Text.UTF8Encoding($false)))
     Write-Verbose 'Wrote consolidated third-party notices.'
 
-    $nativeInputHashes = @{}
-    foreach ($line in Get-Content -LiteralPath (Join-Path $nativeComplianceFullPath 'SHA256SUMS')) {
-        if ($line -match '^([0-9a-fA-F]{64})  (.+)$') {
-            $nativeInputHashes[$Matches[2]] = $Matches[1].ToLowerInvariant()
+    $knownOutputHashes = @{}
+    if ($includesNativeMedia) {
+        $nativeInputHashes = @{}
+        foreach ($line in Get-Content -LiteralPath (Join-Path $nativeComplianceFullPath 'SHA256SUMS')) {
+            if ($line -match '^([0-9a-fA-F]{64})  (.+)$') {
+                $nativeInputHashes[$Matches[2]] = $Matches[1].ToLowerInvariant()
+            }
         }
-    }
-    foreach ($requiredHashName in @($nativeSourceArchiveName, $nativeLicenseArchiveName)) {
-        if (-not $nativeInputHashes.ContainsKey($requiredHashName)) {
-            throw "Native compliance checksum is missing for $requiredHashName."
+        foreach ($requiredHashName in @($nativeSourceArchiveName, $nativeLicenseArchiveName)) {
+            if (-not $nativeInputHashes.ContainsKey($requiredHashName)) {
+                throw "Native compliance checksum is missing for $requiredHashName."
+            }
         }
-    }
-    $knownOutputHashes = @{
-        "source/$nativeSourceReleaseName" = $nativeInputHashes[$nativeSourceArchiveName]
-        "licenses/$nativeLicenseReleaseName" = $nativeInputHashes[$nativeLicenseArchiveName]
+        $knownOutputHashes["source/$nativeSourceReleaseName"] = $nativeInputHashes[$nativeSourceArchiveName]
+        $knownOutputHashes["licenses/$nativeLicenseReleaseName"] = $nativeInputHashes[$nativeLicenseArchiveName]
     }
 
     $checksums = Get-ChildItem -LiteralPath $stagingPath -Recurse -File |
@@ -512,7 +550,7 @@ try {
 
     [System.IO.Directory]::CreateDirectory((Split-Path -Parent $outputFullPath)) | Out-Null
     [System.IO.Directory]::Move($stagingPath, $outputFullPath)
-    Write-Host "ClipEdit $RuntimeId release compliance bundle is ready at $outputFullPath"
+    Write-Host "ClipEdit $ReleaseAssetId release compliance bundle is ready at $outputFullPath"
 }
 finally {
     if (Test-Path -LiteralPath $stagingPath) {

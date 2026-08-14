@@ -86,13 +86,13 @@ public sealed partial class App : Avalonia.Application
             var exportPreferencesStore = new ExportPreferencesStore(
                 Path.Combine(applicationDataDirectory, "export-settings.json"));
             viewModel.ApplyExportPreferences(exportPreferencesStore.Load());
-            var runtimeId = UpdateViewModel.GetCurrentRuntimeId();
-            if (runtimeId is not null)
+            var releaseAssetId = UpdateViewModel.GetCurrentReleaseAssetId();
+            if (releaseAssetId is not null)
             {
                 viewModel.ConfigureUpdates(new UpdateViewModel(
                     new GitHubUpdateClient(),
                     new UpdateSettingsStore(Path.Combine(applicationDataDirectory, "updates.json")),
-                    runtimeId,
+                    releaseAssetId,
                     Path.Combine(applicationDataDirectory, "Updates"),
                     UpdateViewModel.GetCurrentVersion(),
                     SelfUpdateBootstrapper.CanReplaceCurrentExecutable()));

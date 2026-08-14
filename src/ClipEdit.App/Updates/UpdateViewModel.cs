@@ -10,7 +10,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     private readonly IUpdateClient? _client;
     private readonly UpdateSettingsStore? _settingsStore;
     private readonly SemanticVersion _currentVersion;
-    private readonly string? _runtimeId;
+    private readonly string? _releaseAssetId;
     private readonly string? _stagingRoot;
     private readonly Func<DateTimeOffset> _utcNow;
     private readonly bool _canSelfUpdate;
@@ -32,7 +32,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     internal UpdateViewModel(
         IUpdateClient client,
         UpdateSettingsStore settingsStore,
-        string runtimeId,
+        string releaseAssetId,
         string stagingRoot,
         SemanticVersion currentVersion,
         bool canSelfUpdate,
@@ -40,7 +40,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
-        _runtimeId = runtimeId;
+        _releaseAssetId = releaseAssetId;
         _stagingRoot = Path.GetFullPath(stagingRoot);
         _currentVersion = currentVersion ?? throw new ArgumentNullException(nameof(currentVersion));
         _canSelfUpdate = canSelfUpdate;
@@ -198,9 +198,31 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         return OperatingSystem.IsLinux() ? "linux-x64" : null;
     }
 
+    internal static string? GetCurrentReleaseAssetId()
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(UpdateViewModel).Assembly;
+        var configuredAssetId = assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => string.Equals(
+                attribute.Key,
+                "ClipEditReleaseAssetId",
+                StringComparison.Ordinal))?
+            .Value;
+        return ResolveReleaseAssetId(configuredAssetId, GetCurrentRuntimeId());
+    }
+
+    internal static string? ResolveReleaseAssetId(string? configuredAssetId, string? runtimeId) =>
+        configuredAssetId switch
+        {
+            "win-x64" when runtimeId == "win-x64" => configuredAssetId,
+            "linux-x64" when runtimeId == "linux-x64" => configuredAssetId,
+            "linux-x64-system" when runtimeId == "linux-x64" => configuredAssetId,
+            _ => runtimeId,
+        };
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        if (!AutomaticallyCheckForUpdates || _client is null || _runtimeId is null)
+        if (!AutomaticallyCheckForUpdates || _client is null || _releaseAssetId is null)
         {
             return;
         }
@@ -274,7 +296,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
 
     private async Task CheckAsync(bool isManual, CancellationToken cancellationToken)
     {
-        if (_client is null || _runtimeId is null || IsChecking || IsDownloading)
+        if (_client is null || _releaseAssetId is null || IsChecking || IsDownloading)
         {
             return;
         }
@@ -289,19 +311,19 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         {
             var update = await _client.CheckAsync(
                 _currentVersion,
-                _runtimeId,
+                _releaseAssetId,
                 IncludeBetaVersions,
                 cancellationToken);
             _availableUpdate = update;
             _settings = _settings with
             {
                 LastCheckUtc = _utcNow(),
-                CachedUpdate = update is null ? null : ToCachedSettings(update, _runtimeId),
+                CachedUpdate = update is null ? null : ToCachedSettings(update, _releaseAssetId),
             };
             SaveSettings();
             StatusText = update is null
-                ? $"ClipEdit {_currentVersion} is up to date for {_runtimeId}."
-                : $"ClipEdit {update.Version} is available for {_runtimeId}.";
+                ? $"ClipEdit {_currentVersion} is up to date for {_releaseAssetId}."
+                : $"ClipEdit {update.Version} is available for {_releaseAssetId}.";
             RaiseUpdateChanged();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -328,8 +350,8 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     private void ApplyCachedUpdate(CachedUpdateSettings? cached)
     {
         if (cached is null ||
-            _runtimeId is null ||
-            !string.Equals(cached.RuntimeId, _runtimeId, StringComparison.Ordinal) ||
+            _releaseAssetId is null ||
+            !string.Equals(cached.RuntimeId, _releaseAssetId, StringComparison.Ordinal) ||
             (cached.IsPrerelease && !IncludeBetaVersions) ||
             !SemanticVersion.TryParse(cached.Version, out var version) ||
             version <= _currentVersion ||
@@ -361,7 +383,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
                 checksum));
     }
 
-    private static CachedUpdateSettings ToCachedSettings(AvailableUpdate update, string runtimeId) =>
+    private static CachedUpdateSettings ToCachedSettings(AvailableUpdate update, string releaseAssetId) =>
         new(
             update.Version.ToString(),
             update.TagName,
@@ -369,7 +391,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
             update.ReleasePageUri.AbsoluteUri,
             update.PublishedAt,
             update.IsPrerelease,
-            runtimeId,
+            releaseAssetId,
             update.Asset.Name,
             update.Asset.DownloadUri.AbsoluteUri,
             update.Asset.Size,

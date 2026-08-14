@@ -4,6 +4,22 @@ namespace ClipEdit.App.Tests.Updates;
 
 public sealed class UpdateViewModelTests
 {
+    [Theory]
+    [InlineData(null, "linux-x64", "linux-x64")]
+    [InlineData("linux-x64", "linux-x64", "linux-x64")]
+    [InlineData("linux-x64-system", "linux-x64", "linux-x64-system")]
+    [InlineData("linux-x64-system", "win-x64", "win-x64")]
+    [InlineData("unknown", "linux-x64", "linux-x64")]
+    public void Release_identity_preserves_only_a_compatible_packaged_variant(
+        string? configuredAssetId,
+        string runtimeId,
+        string expectedAssetId)
+    {
+        Assert.Equal(
+            expectedAssetId,
+            UpdateViewModel.ResolveReleaseAssetId(configuredAssetId, runtimeId));
+    }
+
     [Fact]
     public async Task Beta_toggle_is_passed_to_GitHub_check_and_exposes_verified_update_action()
     {
@@ -57,7 +73,7 @@ public sealed class UpdateViewModelTests
 
         public Task<AvailableUpdate?> CheckAsync(
             SemanticVersion currentVersion,
-            string runtimeId,
+            string releaseAssetId,
             bool includePrereleases,
             CancellationToken cancellationToken)
         {

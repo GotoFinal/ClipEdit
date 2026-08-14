@@ -38,7 +38,7 @@ internal interface IUpdateClient : IDisposable
 {
     Task<AvailableUpdate?> CheckAsync(
         SemanticVersion currentVersion,
-        string runtimeId,
+        string releaseAssetId,
         bool includePrereleases,
         CancellationToken cancellationToken);
 

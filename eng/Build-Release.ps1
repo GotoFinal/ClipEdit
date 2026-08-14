@@ -9,6 +9,9 @@ param(
     [ValidateSet('FrameworkDependent', 'SelfContained')]
     [string]$ManagedDeployment = 'SelfContained',
 
+    [ValidateSet('Bundled', 'System')]
+    [string]$MediaDependencyMode = 'Bundled',
+
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
 
@@ -51,6 +54,18 @@ if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
     throw "Version '$Version' is not a valid semantic version."
 }
 
+if ($MediaDependencyMode -eq 'System') {
+    if ($RuntimeId -ne 'linux-x64') {
+        throw 'System media dependencies are currently supported only for linux-x64 releases.'
+    }
+    if ($ManagedDeployment -ne 'FrameworkDependent') {
+        throw 'The Linux system-dependencies release must be FrameworkDependent so it does not bundle .NET.'
+    }
+}
+
+$includesNativeMedia = $MediaDependencyMode -eq 'Bundled'
+$releaseAssetId = if ($includesNativeMedia) { $RuntimeId } else { "$RuntimeId-system" }
+
 if ([string]::IsNullOrWhiteSpace($NativePayloadPath)) {
     $NativePayloadPath = if ($RuntimeId -eq 'win-x64') {
         Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v1/payload'
@@ -61,7 +76,9 @@ if ([string]::IsNullOrWhiteSpace($NativePayloadPath)) {
 }
 
 $fullPayloadPath = [System.IO.Path]::GetFullPath($NativePayloadPath)
-if (-not $SkipPayloadPreparation -and -not (Test-Path -LiteralPath $fullPayloadPath)) {
+if ($includesNativeMedia -and
+    -not $SkipPayloadPreparation -and
+    -not (Test-Path -LiteralPath $fullPayloadPath)) {
     & (Join-Path $PSScriptRoot 'Prepare-ReleasePayload.ps1') `
         -RuntimeId $RuntimeId `
         -OutputPath $fullPayloadPath
@@ -71,12 +88,15 @@ if (-not $SkipPayloadPreparation -and -not (Test-Path -LiteralPath $fullPayloadP
 }
 
 $executableSuffix = if ($RuntimeId -eq 'win-x64') { '.exe' } else { '' }
-$requiredPayload = @('LICENSE.txt', 'licenses/THIRD_PARTY_NOTICES.md')
-$requiredPayload += if ($RuntimeId -eq 'win-x64') {
-    @($nativeDependencies.windows.requiredBinaries | ForEach-Object { "tools/ffmpeg/$_" })
-}
-else {
-    @('tools/ffmpeg/ffmpeg', 'tools/ffmpeg/ffprobe', 'libmpv.so.2')
+$requiredPayload = @()
+if ($includesNativeMedia) {
+    $requiredPayload += @('LICENSE.txt', 'licenses/THIRD_PARTY_NOTICES.md')
+    $requiredPayload += if ($RuntimeId -eq 'win-x64') {
+        @($nativeDependencies.windows.requiredBinaries | ForEach-Object { "tools/ffmpeg/$_" })
+    }
+    else {
+        @('tools/ffmpeg/ffmpeg', 'tools/ffmpeg/ffprobe', 'libmpv.so.2')
+    }
 }
 
 $missingPayload = @($requiredPayload | Where-Object {
@@ -88,7 +108,7 @@ if ($missingPayload.Count -gt 0) {
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $workspaceRoot "artifacts/release/$Version/$RuntimeId"
+    $OutputPath = Join-Path $workspaceRoot "artifacts/release/$Version/$releaseAssetId"
 }
 
 $fullOutputPath = [System.IO.Path]::GetFullPath($OutputPath)
@@ -99,7 +119,7 @@ $releaseAssetName = if ($RuntimeId -eq 'win-x64') {
     'ClipEdit-win-x64.exe'
 }
 else {
-    'ClipEdit-linux-x64'
+    "ClipEdit-$releaseAssetId"
 }
 $releaseAssetPath = Join-Path (Split-Path -Parent $fullOutputPath) $releaseAssetName
 $releaseChecksumPath = "$releaseAssetPath.sha256"
@@ -113,6 +133,7 @@ $stagingRoot = Join-Path $workspaceRoot 'artifacts/.staging'
 $buildId = [Guid]::NewGuid().ToString('N')
 $stagingPath = Join-Path $stagingRoot $buildId
 $buildArtifactsPath = Join-Path $stagingRoot "$buildId-build"
+$complianceBuildPath = Join-Path $stagingRoot "$buildId-compliance"
 $complianceDepsPath = Join-Path $buildArtifactsPath 'ClipEdit.release.deps.json'
 [System.IO.Directory]::CreateDirectory($stagingPath) | Out-Null
 
@@ -133,7 +154,7 @@ try {
         '--output', $stagingPath,
         '--nologo',
         "-p:Version=$Version",
-        "-p:ClipEditNativePayloadRoot=$fullPayloadPath",
+        "-p:ClipEditReleaseAssetId=$releaseAssetId",
         "-p:PublishSingleFile=$singleFileValue",
         "-p:IncludeNativeLibrariesForSelfExtract=$singleFileValue",
         "-p:IncludeAllContentForSelfExtract=$singleFileValue",
@@ -142,6 +163,9 @@ try {
         '-p:DebugSymbols=false',
         '-p:DebugType=None'
     )
+    if ($includesNativeMedia) {
+        $publishArguments += "-p:ClipEditNativePayloadRoot=$fullPayloadPath"
+    }
     if ($GenerateCompliance) {
         $publishArguments += "-p:ClipEditComplianceDepsOutput=$complianceDepsPath"
     }
@@ -182,14 +206,18 @@ try {
             throw "The publish did not capture its exact dependency manifest: $complianceDepsPath"
         }
 
-        $compliancePath = Join-Path $buildArtifactsPath 'compliance'
+        $compliancePath = $complianceBuildPath
         $complianceArguments = @{
             RuntimeId = $RuntimeId
             Version = $Version
             ManagedDeployment = $ManagedDeployment
+            MediaDependencyMode = $MediaDependencyMode
+            ReleaseAssetId = $releaseAssetId
             DepsJsonPath = $complianceDepsPath
-            NativePayloadPath = $fullPayloadPath
             OutputPath = $compliancePath
+        }
+        if ($includesNativeMedia) {
+            $complianceArguments.NativePayloadPath = $fullPayloadPath
         }
         if (-not [string]::IsNullOrWhiteSpace($NativeCompliancePath)) {
             $complianceArguments.NativeCompliancePath = $NativeCompliancePath
@@ -205,18 +233,24 @@ try {
 
         $augmentedPayloadPath = Join-Path $buildArtifactsPath 'native-payload-with-compliance'
         [System.IO.Directory]::CreateDirectory($augmentedPayloadPath) | Out-Null
-        foreach ($payloadItem in Get-ChildItem -LiteralPath $fullPayloadPath -Force) {
-            Copy-Item -LiteralPath $payloadItem.FullName `
-                -Destination $augmentedPayloadPath `
-                -Recurse `
-                -Force
+        if ($includesNativeMedia) {
+            foreach ($payloadItem in Get-ChildItem -LiteralPath $fullPayloadPath -Force) {
+                Copy-Item -LiteralPath $payloadItem.FullName `
+                    -Destination $augmentedPayloadPath `
+                    -Recurse `
+                    -Force
+            }
+        }
+        else {
+            Copy-Item -LiteralPath (Join-Path $workspaceRoot 'LICENSE') `
+                -Destination (Join-Path $augmentedPayloadPath 'LICENSE.txt')
         }
         $augmentedLicensePath = Join-Path $augmentedPayloadPath 'licenses'
         [System.IO.Directory]::CreateDirectory($augmentedLicensePath) | Out-Null
         Copy-Item -LiteralPath (Join-Path $compliancePath 'THIRD_PARTY_NOTICES.md') `
             -Destination (Join-Path $augmentedLicensePath 'THIRD_PARTY_NOTICES.md') `
             -Force
-        Copy-Item -LiteralPath (Join-Path $compliancePath "ClipEdit-$Version-$RuntimeId.spdx.json") `
+        Copy-Item -LiteralPath (Join-Path $compliancePath "ClipEdit-$Version-$releaseAssetId.spdx.json") `
             -Destination $augmentedLicensePath
         foreach ($licenseItem in Get-ChildItem -LiteralPath (Join-Path $compliancePath 'licenses') -Force) {
             Copy-Item -LiteralPath $licenseItem.FullName `
@@ -227,14 +261,10 @@ try {
 
         [System.IO.Directory]::Delete($stagingPath, $true)
         [System.IO.Directory]::CreateDirectory($stagingPath) | Out-Null
-        $finalPublishArguments = @($publishArguments | ForEach-Object {
-            if ($_ -like '-p:ClipEditNativePayloadRoot=*') {
-                "-p:ClipEditNativePayloadRoot=$augmentedPayloadPath"
-            }
-            else {
-                $_
-            }
+        $finalPublishArguments = @($publishArguments | Where-Object {
+            $_ -notlike '-p:ClipEditNativePayloadRoot=*'
         })
+        $finalPublishArguments += "-p:ClipEditNativePayloadRoot=$augmentedPayloadPath"
         & dotnet @finalPublishArguments
         if ($LASTEXITCODE -ne 0) {
             throw "The compliance-embedded dotnet publish failed with exit code $LASTEXITCODE."
@@ -260,10 +290,18 @@ try {
     }
 
     $hash = (Get-FileHash -LiteralPath $executablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $correspondingSourcePaths = if ($GenerateCompliance -and $includesNativeMedia) {
+        @(
+            "compliance/source/ClipEdit-$Version-source.zip",
+            "compliance/source/ClipEdit-$Version-$RuntimeId-native-source.tar.zst")
+    } elseif ($GenerateCompliance) {
+        @("compliance/source/ClipEdit-$Version-source.zip")
+    } else { @() }
     $manifest = [ordered]@{
         product = 'ClipEdit'
         version = $Version
         runtimeId = $RuntimeId
+        releaseAssetId = $releaseAssetId
         bundleMode = $BundleMode
         executable = $executableName
         sha256 = $hash
@@ -272,18 +310,20 @@ try {
         requiredManagedFramework = if ($selfContained) { $null } else { 'Microsoft.NETCore.App' }
         requiredManagedFrameworkVersion = if ($selfContained) { $null } else { '10.0.0' }
         compressionEnabled = $compressionEnabled
-        nativeMediaProfile = [string]$nativeDependencies.releaseProfiles.$RuntimeId
-        includesFFmpeg = $true
-        includesLibMpv = $true
+        mediaDependencyMode = $MediaDependencyMode
+        nativeMediaProfile = if ($includesNativeMedia) {
+            [string]$nativeDependencies.releaseProfiles.$RuntimeId
+        } else { $null }
+        includesFFmpeg = $includesNativeMedia
+        includesLibMpv = $includesNativeMedia
+        requiredSystemDependencies = if ($includesNativeMedia) { @() } else {
+            @('Microsoft.NETCore.App 10.0', 'ffmpeg', 'ffprobe', 'libmpv.so.2')
+        }
         complianceBundleIncluded = $GenerateCompliance.IsPresent
         spdxPath = if ($GenerateCompliance) {
-            "compliance/ClipEdit-$Version-$RuntimeId.spdx.json"
+            "compliance/ClipEdit-$Version-$releaseAssetId.spdx.json"
         } else { $null }
-        correspondingSourcePaths = if ($GenerateCompliance) {
-            @(
-                "compliance/source/ClipEdit-$Version-source.zip",
-                "compliance/source/ClipEdit-$Version-$RuntimeId-native-source.tar.zst")
-        } else { @() }
+        correspondingSourcePaths = @($correspondingSourcePaths)
     }
     [System.IO.File]::WriteAllText(
         (Join-Path $stagingPath 'release-manifest.json'),
@@ -329,7 +369,7 @@ try {
             (New-Object System.Text.UTF8Encoding($false)))
         Write-Host "GitHub release assets are ready at $releaseAssetPath and $releaseChecksumPath"
     }
-    Write-Host "ClipEdit $RuntimeId $BundleMode $ManagedDeployment release candidate is ready at $fullOutputPath"
+    Write-Host "ClipEdit $releaseAssetId $BundleMode $ManagedDeployment release candidate is ready at $fullOutputPath"
     if ($GenerateCompliance) {
         Write-Host 'License notices, SPDX SBOM, and corresponding source are assembled.'
     }
@@ -343,5 +383,8 @@ finally {
     }
     if (Test-Path -LiteralPath $buildArtifactsPath) {
         [System.IO.Directory]::Delete($buildArtifactsPath, $true)
+    }
+    if (Test-Path -LiteralPath $complianceBuildPath) {
+        [System.IO.Directory]::Delete($complianceBuildPath, $true)
     }
 }

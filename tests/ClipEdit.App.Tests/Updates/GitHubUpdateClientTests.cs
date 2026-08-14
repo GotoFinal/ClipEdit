@@ -66,6 +66,36 @@ public sealed class GitHubUpdateClientTests
     }
 
     [Fact]
+    public async Task System_dependency_build_only_selects_the_matching_linux_variant()
+    {
+        const string releases = """
+            [
+              {
+                "tag_name":"v1.4.0","name":"Both Linux variants","html_url":"https://github.com/GotoFinal/ClipEdit/releases/tag/v1.4.0",
+                "draft":false,"prerelease":false,"published_at":"2026-08-14T12:00:00Z",
+                "assets":[
+                  {"name":"ClipEdit-linux-x64","state":"uploaded","browser_download_url":"https://github.com/GotoFinal/ClipEdit/releases/download/v1.4.0/ClipEdit-linux-x64","size":900,"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+                  {"name":"ClipEdit-linux-x64-system","state":"uploaded","browser_download_url":"https://github.com/GotoFinal/ClipEdit/releases/download/v1.4.0/ClipEdit-linux-x64-system","size":100,"digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+                ]
+              }
+            ]
+            """;
+        using var handler = new StubHttpHandler(_ => JsonResponse(releases));
+        using var client = new GitHubUpdateClient(new HttpClient(handler));
+        Assert.True(SemanticVersion.TryParse("1.0.0", out var current));
+
+        var update = await client.CheckAsync(
+            current,
+            "linux-x64-system",
+            false,
+            CancellationToken.None);
+
+        Assert.NotNull(update);
+        Assert.Equal("ClipEdit-linux-x64-system", update.Asset.Name);
+        Assert.Equal(100, update.Asset.Size);
+    }
+
+    [Fact]
     public async Task Download_requires_and_verifies_sha256_before_staging_the_executable()
     {
         var executable = new byte[] { (byte)'M', (byte)'Z', 0, 0, 1, 2, 3, 4 };

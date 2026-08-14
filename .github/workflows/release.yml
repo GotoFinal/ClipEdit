@@ -19,14 +19,6 @@ on:
           - both
           - windows
           - linux
-      managed_deployment:
-        description: "Bundle the .NET runtime or require .NET 10"
-        required: true
-        default: "SelfContained"
-        type: choice
-        options:
-          - SelfContained
-          - FrameworkDependent
       prerelease:
         description: "Mark the draft as a beta/prerelease"
         required: true
@@ -70,7 +62,6 @@ jobs:
       tag: ${{ steps.values.outputs.tag }}
       windows: ${{ steps.values.outputs.windows }}
       linux: ${{ steps.values.outputs.linux }}
-      deployment: ${{ steps.values.outputs.deployment }}
       prerelease: ${{ steps.values.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v6
@@ -82,18 +73,15 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version || '' }}
           INPUT_PLATFORMS: ${{ inputs.platforms || '' }}
-          INPUT_DEPLOYMENT: ${{ inputs.managed_deployment || '' }}
           INPUT_PRERELEASE: ${{ inputs.prerelease || false }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             version="${GITHUB_REF_NAME#v}"
             platforms="both"
-            deployment="SelfContained"
             if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
           else
             version="${INPUT_VERSION#v}"
             platforms="$INPUT_PLATFORMS"
-            deployment="$INPUT_DEPLOYMENT"
             prerelease="$INPUT_PRERELEASE"
           fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
@@ -104,16 +92,11 @@ jobs:
             echo "Invalid platform selection: $platforms" >&2
             exit 2
           fi
-          if [[ "$deployment" != "FrameworkDependent" && "$deployment" != "SelfContained" ]]; then
-            echo "Invalid deployment selection: $deployment" >&2
-            exit 2
-          fi
           {
             echo "version=$version"
             echo "tag=v$version"
             echo "windows=$([[ "$platforms" == "both" || "$platforms" == "windows" ]] && echo true || echo false)"
             echo "linux=$([[ "$platforms" == "both" || "$platforms" == "linux" ]] && echo true || echo false)"
-            echo "deployment=$deployment"
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
       - name: Create or reuse draft release
@@ -144,7 +127,6 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       TAG: ${{ needs.prepare.outputs.tag }}
-      DEPLOYMENT: ${{ needs.prepare.outputs.deployment }}
       WINDOWS_NATIVE_CACHE: ${{ github.workspace }}/.native-cache/windows-x64
       WINEDEBUG: "-all"
     steps:
@@ -186,7 +168,7 @@ jobs:
           ./eng/Build-Release.ps1 `
             -RuntimeId win-x64 `
             -Version "$env:VERSION" `
-            -ManagedDeployment "$env:DEPLOYMENT" `
+            -ManagedDeployment SelfContained `
             -SkipPayloadPreparation `
             -GenerateCompliance
       - name: Upload Windows release assets
@@ -212,7 +194,6 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       TAG: ${{ needs.prepare.outputs.tag }}
-      DEPLOYMENT: ${{ needs.prepare.outputs.deployment }}
       CLIPEDIT_LINUX_NATIVE_BUILD_ROOT: ${{ github.workspace }}/.native-cache/linux-x64
       CLIPEDIT_ENABLE_SOURCE_REPOSITORIES: "1"
     steps:
@@ -243,13 +224,23 @@ jobs:
         run: |
           ./eng/Prepare-ReleasePayload.ps1 -RuntimeId linux-x64
           ./eng/Export-LinuxCorrespondingSource.ps1
-      - name: Build release candidate
+      - name: Build portable release candidate
         shell: pwsh
         run: |
           ./eng/Build-Release.ps1 `
             -RuntimeId linux-x64 `
             -Version "$env:VERSION" `
-            -ManagedDeployment "$env:DEPLOYMENT" `
+            -ManagedDeployment SelfContained `
+            -SkipPayloadPreparation `
+            -GenerateCompliance
+      - name: Build system-dependencies release candidate
+        shell: pwsh
+        run: |
+          ./eng/Build-Release.ps1 `
+            -RuntimeId linux-x64 `
+            -Version "$env:VERSION" `
+            -ManagedDeployment FrameworkDependent `
+            -MediaDependencyMode System `
             -SkipPayloadPreparation `
             -GenerateCompliance
       - name: Upload Linux release assets
@@ -261,5 +252,7 @@ jobs:
           assets=(
             "$root/ClipEdit-linux-x64"
             "$root/ClipEdit-linux-x64.sha256"
+            "$root/ClipEdit-linux-x64-system"
+            "$root/ClipEdit-linux-x64-system.sha256"
           )
           gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
