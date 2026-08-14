@@ -68,7 +68,12 @@ public sealed partial class App : Avalonia.Application
                 new JsonProjectStore(),
                 recoveryDirectory,
                 waveformRenderer: waveformRenderer);
-            viewModel.ConfigureMediaRuntime(mediaRuntimeSettings, libMpvPath);
+            viewModel.ConfigureMediaRuntime(
+                mediaRuntimeSettings,
+                ffmpegPath,
+                ffprobePath,
+                libMpvPath,
+                new MediaRuntimeValidator());
             var settingsStore = new CanvasInteractionSettingsStore(
                 Path.Combine(applicationDataDirectory, "settings.json"));
             var interactionSettings = settingsStore.Load();

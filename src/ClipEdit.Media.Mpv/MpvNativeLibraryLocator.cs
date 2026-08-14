@@ -52,6 +52,29 @@ public static class MpvNativeLibraryLocator
             TryResolveSystemLibrary);
     }
 
+    public static bool TryGetClientApiVersion(
+        string libraryPath,
+        out MpvApiVersion apiVersion,
+        out string? error)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(libraryPath);
+
+        try
+        {
+            using var library = Native.MpvNativeLibrary.Load(libraryPath);
+            apiVersion = library.ApiVersion;
+            error = null;
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is MpvPreviewException or EntryPointNotFoundException)
+        {
+            apiVersion = default;
+            error = exception.Message;
+            return false;
+        }
+    }
+
     internal static string? FindCore(
         string? explicitPath,
         string? overridePath,

@@ -10,7 +10,7 @@ internal sealed record MediaRuntimeSettings(
 {
     private const int MaximumPathLength = 4_096;
 
-    public static MediaRuntimeSettings Default { get; } = new(false, null, null, null);
+    public static MediaRuntimeSettings Default { get; } = new(true, null, null, null);
 
     public MediaRuntimeSettings Normalize() => new(
         PreferSystemMediaTools,

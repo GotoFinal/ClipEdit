@@ -35,6 +35,20 @@ public sealed partial class MainWindow : Window
         Patterns = ["*.clipedit"],
     };
 
+    private static readonly FilePickerFileType MediaExecutableFileType = new("Media executables")
+    {
+        Patterns = OperatingSystem.IsWindows()
+            ? ["*.exe"]
+            : ["ffmpeg", "ffprobe"],
+    };
+
+    private static readonly FilePickerFileType LibMpvFileType = new("libmpv libraries")
+    {
+        Patterns = OperatingSystem.IsWindows()
+            ? ["*.dll"]
+            : ["*.so", "*.so.*"],
+    };
+
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly IProjectFileAssociationService? _projectFileAssociationService;
     private readonly Action? _markProjectFileAssociationPromptShown;
@@ -355,6 +369,53 @@ public sealed partial class MainWindow : Window
             .Where(path => !string.IsNullOrWhiteSpace(path));
 
         await ImportPathsAsync(paths);
+    }
+
+    private async void PickFfmpegPath_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        var path = await PickMediaRuntimeFileAsync("Choose FFmpeg executable", MediaExecutableFileType);
+        if (path is not null && ViewModel is { } viewModel)
+        {
+            viewModel.ConfiguredFfmpegPath = path;
+        }
+    }
+
+    private async void PickFfprobePath_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        var path = await PickMediaRuntimeFileAsync("Choose ffprobe executable", MediaExecutableFileType);
+        if (path is not null && ViewModel is { } viewModel)
+        {
+            viewModel.ConfiguredFfprobePath = path;
+        }
+    }
+
+    private async void PickLibMpvPath_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        var path = await PickMediaRuntimeFileAsync("Choose libmpv library", LibMpvFileType);
+        if (path is not null && ViewModel is { } viewModel)
+        {
+            viewModel.ConfiguredLibMpvPath = path;
+        }
+    }
+
+    private async Task<string?> PickMediaRuntimeFileAsync(
+        string title,
+        FilePickerFileType fileType)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions
+            {
+                Title = title,
+                AllowMultiple = false,
+                FileTypeFilter = [fileType, FilePickerFileTypes.All],
+            });
+        return files.FirstOrDefault()?.TryGetLocalPath();
     }
 
     private async void OpenProject_Click(object? sender, RoutedEventArgs eventArgs)

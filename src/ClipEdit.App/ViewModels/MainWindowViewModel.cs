@@ -29,10 +29,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private readonly HashSet<string> _knownPaths = new(PathComparer);
     private readonly Dictionary<string, Guid> _pendingMediaIds = new(PathComparer);
-    private readonly ImportMediaUseCase? _importMedia;
-    private readonly IFrameDecoder? _frameDecoder;
-    private readonly IWaveformRenderer? _waveformRenderer;
-    private readonly IExportRenderer? _exportRenderer;
+    private ImportMediaUseCase? _importMedia;
+    private IFrameDecoder? _frameDecoder;
+    private IWaveformRenderer? _waveformRenderer;
+    private IExportRenderer? _exportRenderer;
     private readonly SingleSourceExportPlanner _exportPlanner = new();
     private readonly IProjectStore? _projectStore;
     private readonly string? _recoveryDirectory;
@@ -2695,6 +2695,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        DisposeMediaRuntimeValidation();
         Updates.Dispose();
         if (SelectedMedia is not null)
         {

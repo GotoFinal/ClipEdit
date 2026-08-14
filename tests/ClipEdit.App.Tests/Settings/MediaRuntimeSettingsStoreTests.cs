@@ -5,6 +5,12 @@ namespace ClipEdit.App.Tests.Settings;
 public sealed class MediaRuntimeSettingsStoreTests
 {
     [Fact]
+    public void New_install_prefers_system_media_dependencies()
+    {
+        Assert.True(MediaRuntimeSettings.Default.PreferSystemMediaTools);
+    }
+
+    [Fact]
     public void Settings_round_trip_and_normalize_optional_paths()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"clipedit-media-settings-{Guid.NewGuid():N}");

@@ -5,6 +5,21 @@ namespace ClipEdit.Media.Mpv.Tests;
 public sealed class MpvNativeLibraryLocatorTests
 {
     [Fact]
+    public void Missing_library_fails_client_api_inspection_with_actionable_error()
+    {
+        var missingPath = Path.Combine(
+            Path.GetTempPath(),
+            $"missing-libmpv-{Guid.NewGuid():N}",
+            OperatingSystem.IsWindows() ? "libmpv-2.dll" : "libmpv.so.2");
+
+        Assert.False(MpvNativeLibraryLocator.TryGetClientApiVersion(
+            missingPath,
+            out _,
+            out var error));
+        Assert.Contains("Could not load libmpv", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bundled_library_is_preferred_by_default_and_system_library_is_the_fallback()
     {
         var directory = CreateTemporaryDirectory();

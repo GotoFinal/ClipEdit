@@ -1458,7 +1458,7 @@
                       Content="Prefer system media tools when available"
                       IsChecked="{Binding PreferSystemMediaTools, Mode=TwoWay}"
                       ToolTip.Tip="Try PATH ffmpeg/ffprobe and a compatible Linux libmpv before the bundled copies." />
-                  <Grid ColumnDefinitions="64,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="5">
+                  <Grid ColumnDefinitions="64,*,24" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6" RowSpacing="3">
                     <TextBlock VerticalAlignment="Center" Text="FFmpeg" />
                     <TextBox
                         x:Name="FfmpegPathTextBox"
@@ -1466,27 +1466,77 @@
                         MaxLength="4096"
                         PlaceholderText="Automatic"
                         Text="{Binding ConfiguredFfmpegPath, Mode=TwoWay}" />
-                    <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="ffprobe" />
+                    <Button
+                        x:Name="PickFfmpegPathButton"
+                        Grid.Column="2"
+                        Width="24"
+                        Height="24"
+                        Padding="4"
+                        Classes="secondary"
+                        Click="PickFfmpegPath_Click"
+                        ToolTip.Tip="Choose FFmpeg executable">
+                      <PathIcon Data="M10,4H2C0.9,4 0,4.9 0,6V18C0,19.1 0.9,20 2,20H22C23.1,20 24,19.1 24,18V8C24,6.9 23.1,6 22,6H12L10,4Z" />
+                    </Button>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding FfmpegRuntimeStatus.Details}">
+                      <PathIcon Width="11" Height="11" Foreground="#54D68C" IsVisible="{Binding FfmpegRuntimeStatus.IsValid}" Data="M12,2A10,10 0 1 0 12,22A10,10 0 0 0 12,2M10,17L5,12L6.4,10.6L10,14.2L17.6,6.6L19,8Z" />
+                      <PathIcon Width="11" Height="11" Foreground="#FF6B75" IsVisible="{Binding FfmpegRuntimeStatus.IsInvalid}" Data="M12,2A10,10 0 1 0 12,22A10,10 0 0 0 12,2M15.6,7L17,8.4L13.4,12L17,15.6L15.6,17L12,13.4L8.4,17L7,15.6L10.6,12L7,8.4L8.4,7L12,10.6Z" />
+                      <TextBlock Classes="muted" FontSize="9" MaxWidth="282" Text="{Binding FfmpegRuntimeStatus.Text}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="ffprobe" />
                     <TextBox
                         x:Name="FfprobePathTextBox"
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        MaxLength="4096"
-                        PlaceholderText="Automatic"
-                        Text="{Binding ConfiguredFfprobePath, Mode=TwoWay}" />
-                    <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="libmpv" />
-                    <TextBox
-                        x:Name="LibMpvPathTextBox"
                         Grid.Row="2"
                         Grid.Column="1"
                         MaxLength="4096"
                         PlaceholderText="Automatic"
+                        Text="{Binding ConfiguredFfprobePath, Mode=TwoWay}" />
+                    <Button
+                        x:Name="PickFfprobePathButton"
+                        Grid.Row="2"
+                        Grid.Column="2"
+                        Width="24"
+                        Height="24"
+                        Padding="4"
+                        Classes="secondary"
+                        Click="PickFfprobePath_Click"
+                        ToolTip.Tip="Choose ffprobe executable">
+                      <PathIcon Data="M10,4H2C0.9,4 0,4.9 0,6V18C0,19.1 0.9,20 2,20H22C23.1,20 24,19.1 24,18V8C24,6.9 23.1,6 22,6H12L10,4Z" />
+                    </Button>
+                    <StackPanel Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding FfprobeRuntimeStatus.Details}">
+                      <PathIcon Width="11" Height="11" Foreground="#54D68C" IsVisible="{Binding FfprobeRuntimeStatus.IsValid}" Data="M12,2A10,10 0 1 0 12,22A10,10 0 0 0 12,2M10,17L5,12L6.4,10.6L10,14.2L17.6,6.6L19,8Z" />
+                      <PathIcon Width="11" Height="11" Foreground="#FF6B75" IsVisible="{Binding FfprobeRuntimeStatus.IsInvalid}" Data="M12,2A10,10 0 1 0 12,22A10,10 0 0 0 12,2M15.6,7L17,8.4L13.4,12L17,15.6L15.6,17L12,13.4L8.4,17L7,15.6L10.6,12L7,8.4L8.4,7L12,10.6Z" />
+                      <TextBlock Classes="muted" FontSize="9" MaxWidth="282" Text="{Binding FfprobeRuntimeStatus.Text}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="4" VerticalAlignment="Center" Text="libmpv" />
+                    <TextBox
+                        x:Name="LibMpvPathTextBox"
+                        Grid.Row="4"
+                        Grid.Column="1"
+                        MaxLength="4096"
+                        PlaceholderText="Automatic"
                         Text="{Binding ConfiguredLibMpvPath, Mode=TwoWay}" />
+                    <Button
+                        x:Name="PickLibMpvPathButton"
+                        Grid.Row="4"
+                        Grid.Column="2"
+                        Width="24"
+                        Height="24"
+                        Padding="4"
+                        Classes="secondary"
+                        Click="PickLibMpvPath_Click"
+                        ToolTip.Tip="Choose libmpv library">
+                      <PathIcon Data="M10,4H2C0.9,4 0,4.9 0,6V18C0,19.1 0.9,20 2,20H22C23.1,20 24,19.1 24,18V8C24,6.9 23.1,6 22,6H12L10,4Z" />
+                    </Button>
+                    <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding LibMpvRuntimeStatus.Details}">
+                      <PathIcon Width="11" Height="11" Foreground="#54D68C" IsVisible="{Binding LibMpvRuntimeStatus.IsValid}" Data="M12,2A10,10 0 1 0 12,22A10,10 0 0 0 12,2M10,17L5,12L6.4,10.6L10,14.2L17.6,6.6L19,8Z" />
+                      <PathIcon Width="11" Height="11" Foreground="#FF6B75" IsVisible="{Binding LibMpvRuntimeStatus.IsInvalid}" Data="M12,2A10,10 0 1 0 12,22A10,10 0 0 0 12,2M15.6,7L17,8.4L13.4,12L17,15.6L15.6,17L12,13.4L8.4,17L7,15.6L10.6,12L7,8.4L8.4,7L12,10.6Z" />
+                      <TextBlock Classes="muted" FontSize="9" MaxWidth="282" Text="{Binding LibMpvRuntimeStatus.Text}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
                   </Grid>
                   <TextBlock
                       Classes="muted"
                       FontSize="10"
-                      Text="Manual paths override automatic selection · changes apply after restart"
+                      Text="Manual paths override automatic selection · FFmpeg/ffprobe apply immediately · libmpv requires restart"
                       TextWrapping="Wrap" />
                   <Separator Margin="0,2" />
                   <TextBlock FontSize="12" FontWeight="SemiBold" Text="Updates" />
