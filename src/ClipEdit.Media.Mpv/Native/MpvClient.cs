@@ -10,13 +10,18 @@ internal sealed class MpvClient : IDisposable
 {
     private const int FileLoadedEvent = 8;
     private const int EndFileEvent = 7;
+    private const int NoEvent = 0;
+    private const int SetPropertyReplyEvent = 4;
+    private const int EventQueueOverflowEvent = 24;
     private const int PropertyUnavailableError = -10;
     private const int DoubleFormat = 5;
     private const int Int64Format = 4;
     private const int FlagFormat = 3;
     private readonly MpvNativeLibrary _native;
     private IReadOnlyList<string> _loadedExternalAudioSources = [];
+    private readonly Dictionary<ulong, PendingAsyncPropertyBatch> _pendingAsyncProperties = [];
     private PreviewVideoTransform? _lastVideoTransform;
+    private ulong _nextAsyncRequestId;
     private nint _handle;
 
     public MpvClient(MpvNativeLibrary native)
@@ -41,6 +46,7 @@ internal sealed class MpvClient : IDisposable
             SetOption("vo", "libmpv");
             SetOption("hwdec", "auto");
             SetOption("hr-seek-framedrop", "yes");
+            SetOption("video-unscaled", "yes");
             Check(_native.Initialize(_handle), "initialize libmpv");
         }
         catch
@@ -186,6 +192,61 @@ internal sealed class MpvClient : IDisposable
         _lastVideoTransform = transform;
     }
 
+    public Task QueueVideoTransform(PreviewVideoTransform transform)
+    {
+        var properties = GetVideoTransformPropertyChanges(_lastVideoTransform, transform);
+        if (properties.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var batch = new PendingAsyncPropertyBatch(properties.Count);
+        foreach (var property in properties)
+        {
+            var requestId = ++_nextAsyncRequestId;
+            _pendingAsyncProperties.Add(requestId, batch);
+            try
+            {
+                SetPropertyAsync(requestId, property.Name, property.Value);
+            }
+            catch (Exception exception)
+            {
+                _pendingAsyncProperties.Remove(requestId);
+                batch.CompleteOne(exception);
+            }
+        }
+
+        _lastVideoTransform = transform;
+        return batch.Completion;
+    }
+
+    public void DrainEvents()
+    {
+        while (true)
+        {
+            var eventPointer = _native.WaitEvent(_handle, 0);
+            var eventData = Marshal.PtrToStructure<MpvEvent>(eventPointer);
+            if (eventData.EventId == NoEvent)
+            {
+                return;
+            }
+
+            if (eventData.EventId == SetPropertyReplyEvent &&
+                _pendingAsyncProperties.Remove(eventData.ReplyUserData, out var batch))
+            {
+                batch.CompleteOne(eventData.Error < 0
+                    ? new MpvPreviewException(
+                        $"Could not apply an interactive video transform: {_native.DescribeError(eventData.Error)}.")
+                    : null);
+            }
+            else if (eventData.EventId == EventQueueOverflowEvent)
+            {
+                FailPendingAsyncProperties(
+                    new MpvPreviewException("libmpv's event queue overflowed while applying a video transform."));
+            }
+        }
+    }
+
     internal static IReadOnlyList<(string Name, string Value)> GetVideoTransformPropertyChanges(
         PreviewVideoTransform? previous,
         PreviewVideoTransform current)
@@ -317,6 +378,40 @@ internal sealed class MpvClient : IDisposable
         using var nativeName = new Utf8String(name);
         using var nativeValue = new Utf8String(value);
         Check(_native.SetPropertyString(_handle, nativeName.Pointer, nativeValue.Pointer), $"set property '{name}'");
+    }
+
+    private void SetPropertyAsync(ulong requestId, string name, string value)
+    {
+        const int stringFormat = 1;
+        using var nativeName = new Utf8String(name);
+        using var nativeValue = new Utf8String(value);
+        var valuePointer = Marshal.AllocCoTaskMem(nint.Size);
+        try
+        {
+            Marshal.WriteIntPtr(valuePointer, nativeValue.Pointer);
+            Check(
+                _native.SetPropertyAsync(
+                    _handle,
+                    requestId,
+                    nativeName.Pointer,
+                    stringFormat,
+                    valuePointer),
+                $"queue property '{name}'");
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(valuePointer);
+        }
+    }
+
+    private void FailPendingAsyncProperties(Exception exception)
+    {
+        var batches = _pendingAsyncProperties.Values.Distinct().ToArray();
+        _pendingAsyncProperties.Clear();
+        foreach (var batch in batches)
+        {
+            batch.Fail(exception);
+        }
     }
 
     private void SynchronizeExternalAudioSources(
@@ -579,4 +674,34 @@ internal sealed class MpvClient : IDisposable
         long MpvTrackId,
         int FfmpegIndex,
         string? ExternalSourcePath);
+
+    private sealed class PendingAsyncPropertyBatch(int remaining)
+    {
+        private readonly TaskCompletionSource _completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private Exception? _error;
+        private int _remaining = remaining;
+
+        public Task Completion => _completion.Task;
+
+        public void CompleteOne(Exception? error)
+        {
+            _error ??= error;
+            if (--_remaining != 0)
+            {
+                return;
+            }
+
+            if (_error is null)
+            {
+                _completion.TrySetResult();
+            }
+            else
+            {
+                _completion.TrySetException(_error);
+            }
+        }
+
+        public void Fail(Exception exception) => _completion.TrySetException(exception);
+    }
 }

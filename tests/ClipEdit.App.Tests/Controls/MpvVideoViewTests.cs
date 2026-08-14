@@ -84,7 +84,7 @@ public sealed class MpvVideoViewTests
         Assert.Equal(1, transform.ScaleX);
         Assert.Equal(1, transform.ScaleY);
 
-        Assert.Equal(1, transform.ZoomFactor, 6);
+        Assert.Equal(0.5, transform.ZoomFactor, 6);
         Assert.Equal(0, transform.PanX);
         Assert.Equal(0, transform.PanY);
         Assert.Equal(0, transform.RotationDegrees);
@@ -99,7 +99,7 @@ public sealed class MpvVideoViewTests
             new ClipCanvasTransform(100, -50, 1, 90),
             new Size(960, 540));
 
-        Assert.Equal(16d / 9d, transform.ZoomFactor, 6);
+        Assert.Equal(0.5, transform.ZoomFactor, 6);
         Assert.Equal(50d / 540d, transform.PanX, 6);
         Assert.Equal(-25d / 960d, transform.PanY, 6);
         Assert.Equal(90, transform.RotationDegrees);
@@ -114,11 +114,23 @@ public sealed class MpvVideoViewTests
             new ClipCanvasTransform(0, 0, 2, 0.5, 0),
             new Size(960, 540));
 
-        Assert.Equal(1, transform.ZoomFactor, 6);
+        Assert.Equal(0.5, transform.ZoomFactor, 6);
         Assert.Equal(2, transform.ScaleX, 6);
         Assert.Equal(0.5, transform.ScaleY, 6);
         Assert.Equal(0, transform.PanX);
         Assert.Equal(0, transform.PanY);
+    }
+
+    [Fact]
+    public void Explicit_preview_scale_supports_large_sources_in_small_viewports()
+    {
+        var transform = MpvVideoView.CalculatePreviewVideoTransform(
+            new DomainPixelSize(7_680, 4_320),
+            new DomainPixelSize(7_680, 4_320),
+            ClipCanvasTransform.Identity,
+            new Size(38.4, 21.6));
+
+        Assert.Equal(0.005, transform.ZoomFactor, 6);
     }
 
     [Fact]
@@ -145,6 +157,61 @@ public sealed class MpvVideoViewTests
 
         Assert.Equal(canvasTransform.OffsetX / (rotatedWidth * canvasTransform.ScaleX), transform.PanX, 6);
         Assert.Equal(canvasTransform.OffsetY / (rotatedHeight * canvasTransform.ScaleY), transform.PanY, 6);
+    }
+
+    [Fact]
+    public void Interactive_canvas_matrix_maps_the_applied_clip_to_the_desired_clip()
+    {
+        var canvasSize = new DomainPixelSize(1_920, 1_080);
+        var applied = new ClipCanvasTransform(120, -40, 1.25, 0.75, 17);
+        var desired = new ClipCanvasTransform(-80, 90, 0.8, 1.4, 63);
+        var viewport = new Size(960, 540);
+        var relative = MpvVideoView.CalculateInteractiveCanvasMatrix(
+            canvasSize,
+            applied,
+            desired,
+            viewport);
+        var sourcePoint = new Point(240, -130);
+        var appliedPoint = MapSourcePoint(sourcePoint, canvasSize, applied, viewport);
+        var desiredPoint = MapSourcePoint(sourcePoint, canvasSize, desired, viewport);
+
+        var transformed = relative.Transform(appliedPoint);
+
+        Assert.Equal(desiredPoint.X, transformed.X, 6);
+        Assert.Equal(desiredPoint.Y, transformed.Y, 6);
+    }
+
+    [Fact]
+    public void Interactive_canvas_matrix_is_identity_after_native_preview_catches_up()
+    {
+        var transform = new ClipCanvasTransform(50, -20, 1.1, 0.9, 31);
+
+        var matrix = MpvVideoView.CalculateInteractiveCanvasMatrix(
+            new DomainPixelSize(1_920, 1_080),
+            transform,
+            transform,
+            new Size(960, 540));
+
+        Assert.True(matrix.IsIdentity);
+    }
+
+    private static Point MapSourcePoint(
+        Point point,
+        DomainPixelSize canvasSize,
+        ClipCanvasTransform transform,
+        Size viewport)
+    {
+        var displayScale = Math.Min(
+            viewport.Width / canvasSize.Width,
+            viewport.Height / canvasSize.Height);
+        var radians = transform.RotationDegrees * Math.PI / 180;
+        var cosine = Math.Cos(radians);
+        var sine = Math.Sin(radians);
+        return new Point(
+            (viewport.Width / 2) + (transform.OffsetX * displayScale) +
+            (((point.X * cosine) - (point.Y * sine)) * transform.ScaleX * displayScale),
+            (viewport.Height / 2) + (transform.OffsetY * displayScale) +
+            (((point.X * sine) + (point.Y * cosine)) * transform.ScaleY * displayScale));
     }
 
 }

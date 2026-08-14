@@ -34,4 +34,15 @@ public sealed class MpvVideoTransformPolicyTests
         Assert.Equal(["video-rotate", "video-zoom"], changes.Select(change => change.Name));
         Assert.Empty(MpvClient.GetVideoTransformPropertyChanges(current, current));
     }
+
+    [Fact]
+    public void Centered_rotation_changes_only_the_native_rotation_property()
+    {
+        var previous = new PreviewVideoTransform(0.5, 0, 0, 17);
+        var current = new PreviewVideoTransform(0.5, 0, 0, 18);
+
+        var changes = MpvClient.GetVideoTransformPropertyChanges(previous, current);
+
+        Assert.Equal(["video-rotate"], changes.Select(change => change.Name));
+    }
 }

@@ -52,7 +52,8 @@ public readonly record struct PreviewVideoTransform
         double scaleX = 1,
         double scaleY = 1)
     {
-        if (!double.IsFinite(zoomFactor) || zoomFactor is < 0.01 or > 100)
+        if (!double.IsFinite(zoomFactor) ||
+            zoomFactor is < 1d / 1_048_576 or > 1_048_576)
         {
             throw new ArgumentOutOfRangeException(nameof(zoomFactor));
         }

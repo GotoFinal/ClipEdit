@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
+using Avalonia.Media.Immutable;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ClipEdit.Domain.Geometry;
@@ -81,6 +82,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private readonly DispatcherTimer _positionTimer;
     private readonly PreviewLoadGate _loadGate = new();
     private readonly PreviewRenderRequestGate _renderRequestGate = new();
+    private readonly PreviewTransformRenderGate _transformRenderGate = new();
     private CancellationTokenSource? _loadCancellation;
     private Task _loadTask = Task.CompletedTask;
     private CancellationTokenSource? _seekCancellation;
@@ -104,6 +106,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private bool _isEndOfFile;
     private int _videoTransformRevision;
     private bool _videoTransformLoopRunning;
+    private ClipCanvasTransform _appliedCanvasTransform = ClipCanvasTransform.Identity;
 
     static MpvVideoView()
     {
@@ -134,7 +137,12 @@ public sealed class MpvVideoView : OpenGlControlBase
             Interval = TimeSpan.FromMilliseconds(50),
         };
         _positionTimer.Tick += OnPositionTimerTick;
-        SizeChanged += (_, _) => StartVideoTransformChange();
+        RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Absolute);
+        SizeChanged += (_, _) =>
+        {
+            UpdateInteractiveCanvasTransform();
+            StartVideoTransformChange();
+        };
     }
 
     public event EventHandler? PlaybackCompleted;
@@ -373,6 +381,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             var width = Math.Max(1, (int)(Bounds.Width * scaling));
             var height = Math.Max(1, (int)(Bounds.Height * scaling));
             _renderContext.Render(framebuffer, width, height);
+            _transformRenderGate.MarkRendered();
             if (ShouldContinueRenderingDuringLoad(_loadTask.IsCompleted))
             {
                 RequestNextFrameRendering();
@@ -489,6 +498,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             var engine = await _engineTask!.WaitAsync(cancellationToken);
             await engine.LoadAsync(sourcePath, cancellationToken);
             await engine.SetVideoTransformAsync(CalculatePreviewVideoTransform(SourceVideoSize, CanvasSize, CanvasTransform, Bounds.Size), cancellationToken);
+            _appliedCanvasTransform = CanvasTransform;
+            UpdateInteractiveCanvasTransform();
             await engine.SeekAsync(Position, cancellationToken);
             await engine.SetVolumeAsync(Volume, cancellationToken);
             await engine.SetPlaybackSpeedAsync(PlaybackSpeed, cancellationToken);
@@ -661,6 +672,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private void StartVideoTransformChange()
     {
         _videoTransformRevision++;
+        UpdateInteractiveCanvasTransform();
         if (_mediaLoaded && _engine is not null && !_shutdownStarted && !_videoTransformLoopRunning)
         {
             _ = ApplyVideoTransformLoopAsync();
@@ -675,21 +687,35 @@ public sealed class MpvVideoView : OpenGlControlBase
             while (_mediaLoaded && _engine is not null && !_shutdownStarted)
             {
                 var handledRevision = _videoTransformRevision;
+                var canvasTransform = CanvasTransform;
                 var transform = CalculatePreviewVideoTransform(
                     SourceVideoSize,
                     CanvasSize,
-                    CanvasTransform,
+                    canvasTransform,
                     Bounds.Size);
-                await _engine.SetVideoTransformAsync(transform, _lifetimeCancellation.Token);
+                await _engine.QueueVideoTransformAsync(
+                    transform,
+                    _lifetimeCancellation.Token);
+                _transformRenderGate.MarkSubmitted(handledRevision);
                 QueueRenderRequest();
+                try
+                {
+                    await _transformRenderGate
+                        .WaitForRenderedAsync(handledRevision, _lifetimeCancellation.Token)
+                        .WaitAsync(TimeSpan.FromMilliseconds(250), _lifetimeCancellation.Token);
+                }
+                catch (TimeoutException)
+                {
+                    // A hidden or occluded window may temporarily stop drawing.
+                }
+
+                _appliedCanvasTransform = canvasTransform;
+                UpdateInteractiveCanvasTransform();
+
                 if (handledRevision == _videoTransformRevision)
                 {
                     break;
                 }
-
-                // Keep interactive updates near display cadence instead of
-                // building a native property/redraw backlog during a drag.
-                await Task.Delay(TimeSpan.FromMilliseconds(16), _lifetimeCancellation.Token);
             }
         }
         catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
@@ -718,15 +744,12 @@ public sealed class MpvVideoView : OpenGlControlBase
         var sine = Math.Abs(Math.Sin(radians));
         var rotatedWidth = (sourceSize.Width * cosine) + (sourceSize.Height * sine);
         var rotatedHeight = (sourceSize.Width * sine) + (sourceSize.Height * cosine);
-        var baseFitScale = Math.Min(
-            viewportWidth / rotatedWidth,
-            viewportHeight / rotatedHeight);
         var canvasDisplayScale = Math.Min(
             viewportWidth / canvasSize.Width,
             viewportHeight / canvasSize.Height);
         var uniformScale = Math.Sqrt(canvasTransform.ScaleX * canvasTransform.ScaleY);
         var desiredPixelScale = uniformScale * canvasDisplayScale;
-        var zoomFactor = Math.Clamp(desiredPixelScale / baseFitScale, 0.01, 100);
+        var zoomFactor = Math.Clamp(desiredPixelScale, 1d / 1_048_576, 1_048_576);
         var displayedWidth = Math.Max(
             1,
             rotatedWidth * canvasTransform.ScaleX * canvasDisplayScale);
@@ -740,6 +763,53 @@ public sealed class MpvVideoView : OpenGlControlBase
             canvasTransform.RotationDegrees,
             canvasTransform.ScaleX / uniformScale,
             canvasTransform.ScaleY / uniformScale);
+    }
+
+    private void UpdateInteractiveCanvasTransform()
+    {
+        var matrix = CalculateInteractiveCanvasMatrix(
+            CanvasSize,
+            _appliedCanvasTransform,
+            CanvasTransform,
+            Bounds.Size);
+        RenderTransform = matrix.IsIdentity ? null : new ImmutableTransform(matrix);
+    }
+
+    internal static Matrix CalculateInteractiveCanvasMatrix(
+        DomainPixelSize canvasSize,
+        ClipCanvasTransform applied,
+        ClipCanvasTransform desired,
+        Size viewportSize)
+    {
+        var appliedMatrix = CalculateCanvasToViewportMatrix(canvasSize, applied, viewportSize);
+        if (!appliedMatrix.TryInvert(out var inverseApplied))
+        {
+            return Matrix.Identity;
+        }
+
+        return inverseApplied * CalculateCanvasToViewportMatrix(canvasSize, desired, viewportSize);
+    }
+
+    private static Matrix CalculateCanvasToViewportMatrix(
+        DomainPixelSize canvasSize,
+        ClipCanvasTransform transform,
+        Size viewportSize)
+    {
+        var viewportWidth = Math.Max(1, viewportSize.Width);
+        var viewportHeight = Math.Max(1, viewportSize.Height);
+        var displayScale = Math.Min(
+            viewportWidth / canvasSize.Width,
+            viewportHeight / canvasSize.Height);
+        var radians = transform.RotationDegrees * Math.PI / 180;
+        var cosine = Math.Cos(radians);
+        var sine = Math.Sin(radians);
+        return new Matrix(
+            cosine * transform.ScaleX * displayScale,
+            sine * transform.ScaleY * displayScale,
+            -sine * transform.ScaleX * displayScale,
+            cosine * transform.ScaleY * displayScale,
+            (viewportWidth / 2) + (transform.OffsetX * displayScale),
+            (viewportHeight / 2) + (transform.OffsetY * displayScale));
     }
 
     private void StartPlaybackSpeedChange()

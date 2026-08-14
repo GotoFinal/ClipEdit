@@ -120,6 +120,18 @@ public sealed class MpvPreviewEngine : IPreviewEngine
         CancellationToken cancellationToken) =>
         InvokeAsync(client => client.SetVideoTransform(transform), cancellationToken);
 
+    public async Task QueueVideoTransformAsync(
+        PreviewVideoTransform transform,
+        CancellationToken cancellationToken)
+    {
+        Task applied = Task.CompletedTask;
+        await InvokeAsync(
+                client => applied = client.QueueVideoTransform(transform),
+                cancellationToken)
+            .ConfigureAwait(false);
+        await applied.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public Task SetAudioTracksAsync(
         IReadOnlyList<PreviewAudioTrack> audioTracks,
         CancellationToken cancellationToken)
@@ -196,11 +208,18 @@ public sealed class MpvPreviewEngine : IPreviewEngine
             Volatile.Write(ref _state, (int)PreviewState.Idle);
             _ready.TrySetResult();
 
-            foreach (var workItem in _workItems.GetConsumingEnumerable())
+            while (!_workItems.IsCompleted)
             {
+                if (!_workItems.TryTake(out var workItem, millisecondsTimeout: 5))
+                {
+                    client.DrainEvents();
+                    continue;
+                }
+
                 if (workItem.CancellationToken.IsCancellationRequested)
                 {
                     workItem.Completion.TrySetCanceled(workItem.CancellationToken);
+                    client.DrainEvents();
                     continue;
                 }
 
@@ -218,6 +237,8 @@ public sealed class MpvPreviewEngine : IPreviewEngine
                     Volatile.Write(ref _state, (int)PreviewState.Failed);
                     workItem.Completion.TrySetException(exception);
                 }
+
+                client.DrainEvents();
             }
         }
         catch (Exception exception)
