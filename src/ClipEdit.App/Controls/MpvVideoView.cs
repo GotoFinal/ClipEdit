@@ -153,6 +153,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         {
             if (ShouldRequestRenderForViewport(eventArgs.EffectiveViewport))
             {
+                StartVideoTransformChange();
                 TryStartPendingLoad();
                 QueueRenderRequest();
             }
@@ -517,9 +518,17 @@ public sealed class MpvVideoView : OpenGlControlBase
             PlaybackStatus = "Loading live preview…";
             var engine = await _engineTask!.WaitAsync(cancellationToken);
             await engine.LoadAsync(sourcePath, cancellationToken);
-            await engine.SetVideoTransformAsync(CalculatePreviewVideoTransform(SourceVideoSize, CanvasSize, CanvasTransform, Bounds.Size), cancellationToken);
-            _appliedCanvasTransform = CanvasTransform;
-            _appliedVideoTransformRevision = _videoTransformRevision;
+            var initialCanvasTransform = CanvasTransform;
+            var initialVideoTransformRevision = _videoTransformRevision;
+            await engine.SetVideoTransformAsync(
+                CalculatePreviewVideoTransform(
+                    SourceVideoSize,
+                    CanvasSize,
+                    initialCanvasTransform,
+                    Bounds.Size),
+                cancellationToken);
+            _appliedCanvasTransform = initialCanvasTransform;
+            _appliedVideoTransformRevision = initialVideoTransformRevision;
             UpdateInteractiveCanvasTransform();
             await engine.SeekAsync(Position, cancellationToken);
             await engine.SetVolumeAsync(Volume, cancellationToken);
@@ -545,6 +554,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             _mediaLoaded = true;
             IsPlaybackAvailable = true;
             PlaybackStatus = audioWarning ?? "Live preview is ready";
+            TryStartVideoTransformLoop();
             QueueRenderRequest();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
