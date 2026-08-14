@@ -272,6 +272,37 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Contains("[abase]atempo=2,atempo=2[aout]", graph);
     }
 
+    [Theory]
+    [InlineData(1, "[abase]atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.64[aout]")]
+    [InlineData(10000, "[abase]atempo=2,atempo=2,atempo=2,atempo=2,atempo=2,atempo=2,atempo=1.5625[aout]")]
+    public void Extreme_supported_export_speeds_chain_pitch_preserving_audio_stages(
+        int playbackSpeedPercent,
+        string expectedAudioFilter)
+    {
+        var canvas = new PixelSize(1_280, 720);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    "C:\\source.mkv",
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(8, 1)),
+                    canvas,
+                    CropRegion.FullFrame(canvas),
+                    ClipCanvasTransform.Identity,
+                    [new ExportAudioTrackPlan(1, 0)],
+                    MediaTime.Zero),
+            ],
+            canvas,
+            "C:\\speed-limit.mp4",
+            Mp4Compatible,
+            encodingSettings: new ExportEncodingSettings(
+                playbackSpeedPercent: playbackSpeedPercent));
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.Contains(expectedAudioFilter, graph);
+    }
+
     [Fact]
     public void Matched_parameters_use_bitrate_mode_rational_frame_rate_and_matroska_muxing()
     {

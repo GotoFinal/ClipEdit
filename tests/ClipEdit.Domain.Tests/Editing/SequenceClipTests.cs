@@ -144,10 +144,10 @@ public sealed class SequenceClipTests
     {
         var clip = CreateClip(0, 10, 0, 10);
 
-        Assert.Equal(25, clip.WithPlaybackSpeed(25).PlaybackSpeedPercent);
-        Assert.Equal(400, clip.WithPlaybackSpeed(400).PlaybackSpeedPercent);
-        Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithPlaybackSpeed(24));
-        Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithPlaybackSpeed(401));
+        Assert.Equal(1, clip.WithPlaybackSpeed(1).PlaybackSpeedPercent);
+        Assert.Equal(10_000, clip.WithPlaybackSpeed(10_000).PlaybackSpeedPercent);
+        Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithPlaybackSpeed(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithPlaybackSpeed(10_001));
     }
 
 

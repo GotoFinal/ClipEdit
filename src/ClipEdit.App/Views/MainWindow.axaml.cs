@@ -236,6 +236,26 @@ public sealed partial class MainWindow : Window
         ViewModel?.EndClipTransformEdit();
     }
 
+    private void SelectedClipPlaybackSpeedInput_LostFocus(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is NumericUpDown { Value: { } value } && ViewModel is { } viewModel)
+        {
+            viewModel.SelectedClipPlaybackSpeedPercent = decimal.ToInt32(
+                decimal.Round(value, MidpointRounding.AwayFromZero));
+        }
+    }
+
+    private void ExportPlaybackSpeedInput_LostFocus(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is NumericUpDown { Value: { } value } && ViewModel is { } viewModel)
+        {
+            viewModel.ExportPlaybackSpeedPercent = decimal.ToInt32(
+                decimal.Round(value, MidpointRounding.AwayFromZero));
+        }
+    }
+
     private async void NewProject_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

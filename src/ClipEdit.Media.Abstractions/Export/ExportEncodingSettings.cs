@@ -12,8 +12,8 @@ public sealed record ExportEncodingSettings
     public const int DefaultQuality = 75;
     public const int DefaultScalePercent = 100;
     public const int DefaultGifFrameRate = 15;
-    public const int MinimumPlaybackSpeedPercent = 25;
-    public const int MaximumPlaybackSpeedPercent = 400;
+    public const int MinimumPlaybackSpeedPercent = 1;
+    public const int MaximumPlaybackSpeedPercent = 10_000;
     public const int DefaultPlaybackSpeedPercent = 100;
 
     public static ExportEncodingSettings Default { get; } = new();

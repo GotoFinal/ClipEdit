@@ -39,8 +39,20 @@ public sealed record ExportDestinationChoice(
 
 public sealed partial class MainWindowViewModel
 {
+    private static readonly double[] ExportPlaybackSpeedSnapValues =
+    [
+        .. new[]
+        {
+            1, 10, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 400, 500,
+            750, 1_000, 1_500, 2_000, 3_000, 4_000, 5_000, 7_500, 10_000,
+        }.Select(PlaybackSpeedPercentToSliderValue),
+    ];
+
     public IReadOnlyList<ExportDestinationChoice> ExportDestinationChoices =>
         ExportDestinationChoice.All;
+
+    public IReadOnlyList<double> ExportPlaybackSpeedSliderSnapValues =>
+        ExportPlaybackSpeedSnapValues;
 
     public ExportDestinationChoice SelectedExportDestination
     {
@@ -146,9 +158,20 @@ public sealed partial class MainWindowViewModel
 
     public double ExportPlaybackSpeedSliderValue
     {
-        get => ExportPlaybackSpeedPercent;
-        set => ExportPlaybackSpeedPercent = (int)Math.Round(value, MidpointRounding.AwayFromZero);
+        get => PlaybackSpeedPercentToSliderValue(ExportPlaybackSpeedPercent);
+        set => ExportPlaybackSpeedPercent = SliderValueToPlaybackSpeedPercent(value);
     }
+
+    internal static double PlaybackSpeedPercentToSliderValue(int playbackSpeedPercent) =>
+        Math.Log10(Math.Clamp(
+            playbackSpeedPercent,
+            ExportEncodingSettings.MinimumPlaybackSpeedPercent,
+            ExportEncodingSettings.MaximumPlaybackSpeedPercent)) * 25;
+
+    internal static int SliderValueToPlaybackSpeedPercent(double sliderValue) =>
+        (int)Math.Round(
+            Math.Pow(10, Math.Clamp(sliderValue, 0, 100) / 25),
+            MidpointRounding.AwayFromZero);
 
     public bool IsGifExport => GetEffectiveExportPreset().VideoCodec == VideoCodecFamily.Gif;
 

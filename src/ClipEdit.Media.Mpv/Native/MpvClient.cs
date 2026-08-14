@@ -174,9 +174,9 @@ internal sealed class MpvClient : IDisposable
 
     internal static (string Name, string Value) GetPlaybackSpeedProperty(double speed)
     {
-        if (!double.IsFinite(speed) || speed is < 0.25 or > 4)
+        if (!double.IsFinite(speed) || speed is < 0.01 or > 100)
         {
-            throw new ArgumentOutOfRangeException(nameof(speed), "Preview speed must be between 0.25× and 4×.");
+            throw new ArgumentOutOfRangeException(nameof(speed), "Preview speed must be between 0.01× and 100×.");
         }
 
         return ("speed", speed.ToString("R", CultureInfo.InvariantCulture));

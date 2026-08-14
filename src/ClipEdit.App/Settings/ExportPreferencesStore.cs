@@ -50,7 +50,8 @@ internal sealed record ExportPreferences(
                 preset.ScalePercent is >= 10 and <= 100 &&
                 preset.Quality is >= 1 and <= 100 &&
                 preset.GifFrameRate is >= 1 and <= 60 &&
-                preset.PlaybackSpeedPercent is >= 25 and <= 400 &&
+                preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
+                    <= ExportEncodingSettings.MaximumPlaybackSpeedPercent &&
                 Enum.IsDefined(preset.Container) &&
                 Enum.IsDefined(preset.VideoCodec) &&
                 Enum.IsDefined(preset.AudioCodec))
@@ -78,7 +79,8 @@ internal sealed record ExportPreferences(
             ScalePercent = Math.Clamp(ScalePercent, 10, 100),
             Quality = Math.Clamp(Quality, 1, 100),
             GifFrameRate = Math.Clamp(GifFrameRate, 1, 60),
-            PlaybackSpeedPercent = PlaybackSpeedPercent is >= 25 and <= 400
+            PlaybackSpeedPercent = PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
+                <= ExportEncodingSettings.MaximumPlaybackSpeedPercent
                 ? PlaybackSpeedPercent
                 : Default.PlaybackSpeedPercent,
             CustomContainer = custom.Container,

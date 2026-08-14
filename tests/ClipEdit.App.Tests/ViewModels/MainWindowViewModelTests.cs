@@ -858,6 +858,21 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(50, document.ExportSettings!.PlaybackSpeedPercent);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    [InlineData(100)]
+    [InlineData(500)]
+    [InlineData(10000)]
+    public void Export_speed_slider_uses_a_logarithmic_round_trip(int playbackSpeedPercent)
+    {
+        var sliderValue = MainWindowViewModel.PlaybackSpeedPercentToSliderValue(playbackSpeedPercent);
+
+        Assert.Equal(
+            playbackSpeedPercent,
+            MainWindowViewModel.SliderValueToPlaybackSpeedPercent(sliderValue));
+    }
+
     [Fact]
     public async Task Dropping_a_clip_on_an_occupied_sequence_position_inserts_it_there()
     {

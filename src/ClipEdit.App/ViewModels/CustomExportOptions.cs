@@ -456,5 +456,6 @@ public sealed partial class MainWindowViewModel
         preset.ScalePercent is >= 10 and <= 100 &&
         preset.Quality is >= 1 and <= 100 &&
         preset.GifFrameRate is >= 1 and <= 60 &&
-        preset.PlaybackSpeedPercent is >= 25 and <= 400;
+        preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
+            <= ExportEncodingSettings.MaximumPlaybackSpeedPercent;
 }

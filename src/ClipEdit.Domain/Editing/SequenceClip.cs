@@ -8,8 +8,8 @@ namespace ClipEdit.Domain.Editing;
 /// </summary>
 public sealed record SequenceClip
 {
-    public const int MinimumPlaybackSpeedPercent = 25;
-    public const int MaximumPlaybackSpeedPercent = 400;
+    public const int MinimumPlaybackSpeedPercent = 1;
+    public const int MaximumPlaybackSpeedPercent = 10_000;
     public const int DefaultPlaybackSpeedPercent = 100;
 
     public SequenceClip(

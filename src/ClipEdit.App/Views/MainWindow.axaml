@@ -403,11 +403,12 @@
                         <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,72" ColumnSpacing="8" RowSpacing="2">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Playback speed" />
                           <NumericUpDown
+                              x:Name="ExportPlaybackSpeedInput"
                               Grid.Column="1"
                               Height="26"
                               Padding="6,0"
-                              Minimum="25"
-                              Maximum="400"
+                              Minimum="1"
+                              Maximum="10000"
                               Increment="5"
                               FormatString="0"
                               ShowButtonSpinner="False"
@@ -415,22 +416,23 @@
                               Background="#151820"
                               BorderBrush="#555C6C"
                               Foreground="#F5F5F8"
-                              Value="{Binding ExportPlaybackSpeedPercent, Mode=TwoWay}">
+                              LostFocus="ExportPlaybackSpeedInput_LostFocus"
+                              Value="{Binding ExportPlaybackSpeedPercent, Mode=TwoWay, Delay=2500}">
                             <NumericUpDown.InnerRightContent>
                               <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Foreground="#A8AFC0" Text="%" />
                             </NumericUpDown.InnerRightContent>
                           </NumericUpDown>
-                          <Slider
+                          <controls:SoftSnapSlider
                               Grid.Row="1"
                               Grid.ColumnSpan="2"
                               Height="20"
                               Margin="8,0"
-                              Minimum="25"
-                              Maximum="400"
-                              SmallChange="5"
-                              LargeChange="25"
-                              TickFrequency="5"
-                              IsSnapToTickEnabled="True"
+                              Minimum="0"
+                              Maximum="100"
+                              SmallChange="1"
+                              LargeChange="5"
+                              SnapValues="{Binding ExportPlaybackSpeedSliderSnapValues}"
+                              ToolTip.Tip="Useful speeds snap softly · hold Shift to bypass snapping"
                               Value="{Binding ExportPlaybackSpeedSliderValue, Mode=TwoWay}" />
                         </Grid>
 
@@ -1191,7 +1193,7 @@
               </Grid>
 
               <Grid
-                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,Auto,66,Auto,Auto,*"
+                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,Auto,76,Auto,Auto,*"
                   ColumnSpacing="5"
                   IsVisible="{Binding ShowAdvancedClipControls}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CLIP" />
@@ -1216,16 +1218,18 @@
                     ToolTip.Tip="Rotate the selected clip 90° clockwise" />
                 <TextBlock Grid.Column="12" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="SPEED" />
                 <NumericUpDown
+                    x:Name="SelectedClipPlaybackSpeedInput"
                     Grid.Column="13"
                     Height="26"
                     Padding="4,0"
-                    Minimum="25"
-                    Maximum="400"
+                    Minimum="1"
+                    Maximum="10000"
                     Increment="5"
                     FormatString="0"
                     ShowButtonSpinner="False"
                     HorizontalContentAlignment="Right"
-                    Value="{Binding SelectedClipPlaybackSpeedPercent, Mode=TwoWay}">
+                    LostFocus="SelectedClipPlaybackSpeedInput_LostFocus"
+                    Value="{Binding SelectedClipPlaybackSpeedPercent, Mode=TwoWay, Delay=2500}">
                   <NumericUpDown.InnerRightContent>
                     <TextBlock Margin="2,0,3,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="%" />
                   </NumericUpDown.InnerRightContent>

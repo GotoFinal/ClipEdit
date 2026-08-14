@@ -37,9 +37,9 @@ public sealed class ExportPreferencesStoreTests
                         43,
                         62,
                         18,
-                        125),
+                        7_500),
                 ],
-                150);
+                10_000);
 
             Assert.True(store.Save(settings));
             var restored = store.Load();
