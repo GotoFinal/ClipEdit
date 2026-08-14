@@ -165,7 +165,7 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Fact]
-    public void Canvas_sequence_places_scaled_rotated_clip_beneath_shared_crop()
+    public void Canvas_sequence_places_mirrored_scaled_rotated_clip_beneath_shared_crop()
     {
         var canvasSize = new PixelSize(1_920, 1_080);
         var canvasCrop = new CropRegion(canvasSize, 420, 0, 1_080, 1_080);
@@ -177,7 +177,14 @@ public sealed class FfmpegExportArgumentsTests
                     new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
                     canvasSize,
                     canvasCrop,
-                    new ClipCanvasTransform(120.5, -40, 1.25, 0.75, 15)),
+                    new ClipCanvasTransform(
+                        120.5,
+                        -40,
+                        1.25,
+                        0.75,
+                        15,
+                        isHorizontallyMirrored: true,
+                        isVerticallyMirrored: true)),
             ],
             canvasCrop.ExportSize,
             "C:\\canvas.mp4",
@@ -189,7 +196,7 @@ public sealed class FfmpegExportArgumentsTests
             "setpts=PTS-STARTPTS,split=2[vseg0basein][vseg0contentin]",
             graph);
         Assert.Contains(
-            "format=rgba,rotate=15*PI/180:" +
+            "hflip,vflip,format=rgba,rotate=15*PI/180:" +
             "ow=rotw(15*PI/180):oh=roth(15*PI/180):c=black@0," +
             "scale=round(iw*1.25):round(ih*0.75):flags=lanczos",
             graph);

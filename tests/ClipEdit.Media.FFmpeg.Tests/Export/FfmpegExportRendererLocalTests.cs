@@ -270,7 +270,7 @@ public sealed class FfmpegExportRendererLocalTests
 
     [Fact]
     [Trait("Category", "LocalMedia")]
-    public async Task Renderer_concatenates_clip_transforms_beneath_one_shared_crop()
+    public async Task Renderer_concatenates_mirrored_clip_transforms_beneath_one_shared_crop()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
         var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
@@ -307,7 +307,12 @@ public sealed class FfmpegExportRendererLocalTests
                     new MediaRange(new MediaTime(1, 1), new MediaTime(2, 1)),
                     canvasSize,
                     sharedCrop,
-                    new ClipCanvasTransform(-160, 0, 1.1, 0),
+                    new ClipCanvasTransform(
+                        -160,
+                        0,
+                        1.1,
+                        0,
+                        isHorizontallyMirrored: true),
                     audioPlans),
                 new ExportVideoSegmentPlan(
                     sourcePath,
@@ -315,7 +320,13 @@ public sealed class FfmpegExportRendererLocalTests
                     new MediaRange(new MediaTime(3, 1), new MediaTime(4, 1)),
                     canvasSize,
                     sharedCrop,
-                    new ClipCanvasTransform(160, 0, 0.5, 1.1, 15),
+                    new ClipCanvasTransform(
+                        160,
+                        0,
+                        0.5,
+                        1.1,
+                        15,
+                        isVerticallyMirrored: true),
                     audioPlans),
             ],
             new PixelSize(320, 180),

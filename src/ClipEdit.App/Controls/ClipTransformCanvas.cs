@@ -330,7 +330,9 @@ public sealed class ClipTransformCanvas : Control
             relativeY - ((relativeY - start.OffsetY) * actualFactor),
             start.ScaleX * actualFactor,
             start.ScaleY * actualFactor,
-            start.RotationDegrees);
+            start.RotationDegrees,
+            start.IsHorizontallyMirrored,
+            start.IsVerticallyMirrored);
     }
 
     private Rect GetCanvasViewport()
@@ -462,7 +464,9 @@ public sealed class ClipTransformCanvas : Control
             start.OffsetY + centerShiftY,
             scaleX,
             scaleY,
-            start.RotationDegrees);
+            start.RotationDegrees,
+            start.IsHorizontallyMirrored,
+            start.IsVerticallyMirrored);
     }
 
     internal static ClipCanvasTransform ApplyRotation(

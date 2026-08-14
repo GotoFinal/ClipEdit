@@ -96,6 +96,9 @@ internal static class FfmpegExportArguments
             {
                 var transform = segment.CanvasTransform;
                 var rotationRadians = $"{transform.RotationDegrees}*PI/180";
+                var mirroring =
+                    (transform.IsHorizontallyMirrored ? "hflip," : string.Empty) +
+                    (transform.IsVerticallyMirrored ? "vflip," : string.Empty);
                 var rotation = transform.RotationDegrees == 0
                     ? string.Empty
                     : $"format=rgba,rotate={rotationRadians}:" +
@@ -111,6 +114,7 @@ internal static class FfmpegExportArguments
                     $"drawbox=c=black:t=fill[vseg{segmentIndex}base]");
                 filters.Add(
                     $"[vseg{segmentIndex}contentin]" +
+                    mirroring +
                     rotation +
                     $"scale=round(iw*{FormatScalar(transform.ScaleX)}):" +
                     $"round(ih*{FormatScalar(transform.ScaleY)}):flags=lanczos[vseg{segmentIndex}content]");

@@ -344,7 +344,13 @@ public sealed class JsonProjectStore : IProjectStore
                     ? clip.CanvasScaleY ?? throw new ArgumentException("The vertical canvas scale is missing.")
                     : clip.CanvasScale;
                 _ = new ClipCanvasTransform(
-                    clip.CanvasOffsetX, clip.CanvasOffsetY, scaleX, scaleY, clip.CanvasRotationDegrees);
+                    clip.CanvasOffsetX,
+                    clip.CanvasOffsetY,
+                    scaleX,
+                    scaleY,
+                    clip.CanvasRotationDegrees,
+                    document.SchemaVersion >= 11 && clip.IsHorizontallyMirrored,
+                    document.SchemaVersion >= 11 && clip.IsVerticallyMirrored);
             }
             catch (Exception exception) when (
                 exception is ArgumentException or OverflowException or DivideByZeroException)

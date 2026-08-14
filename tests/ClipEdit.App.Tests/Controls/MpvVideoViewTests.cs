@@ -78,6 +78,32 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
+    public void Mirrored_video_quad_swaps_only_the_requested_texture_axes()
+    {
+        var vertices = MpvVideoView.CalculateVideoQuadVertices(
+            new DomainPixelSize(1_920, 1_080),
+            new DomainPixelSize(1_920, 1_080),
+            new ClipCanvasTransform(
+                0,
+                0,
+                1,
+                0,
+                isHorizontallyMirrored: true,
+                isVerticallyMirrored: true),
+            new Size(960, 540));
+
+        Assert.Equal(
+            new float[]
+            {
+                -1, 1, 1, 1,
+                1, 1, 0, 1,
+                -1, -1, 1, 0,
+                1, -1, 0, 0,
+            },
+            vertices);
+    }
+
+    [Fact]
     public void Position_inside_kept_range_continues()
     {
         var decision = MpvVideoView.GetPlaybackRangeDecision(new MediaTime(3, 1), Ranges);

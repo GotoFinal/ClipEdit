@@ -3745,7 +3745,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             clip.TimelineStart.Denominator,
             clip.AudioGainDb,
             clip.ExcludedAudioLaneIndices.Order().ToArray(),
-            clip.PlaybackSpeedPercent);
+            clip.PlaybackSpeedPercent,
+            transform.IsHorizontallyMirrored,
+            transform.IsVerticallyMirrored);
     }
 
     private static ProjectAudioTrackDocument? CreateAudioTrackDocumentForMedia(
@@ -3881,7 +3883,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                             document.SchemaVersion >= 4
                                 ? savedClip.CanvasScaleY ?? savedClip.CanvasScale
                                 : savedClip.CanvasScale,
-                            savedClip.CanvasRotationDegrees)
+                            savedClip.CanvasRotationDegrees,
+                            document.SchemaVersion >= 11 && savedClip.IsHorizontallyMirrored,
+                            document.SchemaVersion >= 11 && savedClip.IsVerticallyMirrored)
                         : CreateLegacyCanvasTransform(source.VideoSize, CanvasSize, CanvasCrop, window);
                     replacements.Add(new VideoClipViewModel(
                         source,

@@ -132,6 +132,8 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(CanvasScaleXPercent));
             OnPropertyChanged(nameof(CanvasScaleYPercent));
             OnPropertyChanged(nameof(CanvasRotationDegrees));
+            OnPropertyChanged(nameof(IsHorizontallyMirrored));
+            OnPropertyChanged(nameof(IsVerticallyMirrored));
             OnPropertyChanged(nameof(CanvasTransformText));
         }
     }
@@ -238,12 +240,26 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
             value);
     }
 
+    public bool IsHorizontallyMirrored
+    {
+        get => CanvasTransform.IsHorizontallyMirrored;
+        set => CanvasTransform = CanvasTransform.MirrorHorizontally(value);
+    }
+
+    public bool IsVerticallyMirrored
+    {
+        get => CanvasTransform.IsVerticallyMirrored;
+        set => CanvasTransform = CanvasTransform.MirrorVertically(value);
+    }
+
     public string CanvasTransformText =>
         $"X {CanvasTransform.OffsetX:0.#} · Y {CanvasTransform.OffsetY:0.#} · " +
         (CanvasTransform.HasUniformScale
             ? $"{CanvasTransform.ScaleX * 100:0.#}%"
             : $"W {CanvasTransform.ScaleX * 100:0.#}% · H {CanvasTransform.ScaleY * 100:0.#}%") +
-        $" · {CanvasTransform.RotationDegrees}°";
+        $" · {CanvasTransform.RotationDegrees}°" +
+        (CanvasTransform.IsHorizontallyMirrored ? " · mirrored H" : string.Empty) +
+        (CanvasTransform.IsVerticallyMirrored ? " · mirrored V" : string.Empty);
 
     public MediaTime SourceStart => Model.SourceRange.Start;
 
@@ -396,7 +412,14 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     {
         try
         {
-            CanvasTransform = new ClipCanvasTransform(offsetX, offsetY, scaleX, scaleY, rotationDegrees);
+            CanvasTransform = new ClipCanvasTransform(
+                offsetX,
+                offsetY,
+                scaleX,
+                scaleY,
+                rotationDegrees,
+                CanvasTransform.IsHorizontallyMirrored,
+                CanvasTransform.IsVerticallyMirrored);
         }
         catch (ArgumentOutOfRangeException)
         {

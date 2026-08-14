@@ -12,7 +12,7 @@ public sealed record ProjectDocument(
     ProjectCanvasDocument? Canvas = null,
     ProjectExportSettingsDocument? ExportSettings = null)
 {
-    public const int CurrentSchemaVersion = 10;
+    public const int CurrentSchemaVersion = 11;
 }
 
 public sealed record ProjectExportSettingsDocument(
@@ -66,7 +66,9 @@ public sealed record ProjectVideoClipDocument(
     int TimelineStartDenominator = 1,
     double AudioGainDb = 0,
     IReadOnlyList<int>? ExcludedAudioLaneIndices = null,
-    int PlaybackSpeedPercent = 100);
+    int PlaybackSpeedPercent = 100,
+    bool IsHorizontallyMirrored = false,
+    bool IsVerticallyMirrored = false);
 
 public sealed record ProjectCropSettingsDocument(
     string PresetId,

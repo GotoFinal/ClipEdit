@@ -906,13 +906,17 @@ public sealed class MpvVideoView : OpenGlControlBase
         var bottomRight = matrix.Transform(new Point(halfWidth, halfHeight));
         var viewportWidth = Math.Max(1, physicalViewport.Width);
         var viewportHeight = Math.Max(1, physicalViewport.Height);
+        var leftTextureX = transform.IsHorizontallyMirrored ? 1 : 0;
+        var rightTextureX = transform.IsHorizontallyMirrored ? 0 : 1;
+        var topTextureY = transform.IsVerticallyMirrored ? 1 : 0;
+        var bottomTextureY = transform.IsVerticallyMirrored ? 0 : 1;
 
         return
         [
-            ToNdcX(topLeft.X, viewportWidth), ToNdcY(topLeft.Y, viewportHeight), 0, 0,
-            ToNdcX(topRight.X, viewportWidth), ToNdcY(topRight.Y, viewportHeight), 1, 0,
-            ToNdcX(bottomLeft.X, viewportWidth), ToNdcY(bottomLeft.Y, viewportHeight), 0, 1,
-            ToNdcX(bottomRight.X, viewportWidth), ToNdcY(bottomRight.Y, viewportHeight), 1, 1,
+            ToNdcX(topLeft.X, viewportWidth), ToNdcY(topLeft.Y, viewportHeight), leftTextureX, topTextureY,
+            ToNdcX(topRight.X, viewportWidth), ToNdcY(topRight.Y, viewportHeight), rightTextureX, topTextureY,
+            ToNdcX(bottomLeft.X, viewportWidth), ToNdcY(bottomLeft.Y, viewportHeight), leftTextureX, bottomTextureY,
+            ToNdcX(bottomRight.X, viewportWidth), ToNdcY(bottomRight.Y, viewportHeight), rightTextureX, bottomTextureY,
         ];
     }
 

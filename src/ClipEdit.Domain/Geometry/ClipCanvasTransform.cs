@@ -12,8 +12,17 @@ public readonly record struct ClipCanvasTransform
         double offsetX,
         double offsetY,
         double scale,
-        int rotationDegrees)
-        : this(offsetX, offsetY, scale, scale, rotationDegrees)
+        int rotationDegrees,
+        bool isHorizontallyMirrored = false,
+        bool isVerticallyMirrored = false)
+        : this(
+            offsetX,
+            offsetY,
+            scale,
+            scale,
+            rotationDegrees,
+            isHorizontallyMirrored,
+            isVerticallyMirrored)
     {
     }
 
@@ -22,7 +31,9 @@ public readonly record struct ClipCanvasTransform
         double offsetY,
         double scaleX,
         double scaleY,
-        int rotationDegrees)
+        int rotationDegrees,
+        bool isHorizontallyMirrored = false,
+        bool isVerticallyMirrored = false)
     {
         if (!double.IsFinite(offsetX) || !double.IsFinite(offsetY) ||
             Math.Abs(offsetX) > 1_000_000_000 || Math.Abs(offsetY) > 1_000_000_000)
@@ -42,6 +53,8 @@ public readonly record struct ClipCanvasTransform
         ScaleX = scaleX;
         ScaleY = scaleY;
         RotationDegrees = ((rotationDegrees % 360) + 360) % 360;
+        IsHorizontallyMirrored = isHorizontallyMirrored;
+        IsVerticallyMirrored = isVerticallyMirrored;
     }
 
     public double OffsetX { get; }
@@ -57,6 +70,10 @@ public readonly record struct ClipCanvasTransform
     public bool HasUniformScale => Math.Abs(ScaleX - ScaleY) < 0.000_001;
 
     public int RotationDegrees { get; }
+
+    public bool IsHorizontallyMirrored { get; }
+
+    public bool IsVerticallyMirrored { get; }
 
     public static ClipCanvasTransform Identity => new(0, 0, 1, 0);
 
@@ -79,19 +96,74 @@ public readonly record struct ClipCanvasTransform
             0);
 
     public ClipCanvasTransform MoveTo(double offsetX, double offsetY) =>
-        new(offsetX, offsetY, ScaleX, ScaleY, RotationDegrees);
+        new(
+            offsetX,
+            offsetY,
+            ScaleX,
+            ScaleY,
+            RotationDegrees,
+            IsHorizontallyMirrored,
+            IsVerticallyMirrored);
 
     public ClipCanvasTransform Resize(double scale) =>
-        new(OffsetX, OffsetY, scale, scale, RotationDegrees);
+        new(
+            OffsetX,
+            OffsetY,
+            scale,
+            scale,
+            RotationDegrees,
+            IsHorizontallyMirrored,
+            IsVerticallyMirrored);
 
     public ClipCanvasTransform Resize(double scaleX, double scaleY) =>
-        new(OffsetX, OffsetY, scaleX, scaleY, RotationDegrees);
+        new(
+            OffsetX,
+            OffsetY,
+            scaleX,
+            scaleY,
+            RotationDegrees,
+            IsHorizontallyMirrored,
+            IsVerticallyMirrored);
 
     public ClipCanvasTransform Rotate(int rotationDegrees) =>
-        new(OffsetX, OffsetY, ScaleX, ScaleY, rotationDegrees);
+        new(
+            OffsetX,
+            OffsetY,
+            ScaleX,
+            ScaleY,
+            rotationDegrees,
+            IsHorizontallyMirrored,
+            IsVerticallyMirrored);
+
+    public ClipCanvasTransform MirrorHorizontally(bool isMirrored) =>
+        new(
+            OffsetX,
+            OffsetY,
+            ScaleX,
+            ScaleY,
+            RotationDegrees,
+            isMirrored,
+            IsVerticallyMirrored);
+
+    public ClipCanvasTransform MirrorVertically(bool isMirrored) =>
+        new(
+            OffsetX,
+            OffsetY,
+            ScaleX,
+            ScaleY,
+            RotationDegrees,
+            IsHorizontallyMirrored,
+            isMirrored);
 
     public ClipCanvasTransform RotateCanvasClockwise() =>
-        new(-OffsetY, OffsetX, ScaleY, ScaleX, RotationDegrees + 90);
+        new(
+            -OffsetY,
+            OffsetX,
+            ScaleY,
+            ScaleX,
+            RotationDegrees + 90,
+            IsHorizontallyMirrored,
+            IsVerticallyMirrored);
 
     private static bool IsValidScale(double scale) =>
         double.IsFinite(scale) && scale is >= 0.01 and <= 100;

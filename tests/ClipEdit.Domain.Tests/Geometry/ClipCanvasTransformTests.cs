@@ -41,7 +41,14 @@ public sealed class ClipCanvasTransformTests
     [Fact]
     public void Canvas_quarter_turn_rotates_offsets_and_canvas_axis_scales()
     {
-        var transform = new ClipCanvasTransform(120, -40, 1.25, 0.75, 17);
+        var transform = new ClipCanvasTransform(
+            120,
+            -40,
+            1.25,
+            0.75,
+            17,
+            isHorizontallyMirrored: true,
+            isVerticallyMirrored: false);
 
         var rotated = transform.RotateCanvasClockwise();
 
@@ -50,8 +57,27 @@ public sealed class ClipCanvasTransformTests
         Assert.Equal(0.75, rotated.ScaleX);
         Assert.Equal(1.25, rotated.ScaleY);
         Assert.Equal(107, rotated.RotationDegrees);
+        Assert.True(rotated.IsHorizontallyMirrored);
+        Assert.False(rotated.IsVerticallyMirrored);
     }
 
+    [Fact]
+    public void Mirror_flags_survive_position_scale_and_rotation_edits()
+    {
+        var mirrored = ClipCanvasTransform.Identity
+            .MirrorHorizontally(true)
+            .MirrorVertically(true);
+
+        var edited = mirrored
+            .MoveTo(12, -8)
+            .Resize(1.5, 0.75)
+            .Rotate(35);
+
+        Assert.True(edited.IsHorizontallyMirrored);
+        Assert.True(edited.IsVerticallyMirrored);
+        Assert.Equal((12d, -8d, 1.5, 0.75, 35),
+            (edited.OffsetX, edited.OffsetY, edited.ScaleX, edited.ScaleY, edited.RotationDegrees));
+    }
 
     [Theory]
     [InlineData(0)]

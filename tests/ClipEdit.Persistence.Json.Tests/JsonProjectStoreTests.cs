@@ -106,6 +106,33 @@ public sealed class JsonProjectStoreTests
         }
     }
 
+    [Fact]
+    public async Task Schema_ten_clip_without_mirror_fields_loads_unmirrored()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
+        try
+        {
+            var store = new JsonProjectStore();
+            await store.SaveAsync(path, CreateDocument());
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            root["schemaVersion"] = 10;
+            var clip = root["videoClips"]![0]!.AsObject();
+            clip.Remove("isHorizontallyMirrored");
+            clip.Remove("isVerticallyMirrored");
+            await File.WriteAllTextAsync(path, root.ToJsonString());
+
+            var loaded = await store.LoadAsync(path);
+
+            var loadedClip = Assert.Single(loaded.VideoClips!);
+            Assert.False(loadedClip.IsHorizontallyMirrored);
+            Assert.False(loadedClip.IsVerticallyMirrored);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static ProjectDocument CreateDocument()
     {
         var sourcePath = Path.Combine(Path.GetTempPath(), "source with spaces.mkv");
@@ -169,7 +196,9 @@ public sealed class JsonProjectStoreTests
                     TimelineStartNumerator: 3,
                     TimelineStartDenominator: 2,
                     AudioGainDb: -5.5,
-                    PlaybackSpeedPercent: 160),
+                    PlaybackSpeedPercent: 160,
+                    IsHorizontallyMirrored: true,
+                    IsVerticallyMirrored: true),
             ],
             new ProjectCropSettingsDocument("1-1", true),
             new ProjectCanvasDocument(1_920, 1_080, 420, 0, 1_080, 1_080),

@@ -1193,7 +1193,7 @@
               </Grid>
 
               <Grid
-                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,Auto,76,Auto,Auto,*"
+                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,Auto,Auto,76,Auto,Auto,*"
                   ColumnSpacing="5"
                   IsVisible="{Binding ShowAdvancedClipControls}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CLIP" />
@@ -1216,10 +1216,30 @@
                     Click="RotateSelectedClipClockwise_Click"
                     Content="90°"
                     ToolTip.Tip="Rotate the selected clip 90° clockwise" />
-                <TextBlock Grid.Column="12" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="SPEED" />
+                <StackPanel Grid.Column="12" Orientation="Horizontal" Spacing="2">
+                  <ToggleButton
+                      Width="26"
+                      Height="26"
+                      Padding="0"
+                      Classes="secondary"
+                      AutomationProperties.Name="Mirror selected clip horizontally"
+                      Content="H"
+                      IsChecked="{Binding SelectedVideoClip.IsHorizontallyMirrored, Mode=TwoWay}"
+                      ToolTip.Tip="Mirror the selected clip horizontally" />
+                  <ToggleButton
+                      Width="26"
+                      Height="26"
+                      Padding="0"
+                      Classes="secondary"
+                      AutomationProperties.Name="Mirror selected clip vertically"
+                      Content="V"
+                      IsChecked="{Binding SelectedVideoClip.IsVerticallyMirrored, Mode=TwoWay}"
+                      ToolTip.Tip="Mirror the selected clip vertically" />
+                </StackPanel>
+                <TextBlock Grid.Column="13" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="SPEED" />
                 <NumericUpDown
                     x:Name="SelectedClipPlaybackSpeedInput"
-                    Grid.Column="13"
+                    Grid.Column="14"
                     Height="26"
                     Padding="4,0"
                     Minimum="1"
@@ -1235,20 +1255,20 @@
                   </NumericUpDown.InnerRightContent>
                 </NumericUpDown>
                 <Button
-                    Grid.Column="14"
+                    Grid.Column="15"
                     Padding="9,5"
                     Classes="secondary"
                     Click="FillClipCanvas_Click"
                     Content="Fill"
                     ToolTip.Tip="Center and fill the canvas" />
                 <Button
-                    Grid.Column="15"
+                    Grid.Column="16"
                     Padding="9,5"
                     Classes="secondary"
                     Click="FitClipCanvas_Click"
                     Content="Fit"
                     ToolTip.Tip="Center and show the whole clip" />
-                <TextBlock Grid.Column="16" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
+                <TextBlock Grid.Column="17" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
               </Grid>
 
               <Border

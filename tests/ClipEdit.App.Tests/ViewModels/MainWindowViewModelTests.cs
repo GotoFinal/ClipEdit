@@ -691,6 +691,32 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Clip_mirror_buttons_are_independent_persistent_and_undoable()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "mirror-buttons.mkv")]);
+        var clip = Assert.Single(viewModel.VideoClips);
+
+        clip.IsHorizontallyMirrored = true;
+        clip.IsVerticallyMirrored = true;
+
+        Assert.True(clip.IsHorizontallyMirrored);
+        Assert.True(clip.IsVerticallyMirrored);
+        var savedClip = Assert.Single(viewModel.CreateProjectDocument().VideoClips!);
+        Assert.True(savedClip.IsHorizontallyMirrored);
+        Assert.True(savedClip.IsVerticallyMirrored);
+
+        Assert.True(viewModel.Undo());
+        clip = Assert.Single(viewModel.VideoClips);
+        Assert.False(clip.IsHorizontallyMirrored);
+        Assert.False(clip.IsVerticallyMirrored);
+        Assert.True(viewModel.Redo());
+        clip = Assert.Single(viewModel.VideoClips);
+        Assert.True(clip.IsHorizontallyMirrored);
+        Assert.True(clip.IsVerticallyMirrored);
+    }
+
+    [Fact]
     public async Task Canvas_quarter_turn_rotates_crop_and_every_clip_as_one_undoable_edit()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
@@ -773,7 +799,14 @@ public sealed class MainWindowViewModelTests
         var original = Assert.Single(viewModel.VideoClips);
         original.SourceStartSeconds = 5;
         original.SourceEndSeconds = 12;
-        original.CanvasTransform = new ClipCanvasTransform(12, -8, 1.25, 0.8, 7);
+        original.CanvasTransform = new ClipCanvasTransform(
+            12,
+            -8,
+            1.25,
+            0.8,
+            7,
+            isHorizontallyMirrored: true,
+            isVerticallyMirrored: false);
         original.AudioGainDb = -3.5;
 
         Assert.True(viewModel.CopySelectedVideoClip());

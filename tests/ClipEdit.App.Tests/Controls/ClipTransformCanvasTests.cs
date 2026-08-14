@@ -125,6 +125,34 @@ public sealed class ClipTransformCanvasTests
     }
 
     [Fact]
+    public void Interactive_resize_and_zoom_do_not_clear_clip_mirroring()
+    {
+        var start = new ClipCanvasTransform(
+            0,
+            0,
+            1,
+            0,
+            isHorizontallyMirrored: true,
+            isVerticallyMirrored: true);
+
+        var zoomed = ClipTransformCanvas.ApplyZoomAt(
+            start,
+            new Point(960, 540),
+            new DomainPixelSize(1_920, 1_080),
+            1.1);
+        var resized = ClipTransformCanvas.ApplyResize(
+            zoomed,
+            new DomainPixelSize(1_920, 1_080),
+            ClipTransformDragMode.Right,
+            100,
+            0,
+            preserveAspectRatio: true);
+
+        Assert.True(resized.IsHorizontallyMirrored);
+        Assert.True(resized.IsVerticallyMirrored);
+    }
+
+    [Fact]
     public void Handle_hit_testing_wins_over_clip_body_drag()
     {
         Point[] corners =
