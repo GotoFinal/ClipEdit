@@ -149,6 +149,14 @@ public sealed class MpvVideoView : OpenGlControlBase
             UpdateInteractiveCanvasTransform();
             StartVideoTransformChange();
         };
+        EffectiveViewportChanged += (_, eventArgs) =>
+        {
+            if (ShouldRequestRenderForViewport(eventArgs.EffectiveViewport))
+            {
+                TryStartPendingLoad();
+                QueueRenderRequest();
+            }
+        };
     }
 
     public event EventHandler? PlaybackCompleted;
@@ -537,7 +545,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             _mediaLoaded = true;
             IsPlaybackAvailable = true;
             PlaybackStatus = audioWarning ?? "Live preview is ready";
-            RequestNextFrameRendering();
+            QueueRenderRequest();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -877,6 +885,9 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     internal static bool ShouldContinueRenderingDuringLoad(bool isLoadCompleted) =>
         !isLoadCompleted;
+
+    internal static bool ShouldRequestRenderForViewport(Rect effectiveViewport) =>
+        effectiveViewport.Width > 0 && effectiveViewport.Height > 0;
 
     private void StartAudioMixChange()
     {

@@ -842,6 +842,12 @@
                       Source="{Binding PreviewImage}"
                       Stretch="Uniform" />
 
+                  <Border
+                      Margin="5"
+                      Background="#000000"
+                      IsHitTestVisible="False"
+                      IsVisible="{Binding IsPlaybackAvailable, ElementName=LivePreview}" />
+
                   <controls:MpvVideoView
                       x:Name="LivePreview"
                       Margin="5"

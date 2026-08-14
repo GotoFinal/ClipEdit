@@ -25,6 +25,13 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
+    public void Becoming_effectively_visible_requests_a_fresh_render()
+    {
+        Assert.True(MpvVideoView.ShouldRequestRenderForViewport(new Rect(0, 0, 960, 540)));
+        Assert.False(MpvVideoView.ShouldRequestRenderForViewport(default));
+    }
+
+    [Fact]
     public void Position_inside_kept_range_continues()
     {
         var decision = MpvVideoView.GetPlaybackRangeDecision(new MediaTime(3, 1), Ranges);
