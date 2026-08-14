@@ -16,6 +16,7 @@ internal sealed class MpvClient : IDisposable
     private const int FlagFormat = 3;
     private readonly MpvNativeLibrary _native;
     private IReadOnlyList<string> _loadedExternalAudioSources = [];
+    private PreviewVideoTransform? _lastVideoTransform;
     private nint _handle;
 
     public MpvClient(MpvNativeLibrary native)
@@ -65,6 +66,7 @@ internal sealed class MpvClient : IDisposable
         }
 
         _loadedExternalAudioSources = [];
+        _lastVideoTransform = null;
         RunCommand("loadfile", fullPath, "replace");
         WaitUntilLoaded(cancellationToken);
     }
@@ -159,14 +161,48 @@ internal sealed class MpvClient : IDisposable
 
     public void SetVideoTransform(PreviewVideoTransform transform)
     {
-        SetProperty(
-            "video-zoom",
-            Math.Log2(transform.ZoomFactor).ToString("R", CultureInfo.InvariantCulture));
-        SetProperty("video-scale-x", transform.ScaleX.ToString("R", CultureInfo.InvariantCulture));
-        SetProperty("video-scale-y", transform.ScaleY.ToString("R", CultureInfo.InvariantCulture));
-        SetProperty("video-pan-x", transform.PanX.ToString("R", CultureInfo.InvariantCulture));
-        SetProperty("video-pan-y", transform.PanY.ToString("R", CultureInfo.InvariantCulture));
-        SetProperty("video-rotate", transform.RotationDegrees.ToString(CultureInfo.InvariantCulture));
+        foreach (var property in GetVideoTransformPropertyChanges(_lastVideoTransform, transform))
+        {
+            SetProperty(property.Name, property.Value);
+        }
+
+        _lastVideoTransform = transform;
+    }
+
+    internal static IReadOnlyList<(string Name, string Value)> GetVideoTransformPropertyChanges(
+        PreviewVideoTransform? previous,
+        PreviewVideoTransform current)
+    {
+        var changes = new List<(string Name, string Value)>(6);
+        if (previous is not { } old || old.RotationDegrees != current.RotationDegrees)
+        {
+            // Rotation must lead the batch. Otherwise mpv can expose the new
+            // rotated bounding-box scale for a frame before it exposes the angle.
+            changes.Add((
+                "video-rotate",
+                current.RotationDegrees.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        if (previous is not { } previousZoom || previousZoom.ZoomFactor != current.ZoomFactor)
+        {
+            changes.Add((
+                "video-zoom",
+                Math.Log2(current.ZoomFactor).ToString("R", CultureInfo.InvariantCulture)));
+        }
+
+        AddDoubleChange("video-scale-x", previous?.ScaleX, current.ScaleX);
+        AddDoubleChange("video-scale-y", previous?.ScaleY, current.ScaleY);
+        AddDoubleChange("video-pan-x", previous?.PanX, current.PanX);
+        AddDoubleChange("video-pan-y", previous?.PanY, current.PanY);
+        return changes;
+
+        void AddDoubleChange(string name, double? oldValue, double newValue)
+        {
+            if (oldValue != newValue)
+            {
+                changes.Add((name, newValue.ToString("R", CultureInfo.InvariantCulture)));
+            }
+        }
     }
 
     public void SetAudioTracks(

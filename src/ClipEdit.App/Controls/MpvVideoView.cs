@@ -77,6 +77,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly DispatcherTimer _positionTimer;
     private readonly PreviewLoadGate _loadGate = new();
+    private readonly PreviewRenderRequestGate _renderRequestGate = new();
     private CancellationTokenSource? _loadCancellation;
     private Task _loadTask = Task.CompletedTask;
     private CancellationTokenSource? _seekCancellation;
@@ -668,10 +669,15 @@ public sealed class MpvVideoView : OpenGlControlBase
                     CanvasTransform,
                     Bounds.Size);
                 await _engine.SetVideoTransformAsync(transform, _lifetimeCancellation.Token);
+                QueueRenderRequest();
                 if (handledRevision == _videoTransformRevision)
                 {
                     break;
                 }
+
+                // Keep interactive updates near display cadence instead of
+                // building a native property/redraw backlog during a drag.
+                await Task.Delay(TimeSpan.FromMilliseconds(16), _lifetimeCancellation.Token);
             }
         }
         catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
@@ -764,7 +770,26 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     private void RequestRenderFromNativeCallback()
     {
-        Dispatcher.UIThread.Post(RequestNextFrameRendering, DispatcherPriority.Render);
+        QueueRenderRequest();
+    }
+
+    private void QueueRenderRequest()
+    {
+        if (!_renderRequestGate.TryQueue())
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                _renderRequestGate.Complete();
+                if (!_shutdownStarted)
+                {
+                    RequestNextFrameRendering();
+                }
+            },
+            DispatcherPriority.Render);
     }
 
     private async void OnPositionTimerTick(object? sender, EventArgs eventArgs)
