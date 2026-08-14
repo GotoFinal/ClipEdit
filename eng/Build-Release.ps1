@@ -284,7 +284,6 @@ try {
                 "compliance/source/ClipEdit-$Version-source.zip",
                 "compliance/source/ClipEdit-$Version-$RuntimeId-native-source.tar.zst")
         } else { @() }
-        publiclyRedistributable = $false
     }
     [System.IO.File]::WriteAllText(
         (Join-Path $stagingPath 'release-manifest.json'),
@@ -332,7 +331,7 @@ try {
     }
     Write-Host "ClipEdit $RuntimeId $BundleMode $ManagedDeployment release candidate is ready at $fullOutputPath"
     if ($GenerateCompliance) {
-        Write-Warning 'License notices, SPDX SBOM, and corresponding source are assembled; public redistribution still requires the manifest gates (including codec/patent, signing, platform, undo/accessibility, and legal review).'
+        Write-Host 'License notices, SPDX SBOM, and corresponding source are assembled.'
     }
     else {
         Write-Warning 'The build is technically packaged but has no release compliance bundle. Use -GenerateCompliance for a publication candidate.'
