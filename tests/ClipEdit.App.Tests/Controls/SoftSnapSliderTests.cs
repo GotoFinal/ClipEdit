@@ -1,9 +1,22 @@
+using System.Reflection;
+using Avalonia.Controls;
 using ClipEdit.App.Controls;
 
 namespace ClipEdit.App.Tests.Controls;
 
 public sealed class SoftSnapSliderTests
 {
+    [Fact]
+    public void Derived_slider_uses_the_base_slider_theme()
+    {
+        var styleKeyProperty = typeof(SoftSnapSlider).GetProperty(
+            "StyleKeyOverride",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Assert.NotNull(styleKeyProperty);
+        Assert.Equal(typeof(Slider), styleKeyProperty.GetValue(new SoftSnapSlider()));
+    }
+
     [Fact]
     public void Nearby_values_snap_to_the_nearest_anchor()
     {

@@ -54,6 +54,46 @@
       <Setter Property="Height" Value="28" />
       <Setter Property="Padding" Value="6" />
     </Style>
+    <Style Selector="TextBox.numeric-entry">
+      <Setter Property="Height" Value="30" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="TextAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="NumericUpDown.numeric-entry">
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="NumericUpDown.numeric-entry /template/ TextBox#PART_TextBox">
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="TextAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton.mirror-tool">
+      <Setter Property="Width" Value="29" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="5" />
+      <Setter Property="Background" Value="#252936" />
+      <Setter Property="Foreground" Value="#E9EAF0" />
+      <Setter Property="BorderBrush" Value="#3D4352" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton.mirror-tool:pointerover">
+      <Setter Property="Background" Value="#343946" />
+    </Style>
+    <Style Selector="ToggleButton.mirror-tool:checked">
+      <Setter Property="Background" Value="#7C5CFC" />
+      <Setter Property="BorderBrush" Value="#A694FF" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
     <Style Selector=":is(Button).timeline-tool">
       <Setter Property="Height" Value="24" />
       <Setter Property="MinHeight" Value="0" />
@@ -336,22 +376,16 @@
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Scale" />
                           <NumericUpDown
                               Grid.Column="1"
-                              Height="26"
-                              Padding="6,0"
+                              Classes="numeric-entry"
                               Minimum="10"
                               Maximum="100"
                               Increment="1"
-                              FormatString="0"
+                              FormatString="0' %'"
                               ShowButtonSpinner="False"
-                              HorizontalContentAlignment="Right"
                               Background="#151820"
                               BorderBrush="#555C6C"
                               Foreground="#F5F5F8"
-                              Value="{Binding ExportScalePercent, Mode=TwoWay}">
-                            <NumericUpDown.InnerRightContent>
-                              <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Foreground="#A8AFC0" Text="%" />
-                            </NumericUpDown.InnerRightContent>
-                          </NumericUpDown>
+                              Value="{Binding ExportScalePercent, Mode=TwoWay}" />
                           <Slider
                               Grid.Row="1"
                               Grid.ColumnSpan="2"
@@ -370,22 +404,16 @@
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Quality" />
                           <NumericUpDown
                               Grid.Column="1"
-                              Height="26"
-                              Padding="6,0"
+                              Classes="numeric-entry"
                               Minimum="1"
                               Maximum="100"
                               Increment="1"
-                              FormatString="0"
+                              FormatString="0' %'"
                               ShowButtonSpinner="False"
-                              HorizontalContentAlignment="Right"
                               Background="#151820"
                               BorderBrush="#555C6C"
                               Foreground="#F5F5F8"
-                              Value="{Binding ExportQuality, Mode=TwoWay}">
-                            <NumericUpDown.InnerRightContent>
-                              <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Foreground="#A8AFC0" Text="%" />
-                            </NumericUpDown.InnerRightContent>
-                          </NumericUpDown>
+                              Value="{Binding ExportQuality, Mode=TwoWay}" />
                           <Slider
                               Grid.Row="1"
                               Grid.ColumnSpan="2"
@@ -405,23 +433,17 @@
                           <NumericUpDown
                               x:Name="ExportPlaybackSpeedInput"
                               Grid.Column="1"
-                              Height="26"
-                              Padding="6,0"
+                              Classes="numeric-entry"
                               Minimum="1"
                               Maximum="10000"
                               Increment="5"
-                              FormatString="0"
+                              FormatString="0' %'"
                               ShowButtonSpinner="False"
-                              HorizontalContentAlignment="Right"
                               Background="#151820"
                               BorderBrush="#555C6C"
                               Foreground="#F5F5F8"
                               LostFocus="ExportPlaybackSpeedInput_LostFocus"
-                              Value="{Binding ExportPlaybackSpeedPercent, Mode=TwoWay, Delay=2500}">
-                            <NumericUpDown.InnerRightContent>
-                              <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Foreground="#A8AFC0" Text="%" />
-                            </NumericUpDown.InnerRightContent>
-                          </NumericUpDown>
+                              Value="{Binding ExportPlaybackSpeedPercent, Mode=TwoWay, Delay=2500}" />
                           <controls:SoftSnapSlider
                               Grid.Row="1"
                               Grid.ColumnSpan="2"
@@ -445,14 +467,12 @@
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="GIF frame rate" />
                           <NumericUpDown
                               Grid.Column="1"
-                              Height="26"
-                              Padding="6,0"
+                              Classes="numeric-entry"
                               Minimum="1"
                               Maximum="60"
                               Increment="1"
                               FormatString="0"
                               ShowButtonSpinner="False"
-                              HorizontalContentAlignment="Right"
                               Background="#151820"
                               BorderBrush="#555C6C"
                               Foreground="#F5F5F8"
@@ -522,14 +542,12 @@
                               <TextBlock VerticalAlignment="Center" Text="Frame rate" />
                               <NumericUpDown
                                   Grid.Column="1"
-                                  Height="26"
-                                  Padding="6,0"
+                                  Classes="numeric-entry"
                                   Minimum="1"
                                   Maximum="120"
                                   Increment="1"
                                   FormatString="0"
                                   ShowButtonSpinner="False"
-                                  HorizontalContentAlignment="Right"
                                   Background="#151820"
                                   BorderBrush="#555C6C"
                                   Foreground="#F5F5F8"
@@ -1182,13 +1200,13 @@
               <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="5" IsVisible="{Binding IsAdvancedMode}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CROP" />
                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="X" />
-                <TextBox Grid.Column="2" Width="54" Text="{Binding CanvasCropX, Mode=TwoWay}" />
+                <TextBox Grid.Column="2" Width="54" Classes="numeric-entry" Text="{Binding CanvasCropX, Mode=TwoWay}" />
                 <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Y" />
-                <TextBox Grid.Column="4" Width="54" Text="{Binding CanvasCropY, Mode=TwoWay}" />
+                <TextBox Grid.Column="4" Width="54" Classes="numeric-entry" Text="{Binding CanvasCropY, Mode=TwoWay}" />
                 <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="W" />
-                <TextBox Grid.Column="6" Width="60" Text="{Binding CanvasCropWidth, Mode=TwoWay}" />
+                <TextBox Grid.Column="6" Width="60" Classes="numeric-entry" Text="{Binding CanvasCropWidth, Mode=TwoWay}" />
                 <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="H" />
-                <TextBox Grid.Column="8" Width="60" Text="{Binding CanvasCropHeight, Mode=TwoWay}" />
+                <TextBox Grid.Column="8" Width="60" Classes="numeric-entry" Text="{Binding CanvasCropHeight, Mode=TwoWay}" />
                 <Button Grid.Column="9" Classes="secondary" Click="ResetCrop_Click" Content="Reset crop" />
               </Grid>
 
@@ -1198,15 +1216,15 @@
                   IsVisible="{Binding ShowAdvancedClipControls}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CLIP" />
                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="X" />
-                <TextBox Grid.Column="2" Text="{Binding SelectedVideoClip.CanvasOffsetX, Mode=TwoWay}" />
+                <TextBox Grid.Column="2" Classes="numeric-entry" Text="{Binding SelectedVideoClip.CanvasOffsetX, Mode=TwoWay}" />
                 <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Y" />
-                <TextBox Grid.Column="4" Text="{Binding SelectedVideoClip.CanvasOffsetY, Mode=TwoWay}" />
+                <TextBox Grid.Column="4" Classes="numeric-entry" Text="{Binding SelectedVideoClip.CanvasOffsetY, Mode=TwoWay}" />
                 <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="W %" />
-                <TextBox Grid.Column="6" Text="{Binding SelectedVideoClip.CanvasScaleXPercent, Mode=TwoWay}" />
+                <TextBox Grid.Column="6" Classes="numeric-entry" Text="{Binding SelectedVideoClip.CanvasScaleXPercent, Mode=TwoWay}" />
                 <TextBlock Grid.Column="7" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="H %" />
-                <TextBox Grid.Column="8" Text="{Binding SelectedVideoClip.CanvasScaleYPercent, Mode=TwoWay}" />
+                <TextBox Grid.Column="8" Classes="numeric-entry" Text="{Binding SelectedVideoClip.CanvasScaleYPercent, Mode=TwoWay}" />
                 <TextBlock Grid.Column="9" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="ROTATE °" />
-                <TextBox Grid.Column="10" Text="{Binding SelectedVideoClip.CanvasRotationDegrees, Mode=TwoWay}" />
+                <TextBox Grid.Column="10" Classes="numeric-entry" Text="{Binding SelectedVideoClip.CanvasRotationDegrees, Mode=TwoWay}" />
                 <Button
                     Grid.Column="11"
                     Width="30"
@@ -1216,44 +1234,43 @@
                     Click="RotateSelectedClipClockwise_Click"
                     Content="90°"
                     ToolTip.Tip="Rotate the selected clip 90° clockwise" />
-                <StackPanel Grid.Column="12" Orientation="Horizontal" Spacing="2">
+                <StackPanel Grid.Column="12" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                  <TextBlock Margin="1,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="MIRROR" />
                   <ToggleButton
-                      Width="26"
-                      Height="26"
-                      Padding="0"
-                      Classes="secondary"
+                      Classes="mirror-tool"
                       AutomationProperties.Name="Mirror selected clip horizontally"
-                      Content="H"
                       IsChecked="{Binding SelectedVideoClip.IsHorizontallyMirrored, Mode=TwoWay}"
-                      ToolTip.Tip="Mirror the selected clip horizontally" />
+                      ToolTip.Tip="Mirror the selected clip left to right">
+                    <PathIcon Width="16" Height="16" Data="M7.25,1 L8.75,1 L8.75,15 L7.25,15 Z M1,3 L6,8 L1,13 Z M15,3 L10,8 L15,13 Z" />
+                  </ToggleButton>
                   <ToggleButton
-                      Width="26"
-                      Height="26"
-                      Padding="0"
-                      Classes="secondary"
+                      Classes="mirror-tool"
                       AutomationProperties.Name="Mirror selected clip vertically"
-                      Content="V"
                       IsChecked="{Binding SelectedVideoClip.IsVerticallyMirrored, Mode=TwoWay}"
-                      ToolTip.Tip="Mirror the selected clip vertically" />
+                      ToolTip.Tip="Mirror the selected clip top to bottom">
+                    <PathIcon
+                        Width="16"
+                        Height="16"
+                        Data="M7.25,1 L8.75,1 L8.75,15 L7.25,15 Z M1,3 L6,8 L1,13 Z M15,3 L10,8 L15,13 Z"
+                        RenderTransformOrigin="50%,50%">
+                      <PathIcon.RenderTransform>
+                        <RotateTransform Angle="90" />
+                      </PathIcon.RenderTransform>
+                    </PathIcon>
+                  </ToggleButton>
                 </StackPanel>
                 <TextBlock Grid.Column="13" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="SPEED" />
                 <NumericUpDown
                     x:Name="SelectedClipPlaybackSpeedInput"
                     Grid.Column="14"
-                    Height="26"
-                    Padding="4,0"
+                    Classes="numeric-entry"
                     Minimum="1"
                     Maximum="10000"
                     Increment="5"
-                    FormatString="0"
+                    FormatString="0' %'"
                     ShowButtonSpinner="False"
-                    HorizontalContentAlignment="Right"
                     LostFocus="SelectedClipPlaybackSpeedInput_LostFocus"
-                    Value="{Binding SelectedClipPlaybackSpeedPercent, Mode=TwoWay, Delay=2500}">
-                  <NumericUpDown.InnerRightContent>
-                    <TextBlock Margin="2,0,3,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="%" />
-                  </NumericUpDown.InnerRightContent>
-                </NumericUpDown>
+                    Value="{Binding SelectedClipPlaybackSpeedPercent, Mode=TwoWay, Delay=2500}" />
                 <Button
                     Grid.Column="15"
                     Padding="9,5"
@@ -1375,43 +1392,33 @@
                     <TextBlock VerticalAlignment="Center" Text="Wheel zoom (%)" />
                     <NumericUpDown
                         Grid.Column="1"
-                        Height="26"
-                        Padding="6,0"
+                        Classes="numeric-entry"
                         Minimum="1"
                         Maximum="50"
                         Increment="1"
                         ShowButtonSpinner="False"
-                        HorizontalContentAlignment="Right"
                         Value="{Binding ClipWheelZoomPercent, Mode=TwoWay}" />
                     <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Shift+wheel rotate (°)" />
                     <NumericUpDown
                         Grid.Row="1"
                         Grid.Column="1"
-                        Height="26"
-                        Padding="6,0"
+                        Classes="numeric-entry"
                         Minimum="1"
                         Maximum="45"
                         Increment="1"
                         ShowButtonSpinner="False"
-                        HorizontalContentAlignment="Right"
                         Value="{Binding ClipWheelRotationDegrees, Mode=TwoWay}" />
                     <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Clipboard export limit" />
                     <NumericUpDown
                         Grid.Row="2"
                         Grid.Column="1"
-                        Height="26"
-                        Padding="6,0"
+                        Classes="numeric-entry"
                         Minimum="1"
                         Maximum="4096"
                         Increment="10"
-                        FormatString="0"
+                        FormatString="0' MB'"
                         ShowButtonSpinner="False"
-                        HorizontalContentAlignment="Right"
-                        Value="{Binding ClipboardExportMaximumMegabytes, Mode=TwoWay}">
-                      <NumericUpDown.InnerRightContent>
-                        <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="MB" />
-                      </NumericUpDown.InnerRightContent>
-                    </NumericUpDown>
+                        Value="{Binding ClipboardExportMaximumMegabytes, Mode=TwoWay}" />
                   </Grid>
                   <TextBlock Classes="muted" FontSize="10" Text="Handle resize keeps aspect · Ctrl stretches one axis" />
                   <Button

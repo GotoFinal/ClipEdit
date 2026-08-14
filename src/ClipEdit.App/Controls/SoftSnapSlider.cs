@@ -6,6 +6,8 @@ namespace ClipEdit.App.Controls;
 
 public sealed class SoftSnapSlider : Slider
 {
+    protected override Type StyleKeyOverride => typeof(Slider);
+
     public static readonly StyledProperty<IReadOnlyList<double>> SnapValuesProperty =
         AvaloniaProperty.Register<SoftSnapSlider, IReadOnlyList<double>>(
             nameof(SnapValues),
