@@ -93,6 +93,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private bool _isSynchronizingAudioTimeline;
     private bool _isClipTransformEditActive;
     private bool _clipTransformChangedDuringEdit;
+    private bool _clipTransformEditCreatesDistinctHistoryEntry;
 
     public MainWindowViewModel(
         IMediaProbe? mediaProbe,
@@ -239,7 +240,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool IsClipTransformEditing => _isClipTransformEditActive;
 
-    internal void BeginClipTransformEdit()
+    internal void BeginClipTransformEdit(bool createDistinctHistoryEntry = false)
     {
         if (_isClipTransformEditActive)
         {
@@ -248,6 +249,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         _isClipTransformEditActive = true;
         _clipTransformChangedDuringEdit = false;
+        _clipTransformEditCreatesDistinctHistoryEntry = createDistinctHistoryEntry;
         OnPropertyChanged(nameof(IsClipTransformEditing));
     }
 
@@ -259,6 +261,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         _isClipTransformEditActive = false;
+        var createDistinctHistoryEntry = _clipTransformEditCreatesDistinctHistoryEntry;
+        _clipTransformEditCreatesDistinctHistoryEntry = false;
         OnPropertyChanged(nameof(IsClipTransformEditing));
         if (!_clipTransformChangedDuringEdit)
         {
@@ -267,7 +271,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         _clipTransformChangedDuringEdit = false;
         var clip = SelectedVideoClip;
-        MarkProjectDirty(clip is null ? "clip:visual-transform" : $"clip:{clip.Id}:visual-transform");
+        MarkProjectDirty(
+            createDistinctHistoryEntry
+                ? null
+                : clip is null
+                    ? "clip:visual-transform"
+                    : $"clip:{clip.Id}:visual-transform");
         RaiseExportStateChanged();
     }
 
@@ -2735,6 +2744,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanRemoveSelectedMedia));
         OnPropertyChanged(nameof(CanApplyCropPreset));
         OnPropertyChanged(nameof(CanApplyCropPresetToAll));
+        OnPropertyChanged(nameof(CanRotateCanvas));
         OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
         OnPropertyChanged(nameof(CanMoveSelectedVideoRight));
         RaiseRecoveryStateChanged();

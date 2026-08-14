@@ -165,11 +165,57 @@ public sealed partial class MainWindowViewModel
         !IsSequencePlayheadInGap && (IsTransformToolActive || IsAutoToolActive);
     public bool IsAutoCanvasOverlayActive => !IsSequencePlayheadInGap && IsAutoToolActive;
 
+    public bool CanRotateCanvas => VideoClips.Count > 0;
+
     public void UseCropTool() => CanvasTool = CanvasInteractionTool.Crop;
 
     public void UseTransformTool() => CanvasTool = CanvasInteractionTool.Transform;
 
     public void UseAutoTool() => CanvasTool = CanvasInteractionTool.Auto;
+
+    public bool RotateSelectedClipClockwise()
+    {
+        if (SelectedVideoClip is not { } clip)
+        {
+            return false;
+        }
+
+        clip.CanvasTransform = clip.CanvasTransform.Rotate(clip.CanvasTransform.RotationDegrees + 90);
+        StatusText = $"Rotated {clip.DisplayName} 90° clockwise";
+        return true;
+    }
+
+    public bool RotateCanvasClockwise()
+    {
+        if (!CanRotateCanvas)
+        {
+            return false;
+        }
+
+        var rotatedCrop = CanvasCrop.RotateSourceClockwise();
+        var rotatedPreset = ResolveQuarterTurnCropPreset(SelectedCropAspectPreset);
+        BeginClipTransformEdit(createDistinctHistoryEntry: true);
+        try
+        {
+            CanvasSize = rotatedCrop.SourceSize;
+            _canvasCrop = rotatedCrop;
+            _selectedCropAspectPreset = rotatedPreset;
+            RaiseCanvasCropChanged();
+            OnPropertyChanged(nameof(SelectedCropAspectPreset));
+
+            foreach (var clip in VideoClips)
+            {
+                clip.CanvasTransform = clip.CanvasTransform.RotateCanvasClockwise();
+            }
+        }
+        finally
+        {
+            EndClipTransformEdit();
+        }
+
+        StatusText = $"Rotated the complete canvas 90° clockwise · {CanvasSize.Width} × {CanvasSize.Height}";
+        return true;
+    }
 
     public bool ResetCanvasCrop()
     {
@@ -346,6 +392,28 @@ public sealed partial class MainWindowViewModel
     {
         return checked(left / GreatestCommonDivisor(left, right) * right);
     }
+
+    private static CropAspectPreset ResolveQuarterTurnCropPreset(CropAspectPreset current)
+    {
+        if (current.IsCustom)
+        {
+            return BuiltInCropAspectPresets.Custom;
+        }
+
+        if (current.IsFullFrame)
+        {
+            return BuiltInCropAspectPresets.Source;
+        }
+
+        return BuiltInCropAspectPresets.All.FirstOrDefault(
+                   preset =>
+                       !preset.IsCustom &&
+                       !preset.IsFullFrame &&
+                       preset.WidthUnits == current.HeightUnits &&
+                       preset.HeightUnits == current.WidthUnits) ??
+               BuiltInCropAspectPresets.Custom;
+    }
+
     private void RaiseCanvasCropChanged()
     {
         OnPropertyChanged(nameof(CanvasCrop));

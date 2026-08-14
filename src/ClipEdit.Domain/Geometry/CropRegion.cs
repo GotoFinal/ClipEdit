@@ -72,6 +72,17 @@ public readonly record struct CropRegion
         return new CropRegion(SourceSize, clampedX, clampedY, Width, Height);
     }
 
+    public CropRegion RotateSourceClockwise()
+    {
+        var rotatedSize = new PixelSize(SourceSize.Height, SourceSize.Width);
+        return new CropRegion(
+            rotatedSize,
+            SourceSize.Height - Bottom,
+            X,
+            Height,
+            Width);
+    }
+
     public CropRegion ResizeToAspectRatio(int widthUnits, int heightUnits)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(widthUnits);

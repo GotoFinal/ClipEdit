@@ -724,6 +724,20 @@ public sealed partial class MainWindow : Window
         ViewModel?.FitSelectedClipToCanvas();
     }
 
+    private void RotateSelectedClipClockwise_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.RotateSelectedClipClockwise();
+    }
+
+    private void RotateCanvasClockwise_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.RotateCanvasClockwise();
+    }
+
     private void MoveVideoLeft_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

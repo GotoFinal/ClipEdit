@@ -691,6 +691,43 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Canvas_quarter_turn_rotates_crop_and_every_clip_as_one_undoable_edit()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "rotate-canvas.mkv")]);
+        var clip = Assert.Single(viewModel.VideoClips);
+        viewModel.CanvasCrop = new CropRegion(viewModel.CanvasSize, 100, 50, 1_000, 800);
+        clip.CanvasTransform = new ClipCanvasTransform(120, -40, 1.25, 0.75, 17);
+        var originalSize = viewModel.CanvasSize;
+        var originalCrop = viewModel.CanvasCrop;
+        var originalTransform = clip.CanvasTransform;
+
+        Assert.True(viewModel.RotateCanvasClockwise());
+
+        Assert.Equal(new PixelSize(1_080, 1_920), viewModel.CanvasSize);
+        Assert.Equal((230, 100, 800, 1_000),
+            (viewModel.CanvasCrop.X, viewModel.CanvasCrop.Y, viewModel.CanvasCrop.Width, viewModel.CanvasCrop.Height));
+        Assert.Equal(new ClipCanvasTransform(40, 120, 0.75, 1.25, 107), clip.CanvasTransform);
+        Assert.True(viewModel.Undo());
+        Assert.Equal(originalSize, viewModel.CanvasSize);
+        Assert.Equal(originalCrop, viewModel.CanvasCrop);
+        Assert.Equal(originalTransform, Assert.Single(viewModel.VideoClips).CanvasTransform);
+    }
+
+    [Fact]
+    public async Task Selected_clip_quarter_turn_keeps_placement_and_scale()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "rotate-clip.mkv")]);
+        var clip = Assert.Single(viewModel.VideoClips);
+        clip.CanvasTransform = new ClipCanvasTransform(25, -15, 1.2, 0.8, 350);
+
+        Assert.True(viewModel.RotateSelectedClipClockwise());
+
+        Assert.Equal(new ClipCanvasTransform(25, -15, 1.2, 0.8, 80), clip.CanvasTransform);
+    }
+
+    [Fact]
     public async Task Split_and_delete_operate_on_the_selected_timeline_clip_not_the_source_asset()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());

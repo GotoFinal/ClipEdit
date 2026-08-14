@@ -90,6 +90,9 @@ public readonly record struct ClipCanvasTransform
     public ClipCanvasTransform Rotate(int rotationDegrees) =>
         new(OffsetX, OffsetY, ScaleX, ScaleY, rotationDegrees);
 
+    public ClipCanvasTransform RotateCanvasClockwise() =>
+        new(-OffsetY, OffsetX, ScaleY, ScaleX, RotationDegrees + 90);
+
     private static bool IsValidScale(double scale) =>
         double.IsFinite(scale) && scale is >= 0.01 and <= 100;
 }

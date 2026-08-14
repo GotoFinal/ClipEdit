@@ -74,6 +74,18 @@ public sealed class CropRegionTests
         Assert.Equal(850, crop.Bottom);
     }
 
+    [Fact]
+    public void Source_quarter_turn_preserves_the_same_cropped_pixels()
+    {
+        var crop = new CropRegion(new PixelSize(1_920, 1_080), 100, 50, 1_000, 800);
+
+        var rotated = crop.RotateSourceClockwise();
+
+        Assert.Equal(new PixelSize(1_080, 1_920), rotated.SourceSize);
+        Assert.Equal((230, 100, 800, 1_000),
+            (rotated.X, rotated.Y, rotated.Width, rotated.Height));
+    }
+
     [Theory]
     [InlineData(16, 9, 0, 0, 1_920, 1_080)]
     [InlineData(1, 1, 420, 0, 1_080, 1_080)]

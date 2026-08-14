@@ -38,6 +38,20 @@ public sealed class ClipCanvasTransformTests
         Assert.Equal(15, transform.RotationDegrees);
     }
 
+    [Fact]
+    public void Canvas_quarter_turn_rotates_offsets_and_canvas_axis_scales()
+    {
+        var transform = new ClipCanvasTransform(120, -40, 1.25, 0.75, 17);
+
+        var rotated = transform.RotateCanvasClockwise();
+
+        Assert.Equal(40, rotated.OffsetX);
+        Assert.Equal(120, rotated.OffsetY);
+        Assert.Equal(0.75, rotated.ScaleX);
+        Assert.Equal(1.25, rotated.ScaleY);
+        Assert.Equal(107, rotated.RotationDegrees);
+    }
+
 
     [Theory]
     [InlineData(0)]

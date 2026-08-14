@@ -223,6 +223,17 @@
               ToolTip.Tip="Lock crop ratio while resizing">
             <PathIcon Width="14" Height="14" Data="M4,7 V5 A4,4 0 0 1 12,5 V7 H14 V15 H2 V7 Z M6,7 H10 V5 A2,2 0 0 0 6,5 Z" />
           </ToggleButton>
+          <Button
+              Width="30"
+              Height="30"
+              Padding="6"
+              Classes="secondary"
+              AutomationProperties.Name="Rotate complete canvas clockwise"
+              Click="RotateCanvasClockwise_Click"
+              IsEnabled="{Binding CanRotateCanvas}"
+              ToolTip.Tip="Rotate the complete canvas and every clip 90° clockwise">
+            <TextBlock FontSize="10" FontWeight="SemiBold" Text="90°" />
+          </Button>
         </StackPanel>
 
         <Border
@@ -1178,7 +1189,7 @@
               </Grid>
 
               <Grid
-                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,66,Auto,Auto,*"
+                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,Auto,66,Auto,Auto,*"
                   ColumnSpacing="5"
                   IsVisible="{Binding ShowAdvancedClipControls}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CLIP" />
@@ -1192,9 +1203,18 @@
                 <TextBox Grid.Column="8" Text="{Binding SelectedVideoClip.CanvasScaleYPercent, Mode=TwoWay}" />
                 <TextBlock Grid.Column="9" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="ROTATE °" />
                 <TextBox Grid.Column="10" Text="{Binding SelectedVideoClip.CanvasRotationDegrees, Mode=TwoWay}" />
-                <TextBlock Grid.Column="11" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="SPEED" />
+                <Button
+                    Grid.Column="11"
+                    Width="30"
+                    Padding="4,2"
+                    Classes="secondary"
+                    AutomationProperties.Name="Rotate selected clip clockwise"
+                    Click="RotateSelectedClipClockwise_Click"
+                    Content="90°"
+                    ToolTip.Tip="Rotate the selected clip 90° clockwise" />
+                <TextBlock Grid.Column="12" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="SPEED" />
                 <NumericUpDown
-                    Grid.Column="12"
+                    Grid.Column="13"
                     Height="26"
                     Padding="4,0"
                     Minimum="25"
@@ -1209,20 +1229,20 @@
                   </NumericUpDown.InnerRightContent>
                 </NumericUpDown>
                 <Button
-                    Grid.Column="13"
+                    Grid.Column="14"
                     Padding="9,5"
                     Classes="secondary"
                     Click="FillClipCanvas_Click"
                     Content="Fill"
                     ToolTip.Tip="Center and fill the canvas" />
                 <Button
-                    Grid.Column="14"
+                    Grid.Column="15"
                     Padding="9,5"
                     Classes="secondary"
                     Click="FitClipCanvas_Click"
                     Content="Fit"
                     ToolTip.Tip="Center and show the whole clip" />
-                <TextBlock Grid.Column="15" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
+                <TextBlock Grid.Column="16" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
               </Grid>
 
               <Border
