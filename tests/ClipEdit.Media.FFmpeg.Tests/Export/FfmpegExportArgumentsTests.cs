@@ -13,15 +13,15 @@ public sealed class FfmpegExportArgumentsTests
     public void Multiple_kept_ranges_lower_to_split_trim_crop_and_av_concat()
     {
         var plan = CreatePlan(
-            "C:\\source media\\weird & name.mkv",
-            "C:\\exports\\clip.mp4",
+            TestPath("C:\\source media\\weird & name.mkv"),
+            TestPath("C:\\exports\\clip.mp4"),
             audioStreamIndex: 2,
             [
                 new MediaRange(MediaTime.Zero, new MediaTime(3, 2)),
                 new MediaRange(new MediaTime(7, 2), new MediaTime(5, 1)),
             ]);
 
-        var arguments = FfmpegExportArguments.Create(plan, "C:\\exports\\.clip.partial");
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\exports\\.clip.partial"));
         var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
 
         Assert.Contains("[0:0]split=2[vsrc0][vsrc1]", graph);
@@ -38,11 +38,11 @@ public sealed class FfmpegExportArgumentsTests
     [Fact]
     public void External_audio_paths_become_deduplicated_inputs_and_not_filter_text()
     {
-        const string source = "C:\\source.mkv";
-        const string music = "C:\\audio library\\music & ambience.mka";
+        var source = TestPath("C:\\source.mkv");
+        var music = TestPath("C:\\audio library\\music & ambience.mka");
         var basePlan = CreatePlan(
             source,
-            "C:\\clip.mp4",
+            TestPath("C:\\clip.mp4"),
             audioStreamIndex: null,
             [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
         var plan = new ExportPlan(
@@ -66,7 +66,7 @@ public sealed class FfmpegExportArgumentsTests
                 new ExportAudioTrackPlan(music, 1, -12),
             ]);
 
-        var arguments = FfmpegExportArguments.Create(plan, "C:\\clip.partial");
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\clip.partial"));
         var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
 
         Assert.Equal(1, arguments.Count(argument => argument == music));
@@ -83,8 +83,8 @@ public sealed class FfmpegExportArgumentsTests
     public void Multiple_embedded_tracks_are_conformed_gained_mixed_and_limited()
     {
         var basePlan = CreatePlan(
-            "C:\\source.mkv",
-            "C:\\clip.mp4",
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
             audioStreamIndex: null,
             [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
         var plan = new ExportPlan(
@@ -111,11 +111,11 @@ public sealed class FfmpegExportArgumentsTests
     [Fact]
     public void Paths_are_individual_arguments_and_never_embedded_in_filter_text()
     {
-        const string source = "C:\\clips\\quote' ; $(unsafe).mkv";
-        const string output = "C:\\exports\\unicode łódź.partial";
+        var source = TestPath("C:\\clips\\quote' ; $(unsafe).mkv");
+        var output = TestPath("C:\\exports\\unicode łódź.partial");
         var plan = CreatePlan(
             source,
-            "C:\\exports\\unicode łódź.webm",
+            TestPath("C:\\exports\\unicode łódź.webm"),
             audioStreamIndex: null,
             [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
             WebM);
@@ -136,27 +136,27 @@ public sealed class FfmpegExportArgumentsTests
         var plan = new ExportPlan(
             [
                 new ExportVideoSegmentPlan(
-                    "C:\\first.mkv",
+                    TestPath("C:\\first.mkv"),
                     0,
                     new MediaRange(new MediaTime(2, 1), new MediaTime(5, 1)),
                     new CropRegion(new PixelSize(1_920, 1_080), 420, 0, 1_080, 1_080),
                     [new ExportAudioTrackPlan(1, -3)]),
                 new ExportVideoSegmentPlan(
-                    "C:\\second.mkv",
+                    TestPath("C:\\second.mkv"),
                     2,
                     new MediaRange(MediaTime.Zero, new MediaTime(4, 1)),
                     new CropRegion(new PixelSize(3_840, 2_160), 1_080, 0, 1_680, 2_160),
                     [new ExportAudioTrackPlan(3, 0)]),
             ],
             new PixelSize(1_080, 1_080),
-            "C:\\sequence.mp4",
+            TestPath("C:\\sequence.mp4"),
             Mp4Compatible);
 
-        var arguments = FfmpegExportArguments.Create(plan, "C:\\.sequence.partial");
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.sequence.partial"));
         var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
 
-        Assert.Contains("C:\\first.mkv", arguments);
-        Assert.Contains("C:\\second.mkv", arguments);
+        Assert.Contains(TestPath("C:\\first.mkv"), arguments);
+        Assert.Contains(TestPath("C:\\second.mkv"), arguments);
         Assert.Contains("[0:0]trim=start=2:end=5,setpts=PTS-STARTPTS,crop=1080:1080:420:0,scale=1080:1080", graph);
         Assert.Contains("[1:2]trim=start=0:end=4,setpts=PTS-STARTPTS,crop=1680:2160:1080:0,scale=1080:1080", graph);
         Assert.Contains("[vseg0][aseg0][vseg1][aseg1]concat=n=2:v=1:a=1[vbase][abase]", graph);
@@ -172,7 +172,7 @@ public sealed class FfmpegExportArgumentsTests
         var plan = new ExportPlan(
             [
                 new ExportVideoSegmentPlan(
-                    "C:\\first.mkv",
+                    TestPath("C:\\first.mkv"),
                     0,
                     new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
                     canvasSize,
@@ -187,7 +187,7 @@ public sealed class FfmpegExportArgumentsTests
                         isVerticallyMirrored: true)),
             ],
             canvasCrop.ExportSize,
-            "C:\\canvas.mp4",
+            TestPath("C:\\canvas.mp4"),
             Mp4Compatible);
 
         var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
@@ -213,8 +213,8 @@ public sealed class FfmpegExportArgumentsTests
     {
         var hdr = Hdr10;
         var basePlan = CreatePlan(
-            "C:\\hdr.mp4",
-            "C:\\hdr-export.mp4",
+            TestPath("C:\\hdr.mp4"),
+            TestPath("C:\\hdr-export.mp4"),
             audioStreamIndex: null,
             [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
         var plan = new ExportPlan(
@@ -227,7 +227,7 @@ public sealed class FfmpegExportArgumentsTests
             basePlan.Preset,
             sourceVideoColorInfo: hdr);
 
-        var arguments = FfmpegExportArguments.Create(plan, "C:\\.hdr.partial");
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.hdr.partial"));
         var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
 
         Assert.True(plan.PreservesHdr);
@@ -249,7 +249,7 @@ public sealed class FfmpegExportArgumentsTests
         var plan = new ExportPlan(
             [
                 new ExportVideoSegmentPlan(
-                    "C:\\hdr.mp4",
+                    TestPath("C:\\hdr.mp4"),
                     0,
                     new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
                     canvas,
@@ -258,7 +258,7 @@ public sealed class FfmpegExportArgumentsTests
                     videoColorInfo: Hdr10),
             ],
             canvas,
-            "C:\\hdr-transform.mp4",
+            TestPath("C:\\hdr-transform.mp4"),
             Mp4Compatible);
 
         var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
@@ -278,7 +278,7 @@ public sealed class FfmpegExportArgumentsTests
         var plan = new ExportPlan(
             [
                 new ExportVideoSegmentPlan(
-                    "C:\\hdr.mp4",
+                    TestPath("C:\\hdr.mp4"),
                     0,
                     new MediaRange(MediaTime.Zero, new MediaTime(1, 1)),
                     canvas,
@@ -286,7 +286,7 @@ public sealed class FfmpegExportArgumentsTests
                     ClipCanvasTransform.Identity,
                     videoColorInfo: Hdr10),
                 new ExportVideoSegmentPlan(
-                    "C:\\sdr.mp4",
+                    TestPath("C:\\sdr.mp4"),
                     0,
                     new MediaRange(MediaTime.Zero, new MediaTime(1, 1)),
                     canvas,
@@ -296,11 +296,11 @@ public sealed class FfmpegExportArgumentsTests
                         "yuv420p", "tv", "bt709", "bt709", "bt709")),
             ],
             canvas,
-            "C:\\mixed.mp4",
+            TestPath("C:\\mixed.mp4"),
             Mp4Compatible);
 
         var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
-        var arguments = FfmpegExportArguments.Create(plan, "C:\\.mixed.partial");
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.mixed.partial"));
 
         Assert.False(plan.PreservesHdr);
         Assert.Contains("zscale=transfer=linear:npl=100", graph);
@@ -318,7 +318,7 @@ public sealed class FfmpegExportArgumentsTests
         var plan = new ExportPlan(
             [
                 new ExportVideoSegmentPlan(
-                    "C:\\source.mkv",
+                    TestPath("C:\\source.mkv"),
                     0,
                     new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
                     canvas,
@@ -328,7 +328,7 @@ public sealed class FfmpegExportArgumentsTests
                     new MediaTime(3, 1)),
             ],
             canvas,
-            "C:\\gapped.mp4",
+            TestPath("C:\\gapped.mp4"),
             Mp4Compatible,
             sequenceDuration: new MediaTime(7, 1));
 
@@ -356,7 +356,7 @@ public sealed class FfmpegExportArgumentsTests
         var plan = new ExportPlan(
             [
                 new ExportVideoSegmentPlan(
-                    "C:\\source.mkv",
+                    TestPath("C:\\source.mkv"),
                     0,
                     new MediaRange(MediaTime.Zero, new MediaTime(8, 1)),
                     canvas,
@@ -367,7 +367,7 @@ public sealed class FfmpegExportArgumentsTests
                     playbackSpeedPercent: 200),
             ],
             canvas,
-            "C:\\sped-up.mp4",
+            TestPath("C:\\sped-up.mp4"),
             Mp4Compatible,
             encodingSettings: new ExportEncodingSettings(playbackSpeedPercent: 400));
 
@@ -392,7 +392,7 @@ public sealed class FfmpegExportArgumentsTests
         var plan = new ExportPlan(
             [
                 new ExportVideoSegmentPlan(
-                    "C:\\source.mkv",
+                    TestPath("C:\\source.mkv"),
                     0,
                     new MediaRange(MediaTime.Zero, new MediaTime(8, 1)),
                     canvas,
@@ -402,7 +402,7 @@ public sealed class FfmpegExportArgumentsTests
                     MediaTime.Zero),
             ],
             canvas,
-            "C:\\speed-limit.mp4",
+            TestPath("C:\\speed-limit.mp4"),
             Mp4Compatible,
             encodingSettings: new ExportEncodingSettings(
                 playbackSpeedPercent: playbackSpeedPercent));
@@ -427,13 +427,13 @@ public sealed class FfmpegExportArgumentsTests
             videoBitRateBitsPerSecond: 7_500_000,
             audioBitRateBitsPerSecond: 192_000);
         var plan = CreatePlan(
-            "C:\\source.mkv",
-            "C:\\matched.mkv",
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\matched.mkv"),
             audioStreamIndex: 2,
             [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
             preset);
 
-        var arguments = FfmpegExportArguments.Create(plan, "C:\\.matched.partial");
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.matched.partial"));
 
         Assert.DoesNotContain("-crf", arguments);
         Assert.Equal("7500000", ValueAfter(arguments, "-b:v"));
@@ -454,8 +454,8 @@ public sealed class FfmpegExportArgumentsTests
             AudioCodecFamily.None,
             requiresEvenDimensions: false);
         var basePlan = CreatePlan(
-            "C:\\source.mkv",
-            "C:\\clip.gif",
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.gif"),
             audioStreamIndex: 2,
             [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
             gifPreset);
@@ -469,7 +469,7 @@ public sealed class FfmpegExportArgumentsTests
             gifPreset,
             encodingSettings: new ExportEncodingSettings(50, 50, 12));
 
-        var arguments = FfmpegExportArguments.Create(plan, "C:\\.clip.partial");
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
         var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
 
         Assert.Equal(new PixelSize(540, 540), plan.OutputSize);
@@ -490,8 +490,8 @@ public sealed class FfmpegExportArgumentsTests
     public void Global_quality_changes_h264_compression(int quality, string expectedCrf)
     {
         var basePlan = CreatePlan(
-            "C:\\source.mkv",
-            "C:\\clip.mp4",
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
             audioStreamIndex: null,
             [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
         var plan = new ExportPlan(
@@ -504,9 +504,28 @@ public sealed class FfmpegExportArgumentsTests
             basePlan.Preset,
             encodingSettings: new ExportEncodingSettings(quality));
 
-        var arguments = FfmpegExportArguments.Create(plan, "C:\\.clip.partial");
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
 
         Assert.Equal(expectedCrf, ValueAfter(arguments, "-crf"));
+    }
+
+    private static string TestPath(string windowsPath)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return windowsPath;
+        }
+
+        var relativePath = windowsPath.Length >= 3 &&
+                           char.IsAsciiLetter(windowsPath[0]) &&
+                           windowsPath[1] == ':' &&
+                           windowsPath[2] == '\\'
+            ? windowsPath[3..]
+            : windowsPath;
+        return Path.GetFullPath(Path.Combine(
+            Path.GetTempPath(),
+            "ClipEdit.Tests",
+            relativePath.Replace('\\', Path.DirectorySeparatorChar)));
     }
 
     private static string ValueAfter(IReadOnlyList<string> arguments, string option)
