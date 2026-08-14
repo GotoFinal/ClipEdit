@@ -473,9 +473,9 @@ try {
             }
             "$fileHash  $relativePath"
         }
-    [System.IO.File]::WriteAllLines(
+    [System.IO.File]::WriteAllText(
         (Join-Path $stagingPath 'SHA256SUMS'),
-        $checksums,
+        ($checksums -join "`n") + "`n",
         (New-Object System.Text.UTF8Encoding($false)))
     Write-Verbose 'Wrote release compliance checksums.'
 

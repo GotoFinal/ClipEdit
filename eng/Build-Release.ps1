@@ -312,9 +312,9 @@ try {
             }
             "$releaseHash  $relativePath"
         }
-    [System.IO.File]::WriteAllLines(
+    [System.IO.File]::WriteAllText(
         $rootChecksumsPath,
-        $releaseChecksums,
+        ($releaseChecksums -join "`n") + "`n",
         (New-Object System.Text.UTF8Encoding($false)))
 
     [System.IO.Directory]::CreateDirectory((Split-Path -Parent $fullOutputPath)) | Out-Null
@@ -325,7 +325,7 @@ try {
             -Destination $releaseAssetPath
         [System.IO.File]::WriteAllText(
             $releaseChecksumPath,
-            "$hash  $releaseAssetName$([Environment]::NewLine)",
+            "$hash  $releaseAssetName`n",
             (New-Object System.Text.UTF8Encoding($false)))
         Write-Host "GitHub release assets are ready at $releaseAssetPath and $releaseChecksumPath"
     }

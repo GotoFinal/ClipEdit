@@ -106,7 +106,10 @@ try {
             $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $relativePath"
         }
-    [System.IO.File]::WriteAllLines((Join-Path $licensePath 'PAYLOAD-SHA256SUMS'), $checksums)
+    [System.IO.File]::WriteAllText(
+        (Join-Path $licensePath 'PAYLOAD-SHA256SUMS'),
+        ($checksums -join "`n") + "`n",
+        (New-Object System.Text.UTF8Encoding($false)))
 
     [System.IO.Directory]::CreateDirectory((Split-Path -Parent $fullOutputPath)) | Out-Null
     [System.IO.Directory]::Move($stagingPath, $fullOutputPath)
