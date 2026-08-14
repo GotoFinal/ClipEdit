@@ -1,0 +1,288 @@
+name: Build release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version without the v prefix"
+        required: true
+        type: string
+      platforms:
+        description: "Release platforms to build"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - both
+          - windows
+          - linux
+      managed_deployment:
+        description: "Bundle the .NET runtime or require .NET 10"
+        required: true
+        default: "FrameworkDependent"
+        type: choice
+        options:
+          - FrameworkDependent
+          - SelfContained
+      prerelease:
+        description: "Mark the draft as a beta/prerelease"
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-${{ github.ref_name }}-${{ inputs.version || 'tag' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/cache@v5
+        with:
+          path: packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
+      - run: dotnet restore ClipEdit.sln
+      - run: dotnet test ClipEdit.sln --no-restore --configuration Release
+      - name: Validate native dependency locks
+        shell: pwsh
+        run: ./eng/Test-NativeDependencies.ps1
+
+  prepare:
+    name: Prepare draft release
+    needs: test
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.values.outputs.version }}
+      tag: ${{ steps.values.outputs.tag }}
+      windows: ${{ steps.values.outputs.windows }}
+      linux: ${{ steps.values.outputs.linux }}
+      deployment: ${{ steps.values.outputs.deployment }}
+      prerelease: ${{ steps.values.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: values
+        name: Resolve release inputs
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version || '' }}
+          INPUT_PLATFORMS: ${{ inputs.platforms || '' }}
+          INPUT_DEPLOYMENT: ${{ inputs.managed_deployment || '' }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease || false }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            platforms="both"
+            deployment="FrameworkDependent"
+            if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
+          else
+            version="${INPUT_VERSION#v}"
+            platforms="$INPUT_PLATFORMS"
+            deployment="$INPUT_DEPLOYMENT"
+            prerelease="$INPUT_PRERELEASE"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid semantic version: $version" >&2
+            exit 2
+          fi
+          if [[ "$platforms" != "both" && "$platforms" != "windows" && "$platforms" != "linux" ]]; then
+            echo "Invalid platform selection: $platforms" >&2
+            exit 2
+          fi
+          if [[ "$deployment" != "FrameworkDependent" && "$deployment" != "SelfContained" ]]; then
+            echo "Invalid deployment selection: $deployment" >&2
+            exit 2
+          fi
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "windows=$([[ "$platforms" == "both" || "$platforms" == "windows" ]] && echo true || echo false)"
+            echo "linux=$([[ "$platforms" == "both" || "$platforms" == "linux" ]] && echo true || echo false)"
+            echo "deployment=$deployment"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+      - name: Create or reuse draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.values.outputs.tag }}
+          VERSION: ${{ steps.values.outputs.version }}
+          PRERELEASE: ${{ steps.values.outputs.prerelease }}
+        run: |
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>/dev/null || true)"
+          if [[ -n "$release_json" ]]; then
+            if [[ "$(jq -r .draft <<<"$release_json")" != "true" ]]; then
+              echo "Release $TAG is already published; refusing to replace its assets." >&2
+              exit 3
+            fi
+            echo "Reusing existing draft release $TAG."
+          else
+            args=(release create "$TAG" --draft --title "ClipEdit $VERSION" --generate-notes --target "$GITHUB_SHA")
+            if [[ "$PRERELEASE" == "true" ]]; then args+=(--prerelease); fi
+            gh "${args[@]}"
+          fi
+          gh release view "$TAG" --json url --jq '"Draft release: " + .url' >> "$GITHUB_STEP_SUMMARY"
+
+  windows:
+    name: Windows x64
+    needs: prepare
+    if: needs.prepare.outputs.windows == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      DEPLOYMENT: ${{ needs.prepare.outputs.deployment }}
+      WINDOWS_NATIVE_CACHE: ${{ github.workspace }}/.native-cache/windows-x64
+      WINEDEBUG: "-all"
+    steps:
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/swift
+          df -h /
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/cache@v5
+        with:
+          path: packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
+      - uses: actions/cache@v5
+        with:
+          path: .native-cache/windows-x64
+          key: windows-native-v2-${{ hashFiles('eng/native/native-dependencies.json', 'eng/native/windows-shared-media/**') }}
+          restore-keys: windows-native-v2-
+      - name: Install Windows-binary validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wine64 zstd
+      - run: dotnet restore ClipEdit.sln
+      - name: Build and validate native media stack
+        shell: pwsh
+        run: ./eng/Build-WindowsSharedMediaStack.ps1 -CachePath "$env:WINDOWS_NATIVE_CACHE"
+      - name: Assemble native payload and corresponding source
+        shell: pwsh
+        run: |
+          ./eng/Prepare-ReleasePayload.ps1 -RuntimeId win-x64
+          ./eng/Export-WindowsCorrespondingSource.ps1 -CachePath "$env:WINDOWS_NATIVE_CACHE"
+      - name: Build release candidate
+        shell: pwsh
+        run: |
+          ./eng/Build-Release.ps1 `
+            -RuntimeId win-x64 `
+            -Version "$env:VERSION" `
+            -ManagedDeployment "$env:DEPLOYMENT" `
+            -SkipPayloadPreparation `
+            -GenerateCompliance
+      - name: Package compliance bundle
+        shell: bash
+        run: |
+          root="artifacts/release/$VERSION"
+          name="ClipEdit-$VERSION-win-x64-compliance.tar.zst"
+          tar --zstd -cf "$root/$name" -C "$root/win-x64" compliance release-manifest.json SHA256SUMS
+          (cd "$root" && sha256sum "$name" > "$name.sha256")
+      - name: Upload Windows release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          root="artifacts/release/$VERSION"
+          assets=(
+            "$root/ClipEdit-win-x64.exe"
+            "$root/ClipEdit-win-x64.exe.sha256"
+            "$root/ClipEdit-$VERSION-win-x64-compliance.tar.zst"
+            "$root/ClipEdit-$VERSION-win-x64-compliance.tar.zst.sha256"
+          )
+          gh release upload "$TAG" --clobber "${assets[@]}"
+
+  linux:
+    name: Linux x64
+    needs: prepare
+    if: needs.prepare.outputs.linux == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      DEPLOYMENT: ${{ needs.prepare.outputs.deployment }}
+      CLIPEDIT_LINUX_NATIVE_BUILD_ROOT: ${{ github.workspace }}/.native-cache/linux-x64
+      CLIPEDIT_ENABLE_SOURCE_REPOSITORIES: "1"
+    steps:
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/swift
+          df -h /
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/cache@v5
+        with:
+          path: packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
+      - uses: actions/cache@v5
+        with:
+          path: .native-cache/linux-x64
+          key: linux-native-v2-${{ hashFiles('eng/native/native-dependencies.json', 'eng/Prepare-LinuxReleasePayload.sh', 'eng/Install-LinuxBuildDependencies.sh') }}
+          restore-keys: linux-native-v2-
+      - name: Install native build dependencies
+        run: ./eng/Install-LinuxBuildDependencies.sh
+      - run: dotnet restore ClipEdit.sln
+      - name: Assemble native payload and corresponding source
+        shell: pwsh
+        run: |
+          ./eng/Prepare-ReleasePayload.ps1 -RuntimeId linux-x64
+          ./eng/Export-LinuxCorrespondingSource.ps1
+      - name: Build release candidate
+        shell: pwsh
+        run: |
+          ./eng/Build-Release.ps1 `
+            -RuntimeId linux-x64 `
+            -Version "$env:VERSION" `
+            -ManagedDeployment "$env:DEPLOYMENT" `
+            -SkipPayloadPreparation `
+            -GenerateCompliance
+      - name: Package compliance bundle
+        shell: bash
+        run: |
+          root="artifacts/release/$VERSION"
+          name="ClipEdit-$VERSION-linux-x64-compliance.tar.zst"
+          tar --zstd -cf "$root/$name" -C "$root/linux-x64" compliance release-manifest.json SHA256SUMS
+          (cd "$root" && sha256sum "$name" > "$name.sha256")
+      - name: Upload Linux release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          root="artifacts/release/$VERSION"
+          assets=(
+            "$root/ClipEdit-linux-x64"
+            "$root/ClipEdit-linux-x64.sha256"
+            "$root/ClipEdit-$VERSION-linux-x64-compliance.tar.zst"
+            "$root/ClipEdit-$VERSION-linux-x64-compliance.tar.zst.sha256"
+          )
+          gh release upload "$TAG" --clobber "${assets[@]}"
