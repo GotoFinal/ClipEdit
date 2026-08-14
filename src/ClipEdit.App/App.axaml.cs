@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Settings;
 using ClipEdit.App.Platform;
+using ClipEdit.App.Updates;
 using ClipEdit.App.Views;
 using ClipEdit.Media.Analysis;
 using ClipEdit.Media.Export;
@@ -68,6 +69,21 @@ public sealed partial class App : Avalonia.Application
             var exportPreferencesStore = new ExportPreferencesStore(
                 Path.Combine(applicationDataDirectory, "export-settings.json"));
             viewModel.ApplyExportPreferences(exportPreferencesStore.Load());
+            var runtimeId = UpdateViewModel.GetCurrentRuntimeId();
+            if (runtimeId is not null)
+            {
+                viewModel.ConfigureUpdates(new UpdateViewModel(
+                    new GitHubUpdateClient(),
+                    new UpdateSettingsStore(Path.Combine(applicationDataDirectory, "updates.json")),
+                    runtimeId,
+                    Path.Combine(applicationDataDirectory, "Updates"),
+                    UpdateViewModel.GetCurrentVersion(),
+                    SelfUpdateBootstrapper.CanReplaceCurrentExecutable()));
+            }
+            if (SelfUpdateBootstrapper.StartupError is { } updateError)
+            {
+                viewModel.Updates.ReportInstallFailure(updateError);
+            }
             viewModel.SavedExportPresetsChanged += (_, _) =>
                 exportPreferencesStore.Save(viewModel.CreateExportPreferences());
             IProjectFileAssociationService? projectFileAssociationService = null;
@@ -123,6 +139,8 @@ public sealed partial class App : Avalonia.Application
                 {
                     await viewModel.DiscoverRecoveryCandidatesAsync();
                 }
+
+                await viewModel.Updates.InitializeAsync();
             };
         }
 

@@ -105,6 +105,19 @@ $fullOutputPath = [System.IO.Path]::GetFullPath($OutputPath)
 if (Test-Path -LiteralPath $fullOutputPath) {
     throw "The output path already exists: $fullOutputPath"
 }
+$releaseAssetName = if ($RuntimeId -eq 'win-x64') {
+    'ClipEdit-win-x64.exe'
+}
+else {
+    'ClipEdit-linux-x64'
+}
+$releaseAssetPath = Join-Path (Split-Path -Parent $fullOutputPath) $releaseAssetName
+$releaseChecksumPath = "$releaseAssetPath.sha256"
+if ($BundleMode -eq 'SingleFile' -and
+    ((Test-Path -LiteralPath $releaseAssetPath) -or
+     (Test-Path -LiteralPath $releaseChecksumPath))) {
+    throw "The GitHub release asset already exists: $releaseAssetPath"
+}
 
 $stagingRoot = Join-Path $workspaceRoot 'artifacts/.staging'
 $buildId = [Guid]::NewGuid().ToString('N')
@@ -321,6 +334,16 @@ try {
 
     [System.IO.Directory]::CreateDirectory((Split-Path -Parent $fullOutputPath)) | Out-Null
     [System.IO.Directory]::Move($stagingPath, $fullOutputPath)
+    if ($singleFile) {
+        Copy-Item `
+            -LiteralPath (Join-Path $fullOutputPath $executableName) `
+            -Destination $releaseAssetPath
+        [System.IO.File]::WriteAllText(
+            $releaseChecksumPath,
+            "$hash  $releaseAssetName$([Environment]::NewLine)",
+            (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "GitHub release assets are ready at $releaseAssetPath and $releaseChecksumPath"
+    }
     Write-Host "ClipEdit $RuntimeId $BundleMode $ManagedDeployment release candidate is ready at $fullOutputPath"
     if ($GenerateCompliance) {
         Write-Warning 'License notices, SPDX SBOM, and corresponding source are assembled; public redistribution still requires the manifest gates (including codec/patent, signing, platform, undo/accessibility, and legal review).'

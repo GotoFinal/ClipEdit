@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Immutable;
 using System.ComponentModel;
 using Avalonia.Media.Imaging;
+using ClipEdit.App.Updates;
 using ClipEdit.Application.Export;
 using ClipEdit.Application.Media;
 using ClipEdit.Application.Projects;
@@ -128,6 +129,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     public string ProductName => "ClipEdit";
+
+    public UpdateViewModel Updates { get; private set; } = new();
+
+    internal void ConfigureUpdates(UpdateViewModel updates)
+    {
+        ArgumentNullException.ThrowIfNull(updates);
+        Updates.Dispose();
+        Updates = updates;
+        OnPropertyChanged(nameof(Updates));
+    }
 
     public string WorkspaceTitle =>
         $"{(ShowTimeline ? "Timeline edit" : "Create a short clip")} · {ProjectDisplayName}" +
@@ -891,6 +902,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         get => _statusText;
         private set => SetProperty(ref _statusText, value);
     }
+
+    public void ReportUpdateStatus() => StatusText = Updates.StatusText;
 
     public bool HasReadyMedia => MediaItems.Any(item => item.IsReady);
 
@@ -2676,6 +2689,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        Updates.Dispose();
         if (SelectedMedia is not null)
         {
             SelectedMedia.PropertyChanged -= OnSelectedMediaPropertyChanged;

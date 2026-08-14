@@ -192,6 +192,7 @@
                   Header="Use ClipEdit for .clipedit files"
                   Click="RegisterProjectFileAssociation_Click" />
               <Separator />
+              <MenuItem Header="Check for updates…" Click="CheckForUpdates_Click" />
               <MenuItem Header="Legal notices…" Click="LegalNotices_Click" />
             </MenuFlyout>
           </Button.Flyout>
@@ -302,6 +303,16 @@
         </Border>
 
         <StackPanel x:Name="ExportControls" Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
+          <Button
+              x:Name="UpdateButton"
+              Height="30"
+              Padding="9,4"
+              Classes="primary command-bar"
+              Click="Update_Click"
+              Content="{Binding Updates.UpdateActionText}"
+              IsEnabled="{Binding Updates.CanApplyUpdate}"
+              IsVisible="{Binding Updates.ShowUpdateButton}"
+              ToolTip.Tip="{Binding Updates.UpdateToolTip}" />
           <ComboBox
               Width="154"
               Height="30"
@@ -1438,6 +1449,31 @@
                       Classes="secondary"
                       Click="ResetCanvasControls_Click"
                       Content="Reset defaults" />
+                  <Separator Margin="0,2" />
+                  <TextBlock FontSize="12" FontWeight="SemiBold" Text="Updates" />
+                  <TextBlock Classes="muted" FontSize="10" Text="{Binding Updates.CurrentVersionText}" />
+                  <CheckBox
+                      x:Name="AutomaticUpdateChecksCheckBox"
+                      Content="Check automatically"
+                      IsChecked="{Binding Updates.AutomaticallyCheckForUpdates, Mode=TwoWay}" />
+                  <CheckBox
+                      x:Name="IncludeBetaVersionsCheckBox"
+                      Content="Include beta releases"
+                      IsChecked="{Binding Updates.IncludeBetaVersions, Mode=TwoWay}"
+                      ToolTip.Tip="Also offer GitHub prereleases. Draft releases are never shown." />
+                  <TextBlock
+                      Classes="muted"
+                      FontSize="10"
+                      MaxWidth="285"
+                      Text="{Binding Updates.StatusText}"
+                      TextWrapping="Wrap" />
+                  <Button
+                      HorizontalAlignment="Left"
+                      Padding="8,4"
+                      Classes="secondary"
+                      Click="CheckForUpdates_Click"
+                      Content="{Binding Updates.CheckButtonText}"
+                      IsEnabled="{Binding Updates.CanCheckForUpdates}" />
                 </StackPanel>
               </Border>
             </Flyout>

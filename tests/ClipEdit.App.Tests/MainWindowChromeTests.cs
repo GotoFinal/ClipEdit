@@ -69,6 +69,7 @@ public sealed class MainWindowChromeTests
             "NewProjectButton",
             "OpenProjectButton",
             "SaveProjectButton",
+            "UpdateButton",
             "ExportButton",
             "CancelExportButton",
         };
@@ -82,6 +83,26 @@ public sealed class MainWindowChromeTests
             Assert.Equal(HorizontalAlignment.Center, button.HorizontalContentAlignment);
             Assert.Equal(VerticalAlignment.Center, button.VerticalContentAlignment);
         }
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Update_controls_keep_beta_releases_opt_in()
+    {
+        var window = new MainWindow
+        {
+            DataContext = new MainWindowViewModel(mediaProbe: null),
+        };
+        var updateButton = window.FindControl<Button>("UpdateButton");
+        var automaticChecks = window.FindControl<CheckBox>("AutomaticUpdateChecksCheckBox");
+        var includeBeta = window.FindControl<CheckBox>("IncludeBetaVersionsCheckBox");
+
+        Assert.NotNull(updateButton);
+        Assert.NotNull(automaticChecks);
+        Assert.NotNull(includeBeta);
+        Assert.False(includeBeta.IsChecked);
+        Assert.False(updateButton.IsVisible);
 
         window.Close();
     }

@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Controls;
 using ClipEdit.App.Platform;
+using ClipEdit.App.Updates;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Preview;
 
@@ -185,6 +186,58 @@ public sealed partial class MainWindow : Window
             ? WindowState.Normal
             : WindowState.Maximized;
         UpdateCaptionButtonState();
+    }
+
+    private async void CheckForUpdates_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is { } viewModel)
+        {
+            await viewModel.Updates.CheckNowAsync(_lifetimeCancellation.Token);
+            viewModel.ReportUpdateStatus();
+        }
+    }
+
+    private async void Update_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is not { } viewModel || !viewModel.Updates.CanApplyUpdate)
+        {
+            return;
+        }
+
+        if (viewModel.IsProjectDirty)
+        {
+            var confirmation = new ConfirmActionDialog(
+                "Install update and restart?",
+                "The current project has unsaved changes. Save it first, or continue only if you are willing to discard those changes.",
+                "Restart without saving");
+            if (!await confirmation.ShowDialog<bool>(this))
+            {
+                return;
+            }
+        }
+
+        var stagedUpdate = await viewModel.Updates.PrepareUpdateAsync(
+            _lifetimeCancellation.Token);
+        if (stagedUpdate is null)
+        {
+            viewModel.ReportUpdateStatus();
+            return;
+        }
+
+        try
+        {
+            SelfUpdateBootstrapper.Launch(stagedUpdate);
+            Close();
+        }
+        catch (UpdateException exception)
+        {
+            viewModel.Updates.ReportInstallFailure(exception.Message);
+            viewModel.ReportUpdateStatus();
+        }
     }
 
     internal void PrepareForTitleBarMoveDrag()
