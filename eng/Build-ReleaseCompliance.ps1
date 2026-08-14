@@ -40,6 +40,37 @@ function Add-ComplianceFile([string]$Source, [string]$Destination) {
     }
 }
 
+function Get-DotNetDistributionRoot {
+    $candidateRoots = [System.Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrWhiteSpace($env:DOTNET_ROOT)) {
+        $candidateRoots.Add($env:DOTNET_ROOT)
+    }
+
+    $dotnetCommandPath = (Get-Command dotnet -ErrorAction Stop).Source
+    $candidateRoots.Add((Split-Path -Parent $dotnetCommandPath))
+    try {
+        $resolvedDotnet = [System.IO.File]::ResolveLinkTarget($dotnetCommandPath, $true)
+        if ($null -ne $resolvedDotnet) {
+            $candidateRoots.Add((Split-Path -Parent $resolvedDotnet.FullName))
+        }
+    }
+    catch {
+        Write-Verbose "Could not resolve the dotnet host link '$dotnetCommandPath': $($_.Exception.Message)"
+    }
+
+    foreach ($candidateRoot in @($candidateRoots | Select-Object -Unique)) {
+        $hasAllNotices = @('LICENSE.txt', 'ThirdPartyNotices.txt') | ForEach-Object {
+            Test-Path -LiteralPath (Join-Path $candidateRoot $_) -PathType Leaf
+        }
+        if ($hasAllNotices -notcontains $false) {
+            return $candidateRoot
+        }
+    }
+
+    $formattedRoots = $candidateRoots -join ', '
+    throw "Could not locate the .NET distribution notices. Checked: $formattedRoots"
+}
+
 function Get-PackageMetadata([string]$Id, [string]$VersionValue, [string]$PackageRoot) {
     $packageDirectory = Join-Path (Join-Path $PackageRoot $Id.ToLowerInvariant()) $VersionValue
     $nuspec = Get-ChildItem -LiteralPath $packageDirectory -Filter '*.nuspec' -File |
@@ -194,7 +225,7 @@ try {
         -Destination $licensesPath
     Write-Verbose 'Linked native source/license archives and copied native manifests.'
 
-    $dotnetRoot = Split-Path -Parent (Get-Command dotnet).Source
+    $dotnetRoot = Get-DotNetDistributionRoot
     foreach ($runtimeNotice in @('LICENSE.txt', 'ThirdPartyNotices.txt')) {
         $runtimeNoticePath = Join-Path $dotnetRoot $runtimeNotice
         if (-not (Test-Path -LiteralPath $runtimeNoticePath -PathType Leaf)) {
