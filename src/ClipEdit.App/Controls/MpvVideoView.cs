@@ -45,6 +45,9 @@ public sealed class MpvVideoView : OpenGlControlBase
             nameof(CanvasTransform),
             ClipCanvasTransform.Identity);
 
+    public static readonly StyledProperty<bool> IsInteractiveTransformActiveProperty =
+        AvaloniaProperty.Register<MpvVideoView, bool>(nameof(IsInteractiveTransformActive));
+
     public static readonly StyledProperty<IReadOnlyList<PreviewAudioTrack>> AudioTracksProperty =
         AvaloniaProperty.Register<MpvVideoView, IReadOnlyList<PreviewAudioTrack>>(
             nameof(AudioTracks),
@@ -105,6 +108,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private bool _updatingPositionFromPlayback;
     private bool _isEndOfFile;
     private int _videoTransformRevision;
+    private int _appliedVideoTransformRevision;
     private bool _videoTransformLoopRunning;
     private ClipCanvasTransform _appliedCanvasTransform = ClipCanvasTransform.Identity;
 
@@ -126,6 +130,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             static (view, _) => view.StartVideoTransformChange());
         CanvasTransformProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartVideoTransformChange());
+        IsInteractiveTransformActiveProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.OnInteractiveTransformActiveChanged());
         AudioTracksProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartAudioMixChange());
     }
@@ -187,6 +193,12 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => GetValue(CanvasTransformProperty);
         set => SetValue(CanvasTransformProperty, value);
+    }
+
+    public bool IsInteractiveTransformActive
+    {
+        get => GetValue(IsInteractiveTransformActiveProperty);
+        set => SetValue(IsInteractiveTransformActiveProperty, value);
     }
 
     public IReadOnlyList<PreviewAudioTrack> AudioTracks
@@ -499,6 +511,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             await engine.LoadAsync(sourcePath, cancellationToken);
             await engine.SetVideoTransformAsync(CalculatePreviewVideoTransform(SourceVideoSize, CanvasSize, CanvasTransform, Bounds.Size), cancellationToken);
             _appliedCanvasTransform = CanvasTransform;
+            _appliedVideoTransformRevision = _videoTransformRevision;
             UpdateInteractiveCanvasTransform();
             await engine.SeekAsync(Position, cancellationToken);
             await engine.SetVolumeAsync(Volume, cancellationToken);
@@ -673,7 +686,26 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         _videoTransformRevision++;
         UpdateInteractiveCanvasTransform();
-        if (_mediaLoaded && _engine is not null && !_shutdownStarted && !_videoTransformLoopRunning)
+        TryStartVideoTransformLoop();
+    }
+
+    private void OnInteractiveTransformActiveChanged()
+    {
+        UpdateInteractiveCanvasTransform();
+        if (!IsInteractiveTransformActive)
+        {
+            TryStartVideoTransformLoop();
+        }
+    }
+
+    private void TryStartVideoTransformLoop()
+    {
+        if (_mediaLoaded &&
+            _engine is not null &&
+            !_shutdownStarted &&
+            !IsInteractiveTransformActive &&
+            !_videoTransformLoopRunning &&
+            _appliedVideoTransformRevision != _videoTransformRevision)
         {
             _ = ApplyVideoTransformLoopAsync();
         }
@@ -684,7 +716,10 @@ public sealed class MpvVideoView : OpenGlControlBase
         _videoTransformLoopRunning = true;
         try
         {
-            while (_mediaLoaded && _engine is not null && !_shutdownStarted)
+            while (_mediaLoaded &&
+                   _engine is not null &&
+                   !_shutdownStarted &&
+                   !IsInteractiveTransformActive)
             {
                 var handledRevision = _videoTransformRevision;
                 var canvasTransform = CanvasTransform;
@@ -710,9 +745,10 @@ public sealed class MpvVideoView : OpenGlControlBase
                 }
 
                 _appliedCanvasTransform = canvasTransform;
+                _appliedVideoTransformRevision = handledRevision;
                 UpdateInteractiveCanvasTransform();
 
-                if (handledRevision == _videoTransformRevision)
+                if (IsInteractiveTransformActive || handledRevision == _videoTransformRevision)
                 {
                     break;
                 }

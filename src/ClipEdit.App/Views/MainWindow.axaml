@@ -834,7 +834,7 @@
             IsVisible="{Binding ShowQuickWorkspace}">
           <Border Classes="panel" Padding="10">
             <Grid RowDefinitions="*,Auto,Auto" RowSpacing="6">
-              <Border Background="#0B0D12" CornerRadius="8">
+              <Border Background="#0B0D12" ClipToBounds="True" CornerRadius="8">
                 <Grid>
                   <Image
                       Margin="5"
@@ -849,6 +849,7 @@
                       CanvasSize="{Binding CanvasSize}"
                       CanvasTransform="{Binding SelectedVideoClip.CanvasTransform}"
                       HasCuts="{Binding SelectedVideoClip.IsTrimmed}"
+                      IsInteractiveTransformActive="{Binding IsClipTransformEditing}"
                       IsPaused="True"
                       PlaybackCompleted="LivePreview_PlaybackCompleted"
                       PlaybackRanges="{Binding SelectedVideoClip.PlaybackRanges}"

@@ -237,10 +237,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool CanApplyCropPresetToAll => VideoClips.Count > 1;
 
+    public bool IsClipTransformEditing => _isClipTransformEditActive;
+
     internal void BeginClipTransformEdit()
     {
+        if (_isClipTransformEditActive)
+        {
+            return;
+        }
+
         _isClipTransformEditActive = true;
         _clipTransformChangedDuringEdit = false;
+        OnPropertyChanged(nameof(IsClipTransformEditing));
     }
 
     internal void EndClipTransformEdit()
@@ -251,6 +259,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         _isClipTransformEditActive = false;
+        OnPropertyChanged(nameof(IsClipTransformEditing));
         if (!_clipTransformChangedDuringEdit)
         {
             return;

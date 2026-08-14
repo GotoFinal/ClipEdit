@@ -195,6 +195,14 @@ public sealed class MpvVideoViewTests
         Assert.True(matrix.IsIdentity);
     }
 
+    [Fact]
+    public void Interactive_transform_flag_defaults_to_inactive()
+    {
+        var view = new MpvVideoView();
+
+        Assert.False(view.IsInteractiveTransformActive);
+    }
+
     private static Point MapSourcePoint(
         Point point,
         DomainPixelSize canvasSize,

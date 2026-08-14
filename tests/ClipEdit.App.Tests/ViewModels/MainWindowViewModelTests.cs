@@ -675,6 +675,7 @@ public sealed class MainWindowViewModelTests
         var initialTransform = clip.CanvasTransform;
 
         viewModel.BeginClipTransformEdit();
+        Assert.True(viewModel.IsClipTransformEditing);
         clip.CanvasTransform = new ClipCanvasTransform(10, -5, 1, 5);
         clip.CanvasTransform = new ClipCanvasTransform(20, -10, 1, 15);
         clip.CanvasTransform = new ClipCanvasTransform(30, -15, 1, 25);
@@ -682,6 +683,7 @@ public sealed class MainWindowViewModelTests
         Assert.False(viewModel.CanUndo);
         viewModel.EndClipTransformEdit();
 
+        Assert.False(viewModel.IsClipTransformEditing);
         Assert.True(viewModel.CanUndo);
         Assert.True(viewModel.Undo());
         Assert.Equal(initialTransform, Assert.Single(viewModel.VideoClips).CanvasTransform);
