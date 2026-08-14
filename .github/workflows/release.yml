@@ -189,13 +189,6 @@ jobs:
             -ManagedDeployment "$env:DEPLOYMENT" `
             -SkipPayloadPreparation `
             -GenerateCompliance
-      - name: Package compliance bundle
-        shell: bash
-        run: |
-          root="artifacts/release/$VERSION"
-          name="ClipEdit-$VERSION-win-x64-compliance.tar.zst"
-          tar --zstd -cf "$root/$name" -C "$root/win-x64" compliance release-manifest.json SHA256SUMS
-          (cd "$root" && sha256sum "$name" > "$name.sha256")
       - name: Upload Windows release assets
         shell: bash
         env:
@@ -205,8 +198,6 @@ jobs:
           assets=(
             "$root/ClipEdit-win-x64.exe"
             "$root/ClipEdit-win-x64.exe.sha256"
-            "$root/ClipEdit-$VERSION-win-x64-compliance.tar.zst"
-            "$root/ClipEdit-$VERSION-win-x64-compliance.tar.zst.sha256"
           )
           gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
 
@@ -261,13 +252,6 @@ jobs:
             -ManagedDeployment "$env:DEPLOYMENT" `
             -SkipPayloadPreparation `
             -GenerateCompliance
-      - name: Package compliance bundle
-        shell: bash
-        run: |
-          root="artifacts/release/$VERSION"
-          name="ClipEdit-$VERSION-linux-x64-compliance.tar.zst"
-          tar --zstd -cf "$root/$name" -C "$root/linux-x64" compliance release-manifest.json SHA256SUMS
-          (cd "$root" && sha256sum "$name" > "$name.sha256")
       - name: Upload Linux release assets
         shell: bash
         env:
@@ -277,7 +261,5 @@ jobs:
           assets=(
             "$root/ClipEdit-linux-x64"
             "$root/ClipEdit-linux-x64.sha256"
-            "$root/ClipEdit-$VERSION-linux-x64-compliance.tar.zst"
-            "$root/ClipEdit-$VERSION-linux-x64-compliance.tar.zst.sha256"
           )
           gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
