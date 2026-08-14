@@ -126,17 +126,22 @@ jobs:
         run: |
           release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>/dev/null || true)"
           if [[ -n "$release_json" ]]; then
+            release_url="$(jq -r '.html_url // empty' <<<"$release_json")"
+            if [[ -z "$release_url" ]]; then
+              echo "GitHub returned invalid release metadata for $TAG." >&2
+              exit 3
+            fi
             if [[ "$(jq -r .draft <<<"$release_json")" == "true" ]]; then
               echo "Reusing existing draft release $TAG."
             else
               echo "Reusing published release $TAG. Missing assets will be uploaded; existing published assets will not be replaced."
             fi
           else
-            args=(release create "$TAG" --draft --title "ClipEdit $VERSION" --generate-notes --target "$GITHUB_SHA")
+            args=(release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "ClipEdit $VERSION" --generate-notes --target "$GITHUB_SHA")
             if [[ "$PRERELEASE" == "true" ]]; then args+=(--prerelease); fi
-            gh "${args[@]}"
+            release_url="$(gh "${args[@]}")"
           fi
-          gh release view "$TAG" --json url --jq '"Release: " + .url' >> "$GITHUB_STEP_SUMMARY"
+          echo "Release: $release_url" >> "$GITHUB_STEP_SUMMARY"
 
   windows:
     name: Windows x64

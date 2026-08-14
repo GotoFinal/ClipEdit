@@ -36,13 +36,13 @@ for asset_path in "$@"; do
     existing_asset="$(jq -c --arg name "$asset_name" '.assets[]? | select(.name == $name)' <<<"$release_json")"
     if [[ -z "$existing_asset" ]]; then
         echo "Uploading missing release asset ${asset_name}."
-        gh release upload "$tag" "$asset_path"
+        gh release upload "$tag" "$asset_path" --repo "$GITHUB_REPOSITORY"
         continue
     fi
 
     if [[ "$is_draft" == 'true' ]]; then
         echo "Replacing existing draft asset ${asset_name}."
-        gh release upload "$tag" --clobber "$asset_path"
+        gh release upload "$tag" --clobber "$asset_path" --repo "$GITHUB_REPOSITORY"
         continue
     fi
 
@@ -55,7 +55,7 @@ for asset_path in "$@"; do
 
     if [[ -z "$remote_digest" ]]; then
         downloaded_asset="${download_directory}/${asset_name}"
-        gh release download "$tag" --pattern "$asset_name" --output "$downloaded_asset"
+        gh release download "$tag" --pattern "$asset_name" --output "$downloaded_asset" --repo "$GITHUB_REPOSITORY"
         downloaded_digest="sha256:$(sha256sum "$downloaded_asset" | awk '{ print $1 }')"
         if [[ "$downloaded_digest" == "$local_digest" ]]; then
             echo "Published asset ${asset_name} is already present with identical content; skipping it."
