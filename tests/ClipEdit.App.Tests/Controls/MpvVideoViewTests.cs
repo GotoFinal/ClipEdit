@@ -58,7 +58,7 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
-    public void Identity_video_quad_fills_a_matching_canvas_inside_the_framebuffer()
+    public void Identity_video_quad_fills_a_matching_canvas_and_keeps_the_source_upright()
     {
         var vertices = MpvVideoView.CalculateVideoQuadVertices(
             new DomainPixelSize(1_920, 1_080),
@@ -69,10 +69,10 @@ public sealed class MpvVideoViewTests
         Assert.Equal(
             new float[]
             {
-                -1, 1, 0, 1,
-                1, 1, 1, 1,
-                -1, -1, 0, 0,
-                1, -1, 1, 0,
+                -1, 1, 0, 0,
+                1, 1, 1, 0,
+                -1, -1, 0, 1,
+                1, -1, 1, 1,
             },
             vertices);
     }

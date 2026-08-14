@@ -909,10 +909,10 @@ public sealed class MpvVideoView : OpenGlControlBase
 
         return
         [
-            ToNdcX(topLeft.X, viewportWidth), ToNdcY(topLeft.Y, viewportHeight), 0, 1,
-            ToNdcX(topRight.X, viewportWidth), ToNdcY(topRight.Y, viewportHeight), 1, 1,
-            ToNdcX(bottomLeft.X, viewportWidth), ToNdcY(bottomLeft.Y, viewportHeight), 0, 0,
-            ToNdcX(bottomRight.X, viewportWidth), ToNdcY(bottomRight.Y, viewportHeight), 1, 0,
+            ToNdcX(topLeft.X, viewportWidth), ToNdcY(topLeft.Y, viewportHeight), 0, 0,
+            ToNdcX(topRight.X, viewportWidth), ToNdcY(topRight.Y, viewportHeight), 1, 0,
+            ToNdcX(bottomLeft.X, viewportWidth), ToNdcY(bottomLeft.Y, viewportHeight), 0, 1,
+            ToNdcX(bottomRight.X, viewportWidth), ToNdcY(bottomRight.Y, viewportHeight), 1, 1,
         ];
     }
 
