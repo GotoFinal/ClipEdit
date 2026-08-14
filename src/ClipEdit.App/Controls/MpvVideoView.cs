@@ -85,7 +85,6 @@ public sealed class MpvVideoView : OpenGlControlBase
     private readonly DispatcherTimer _positionTimer;
     private readonly PreviewLoadGate _loadGate = new();
     private readonly PreviewRenderRequestGate _renderRequestGate = new();
-    private readonly PreviewTransformRenderGate _transformRenderGate = new();
     private CancellationTokenSource? _loadCancellation;
     private Task _loadTask = Task.CompletedTask;
     private CancellationTokenSource? _seekCancellation;
@@ -110,7 +109,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private int _videoTransformRevision;
     private int _appliedVideoTransformRevision;
     private bool _videoTransformLoopRunning;
-    private ClipCanvasTransform _appliedCanvasTransform = ClipCanvasTransform.Identity;
+    private TopLevel? _subscribedTopLevel;
 
     static MpvVideoView()
     {
@@ -125,11 +124,11 @@ public sealed class MpvVideoView : OpenGlControlBase
         PlaybackSpeedProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartPlaybackSpeedChange());
         SourceVideoSizeProperty.Changed.AddClassHandler<MpvVideoView>(
-            static (view, _) => view.StartVideoTransformChange());
+            static (view, _) => view.StartNativeGeometryChange());
         CanvasSizeProperty.Changed.AddClassHandler<MpvVideoView>(
-            static (view, _) => view.StartVideoTransformChange());
+            static (view, _) => view.StartNativeGeometryChange());
         CanvasTransformProperty.Changed.AddClassHandler<MpvVideoView>(
-            static (view, _) => view.StartVideoTransformChange());
+            static (view, _) => view.UpdateInteractiveCanvasTransform());
         IsInteractiveTransformActiveProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.OnInteractiveTransformActiveChanged());
         AudioTracksProperty.Changed.AddClassHandler<MpvVideoView>(
@@ -147,13 +146,14 @@ public sealed class MpvVideoView : OpenGlControlBase
         SizeChanged += (_, _) =>
         {
             UpdateInteractiveCanvasTransform();
-            StartVideoTransformChange();
+            StartNativeGeometryChange();
         };
         EffectiveViewportChanged += (_, eventArgs) =>
         {
             if (ShouldRequestRenderForViewport(eventArgs.EffectiveViewport))
             {
-                StartVideoTransformChange();
+                SubscribeToTopLevelScaling();
+                StartNativeGeometryChange();
                 TryStartPendingLoad();
                 QueueRenderRequest();
             }
@@ -367,11 +367,23 @@ public sealed class MpvVideoView : OpenGlControlBase
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs eventArgs)
     {
         base.OnAttachedToVisualTree(eventArgs);
+        SubscribeToTopLevelScaling();
         if (!_shutdownStarted)
         {
             _engineTask ??= InitializeEngineAsync();
             StartLoad();
         }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs eventArgs)
+    {
+        if (_subscribedTopLevel is not null)
+        {
+            _subscribedTopLevel.ScalingChanged -= OnTopLevelScalingChanged;
+            _subscribedTopLevel = null;
+        }
+
+        base.OnDetachedFromVisualTree(eventArgs);
     }
 
     protected override void OnOpenGlInit(GlInterface gl)
@@ -398,11 +410,10 @@ public sealed class MpvVideoView : OpenGlControlBase
                 TryStartPendingLoad();
             }
 
-            var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
-            var width = Math.Max(1, (int)(Bounds.Width * scaling));
-            var height = Math.Max(1, (int)(Bounds.Height * scaling));
+            var physicalViewport = GetPhysicalViewportSize();
+            var width = Math.Max(1, (int)Math.Round(physicalViewport.Width));
+            var height = Math.Max(1, (int)Math.Round(physicalViewport.Height));
             _renderContext.Render(framebuffer, width, height);
-            _transformRenderGate.MarkRendered();
             if (ShouldContinueRenderingDuringLoad(_loadTask.IsCompleted))
             {
                 RequestNextFrameRendering();
@@ -518,16 +529,14 @@ public sealed class MpvVideoView : OpenGlControlBase
             PlaybackStatus = "Loading live preview…";
             var engine = await _engineTask!.WaitAsync(cancellationToken);
             await engine.LoadAsync(sourcePath, cancellationToken);
-            var initialCanvasTransform = CanvasTransform;
             var initialVideoTransformRevision = _videoTransformRevision;
             await engine.SetVideoTransformAsync(
                 CalculatePreviewVideoTransform(
                     SourceVideoSize,
                     CanvasSize,
-                    initialCanvasTransform,
-                    Bounds.Size),
+                    ClipCanvasTransform.Identity,
+                    GetPhysicalViewportSize()),
                 cancellationToken);
-            _appliedCanvasTransform = initialCanvasTransform;
             _appliedVideoTransformRevision = initialVideoTransformRevision;
             UpdateInteractiveCanvasTransform();
             await engine.SeekAsync(Position, cancellationToken);
@@ -700,7 +709,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
     }
 
-    private void StartVideoTransformChange()
+    private void StartNativeGeometryChange()
     {
         _videoTransformRevision++;
         UpdateInteractiveCanvasTransform();
@@ -740,31 +749,16 @@ public sealed class MpvVideoView : OpenGlControlBase
                    !IsInteractiveTransformActive)
             {
                 var handledRevision = _videoTransformRevision;
-                var canvasTransform = CanvasTransform;
                 var transform = CalculatePreviewVideoTransform(
                     SourceVideoSize,
                     CanvasSize,
-                    canvasTransform,
-                    Bounds.Size);
+                    ClipCanvasTransform.Identity,
+                    GetPhysicalViewportSize());
                 await _engine.QueueVideoTransformAsync(
                     transform,
                     _lifetimeCancellation.Token);
-                _transformRenderGate.MarkSubmitted(handledRevision);
-                QueueRenderRequest();
-                try
-                {
-                    await _transformRenderGate
-                        .WaitForRenderedAsync(handledRevision, _lifetimeCancellation.Token)
-                        .WaitAsync(TimeSpan.FromMilliseconds(250), _lifetimeCancellation.Token);
-                }
-                catch (TimeoutException)
-                {
-                    // A hidden or occluded window may temporarily stop drawing.
-                }
-
-                _appliedCanvasTransform = canvasTransform;
                 _appliedVideoTransformRevision = handledRevision;
-                UpdateInteractiveCanvasTransform();
+                QueueRenderRequest();
 
                 if (IsInteractiveTransformActive || handledRevision == _videoTransformRevision)
                 {
@@ -823,10 +817,52 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         var matrix = CalculateInteractiveCanvasMatrix(
             CanvasSize,
-            _appliedCanvasTransform,
+            ClipCanvasTransform.Identity,
             CanvasTransform,
             Bounds.Size);
         RenderTransform = matrix.IsIdentity ? null : new ImmutableTransform(matrix);
+    }
+
+    private void SubscribeToTopLevelScaling()
+    {
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (ReferenceEquals(topLevel, _subscribedTopLevel))
+        {
+            return;
+        }
+
+        if (_subscribedTopLevel is not null)
+        {
+            _subscribedTopLevel.ScalingChanged -= OnTopLevelScalingChanged;
+        }
+
+        _subscribedTopLevel = topLevel;
+        if (_subscribedTopLevel is not null)
+        {
+            _subscribedTopLevel.ScalingChanged += OnTopLevelScalingChanged;
+        }
+    }
+
+    private void OnTopLevelScalingChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        StartNativeGeometryChange();
+        QueueRenderRequest();
+    }
+
+    private Size GetPhysicalViewportSize()
+    {
+        var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+        return ScaleViewportForRender(Bounds.Size, scaling);
+    }
+
+    internal static Size ScaleViewportForRender(Size logicalViewport, double scaling)
+    {
+        var safeScaling = double.IsFinite(scaling) && scaling > 0 ? scaling : 1;
+        return new Size(
+            Math.Max(1, logicalViewport.Width * safeScaling),
+            Math.Max(1, logicalViewport.Height * safeScaling));
     }
 
     internal static Matrix CalculateInteractiveCanvasMatrix(

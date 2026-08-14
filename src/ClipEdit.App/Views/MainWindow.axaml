@@ -926,45 +926,47 @@
                       WheelZoomPercent="{Binding ClipWheelZoomPercent}"
                       ZIndex="12" />
 
-                  <StackPanel
-                      HorizontalAlignment="Center"
-                      IsHitTestVisible="False"
-                      VerticalAlignment="Center"
-                      Spacing="10"
-                      IsVisible="{Binding ShowPreviewPlaceholder}">
-                    <TextBlock
+                  <Panel IsVisible="{Binding !IsPlaybackAvailable, ElementName=LivePreview}">
+                    <StackPanel
                         HorizontalAlignment="Center"
-                        FontSize="42"
-                        Foreground="#5D6374"
-                        Text="▶" />
-                    <TextBlock
-                        MaxWidth="620"
-                        HorizontalAlignment="Center"
-                        FontSize="18"
-                        FontWeight="SemiBold"
-                        Text="{Binding SelectedMedia.DisplayName}"
-                        TextAlignment="Center"
-                        TextTrimming="CharacterEllipsis" />
-                    <TextBlock
-                        HorizontalAlignment="Center"
-                        Classes="muted"
-                        Text="{Binding SelectedMedia.Summary}" />
-                    <TextBlock
-                        HorizontalAlignment="Center"
-                        FontSize="11"
-                        Foreground="#6F7689"
-                        Text="Decoding source frame…"
-                        IsVisible="{Binding IsPreviewLoading}" />
-                    <TextBlock
-                        MaxWidth="560"
-                        HorizontalAlignment="Center"
-                        FontSize="11"
-                        Foreground="#E28B8B"
-                        Text="{Binding PreviewErrorText}"
-                        TextAlignment="Center"
-                        TextWrapping="Wrap"
-                        IsVisible="{Binding HasPreviewError}" />
-                  </StackPanel>
+                        IsHitTestVisible="False"
+                        VerticalAlignment="Center"
+                        Spacing="10"
+                        IsVisible="{Binding ShowPreviewPlaceholder}">
+                      <TextBlock
+                          HorizontalAlignment="Center"
+                          FontSize="42"
+                          Foreground="#5D6374"
+                          Text="▶" />
+                      <TextBlock
+                          MaxWidth="620"
+                          HorizontalAlignment="Center"
+                          FontSize="18"
+                          FontWeight="SemiBold"
+                          Text="{Binding SelectedMedia.DisplayName}"
+                          TextAlignment="Center"
+                          TextTrimming="CharacterEllipsis" />
+                      <TextBlock
+                          HorizontalAlignment="Center"
+                          Classes="muted"
+                          Text="{Binding SelectedMedia.Summary}" />
+                      <TextBlock
+                          HorizontalAlignment="Center"
+                          FontSize="11"
+                          Foreground="#6F7689"
+                          Text="Decoding source frame…"
+                          IsVisible="{Binding IsPreviewLoading}" />
+                      <TextBlock
+                          MaxWidth="560"
+                          HorizontalAlignment="Center"
+                          FontSize="11"
+                          Foreground="#E28B8B"
+                          Text="{Binding PreviewErrorText}"
+                          TextAlignment="Center"
+                          TextWrapping="Wrap"
+                          IsVisible="{Binding HasPreviewError}" />
+                    </StackPanel>
+                  </Panel>
 
                   <Border
                       Margin="14"

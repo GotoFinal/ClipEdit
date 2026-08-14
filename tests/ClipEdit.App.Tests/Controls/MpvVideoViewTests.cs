@@ -32,6 +32,17 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
+    public void Native_preview_viewport_tracks_monitor_render_scaling()
+    {
+        var physical = MpvVideoView.ScaleViewportForRender(new Size(960, 540), 1.5);
+
+        Assert.Equal(new Size(1_440, 810), physical);
+        Assert.Equal(
+            new Size(960, 540),
+            MpvVideoView.ScaleViewportForRender(new Size(960, 540), double.NaN));
+    }
+
+    [Fact]
     public void Position_inside_kept_range_continues()
     {
         var decision = MpvVideoView.GetPlaybackRangeDecision(new MediaTime(3, 1), Ranges);
@@ -189,7 +200,7 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
-    public void Interactive_canvas_matrix_is_identity_after_native_preview_catches_up()
+    public void Interactive_canvas_matrix_is_identity_when_no_clip_transform_is_requested()
     {
         var transform = new ClipCanvasTransform(50, -20, 1.1, 0.9, 31);
 
