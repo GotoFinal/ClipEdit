@@ -36,7 +36,11 @@ if ($LASTEXITCODE -ne 0) {
     throw 'A running Docker engine is required to build the Windows shared media stack.'
 }
 
-$imageExists = -not $RebuildBuilderImage -and $null -ne (& docker image inspect $builderImage 2>$null)
+$imageExists = $false
+if (-not $RebuildBuilderImage) {
+    & docker image inspect $builderImage *> $null
+    $imageExists = $LASTEXITCODE -eq 0
+}
 if (-not $imageExists) {
     & docker build `
         --file (Join-Path $recipePath 'Dockerfile') `
