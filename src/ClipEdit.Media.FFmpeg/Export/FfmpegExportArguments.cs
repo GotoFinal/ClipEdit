@@ -88,10 +88,13 @@ internal static class FfmpegExportArguments
         var includeAudio = plan.Preset.SupportsAudio;
         var hasEmbeddedAudio = includeAudio &&
                                plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty);
+        var videoPixelFormat = GetOutputPixelFormat(plan);
+        var overlayPixelFormat = plan.PreservesHdr ? "yuv420p10" : "yuv420";
         for (var segmentIndex = 0; segmentIndex < plan.VideoSegments.Length; segmentIndex++)
         {
             var segment = plan.VideoSegments[segmentIndex];
             var range = segment.SourceRange;
+            var inputColorConversion = CreateInputColorConversion(segment.VideoColorInfo, plan);
             if (segment.UsesCanvasTransform)
             {
                 var transform = segment.CanvasTransform;
@@ -101,12 +104,13 @@ internal static class FfmpegExportArguments
                     (transform.IsVerticallyMirrored ? "vflip," : string.Empty);
                 var rotation = transform.RotationDegrees == 0
                     ? string.Empty
-                    : $"format=rgba,rotate={rotationRadians}:" +
+                    : $"format={(plan.PreservesHdr ? "rgba64le" : "rgba")},rotate={rotationRadians}:" +
                       $"ow=rotw({rotationRadians}):oh=roth({rotationRadians}):c=black@0,";
                 filters.Add(
                     $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
                     $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
                     $"{CreateVideoSpeedFilter(segment.PlaybackSpeed)}," +
+                    inputColorConversion +
                     $"split=2[vseg{segmentIndex}basein][vseg{segmentIndex}contentin]");
                 filters.Add(
                     $"[vseg{segmentIndex}basein]" +
@@ -121,10 +125,11 @@ internal static class FfmpegExportArguments
                 filters.Add(
                     $"[vseg{segmentIndex}base][vseg{segmentIndex}content]" +
                     $"overlay=x=(W-w)/2{FormatSignedScalar(transform.OffsetX)}:" +
-                    $"y=(H-h)/2{FormatSignedScalar(transform.OffsetY)}:shortest=1," +
+                    $"y=(H-h)/2{FormatSignedScalar(transform.OffsetY)}:shortest=1:" +
+                    $"format={overlayPixelFormat}," +
                     $"crop={segment.CanvasCrop.Width}:{segment.CanvasCrop.Height}:" +
                     $"{segment.CanvasCrop.X}:{segment.CanvasCrop.Y}," +
-                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format=yuv420p," +
+                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format={videoPixelFormat}," +
                     $"setsar=1[vseg{segmentIndex}]");
             }
             else
@@ -133,8 +138,9 @@ internal static class FfmpegExportArguments
                     $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
                     $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
                     $"{CreateVideoSpeedFilter(segment.PlaybackSpeed)}," +
+                    inputColorConversion +
                     $"crop={segment.Crop.Width}:{segment.Crop.Height}:{segment.Crop.X}:{segment.Crop.Y}," +
-                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format=yuv420p,setsar=1[vseg{segmentIndex}]");
+                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format={videoPixelFormat},setsar=1[vseg{segmentIndex}]");
             }
 
             if (!hasEmbeddedAudio)
@@ -212,9 +218,13 @@ internal static class FfmpegExportArguments
         void AddGap(MediaTime duration)
         {
             var videoLabel = $"vgap{gapIndex}";
+            var colorProperties = plan.PreservesHdr
+                ? $",{CreateHdrSetParameters(plan.OutputVideoColorInfo!)}"
+                : string.Empty;
             filters.Add(
                 $"color=c=black:s={plan.OutputSize.Width}x{plan.OutputSize.Height}:" +
-                $"r=30:d={FormatTime(duration)},format=yuv420p,setsar=1[{videoLabel}]");
+                $"r=30:d={FormatTime(duration)},format={videoPixelFormat}{colorProperties}," +
+                $"setsar=1[{videoLabel}]");
             string? audioLabel = null;
             if (hasEmbeddedAudio)
             {
@@ -309,7 +319,8 @@ internal static class FfmpegExportArguments
             var videoOutput = $"vseg{index}";
             filters.Add(
                 $"[{videoInput}]trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
-                $"setpts=PTS-STARTPTS,crop={plan.Crop.Width}:{plan.Crop.Height}:{plan.Crop.X}:{plan.Crop.Y}," +
+                $"setpts=PTS-STARTPTS,{CreateInputColorConversion(plan.SourceVideoColorInfo, plan)}" +
+                $"crop={plan.Crop.Width}:{plan.Crop.Height}:{plan.Crop.X}:{plan.Crop.Y}," +
                 $"setsar=1[{videoOutput}]");
 
             for (var trackIndex = 0; trackIndex < audioTracks.Length; trackIndex++)
@@ -431,19 +442,29 @@ internal static class FfmpegExportArguments
     private static IEnumerable<string> CreatePresetArguments(ExportPlan plan)
     {
         var quality = plan.EncodingSettings.Quality;
+        var videoPixelFormat = GetOutputPixelFormat(plan);
         var arguments = plan.Preset.VideoCodec switch
         {
             VideoCodecFamily.H264 => new List<string>
             {
-                "-c:v", "libx264", "-preset", "medium", "-crf", MapQualityAroundDefault(quality, 36, 20, 16).ToString(CultureInfo.InvariantCulture), "-pix_fmt", "yuv420p",
+                "-c:v", "libx264", "-preset", "medium", "-crf", MapQualityAroundDefault(quality, 36, 20, 16).ToString(CultureInfo.InvariantCulture), "-pix_fmt", videoPixelFormat,
             },
             VideoCodecFamily.Vp9 =>
             [
-                "-c:v", "libvpx-vp9", "-crf", MapQualityAroundDefault(quality, 50, 30, 20).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p",
+                "-c:v", "libvpx-vp9", "-crf", MapQualityAroundDefault(quality, 50, 30, 20).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-row-mt", "1", "-pix_fmt", videoPixelFormat,
             ],
             VideoCodecFamily.Gif => ["-c:v", "gif", "-loop", "0"],
             _ => throw new ExportPlanException($"Unsupported video codec family: {plan.Preset.VideoCodec}."),
         };
+        if (plan.PreservesHdr)
+        {
+            if (plan.Preset.VideoCodec == VideoCodecFamily.H264)
+            {
+                arguments.AddRange(["-profile:v", "high10"]);
+            }
+
+            AddHdrSignalArguments(arguments, plan.OutputVideoColorInfo!);
+        }
         if (plan.Preset.VideoBitRateBitsPerSecond is { } videoBitRate)
         {
             RemoveOption(arguments, "-crf");
@@ -604,9 +625,12 @@ internal static class FfmpegExportArguments
             : $"setpts=(PTS-STARTPTS)/{FormatScalar(plan.EncodingSettings.PlaybackSpeed)},";
         if (plan.Preset.VideoCodec != VideoCodecFamily.Gif)
         {
+            var colorProperties = plan.PreservesHdr
+                ? $",{CreateHdrSetParameters(plan.OutputVideoColorInfo!)}"
+                : string.Empty;
             filters.Add(
                 $"[{input}]{speed}scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos," +
-                "format=yuv420p,setsar=1[vout]");
+                $"format={GetOutputPixelFormat(plan)}{colorProperties},setsar=1[vout]");
             return;
         }
 
@@ -620,6 +644,74 @@ internal static class FfmpegExportArguments
         filters.Add(
             "[gifsource][gifpalette]paletteuse=dither=sierra2_4a:diff_mode=rectangle[vout]");
     }
+
+    private static string GetOutputPixelFormat(ExportPlan plan) =>
+        plan.PreservesHdr ? "yuv420p10le" : "yuv420p";
+
+    private static string CreateInputColorConversion(
+        ExportVideoColorInfo? sourceColorInfo,
+        ExportPlan plan)
+    {
+        if (sourceColorInfo?.IsHdr != true || plan.PreservesHdr)
+        {
+            return string.Empty;
+        }
+
+        return "zscale=transfer=linear:npl=100,format=gbrpf32le," +
+               "zscale=primaries=bt709,tonemap=mobius:desat=0," +
+               "zscale=transfer=bt709:matrix=bt709:range=tv,format=yuv420p," +
+               "setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709,";
+    }
+
+    private static string CreateHdrSetParameters(ExportVideoColorInfo colorInfo) =>
+        "setparams=" +
+        $"range={MapColorRange(colorInfo.ColorRange)}:" +
+        $"color_primaries={MapColorPrimaries(colorInfo.ColorPrimaries)}:" +
+        $"color_trc={MapColorTransfer(colorInfo.ColorTransfer)}:" +
+        $"colorspace={MapColorSpace(colorInfo.ColorSpace)}";
+
+    private static void AddHdrSignalArguments(
+        ICollection<string> arguments,
+        ExportVideoColorInfo colorInfo)
+    {
+        arguments.Add("-color_range");
+        arguments.Add(MapColorRange(colorInfo.ColorRange));
+        arguments.Add("-color_primaries");
+        arguments.Add(MapColorPrimaries(colorInfo.ColorPrimaries));
+        arguments.Add("-color_trc");
+        arguments.Add(MapColorTransfer(colorInfo.ColorTransfer));
+        arguments.Add("-colorspace");
+        arguments.Add(MapColorSpace(colorInfo.ColorSpace));
+    }
+
+    private static string MapColorRange(string? value) => value switch
+    {
+        "tv" or "mpeg" or "limited" => "tv",
+        "pc" or "jpeg" or "full" => "pc",
+        _ => throw new ExportPlanException($"Unsupported HDR color range: {value ?? "unknown"}."),
+    };
+
+    private static string MapColorPrimaries(string? value) => value switch
+    {
+        "bt2020" => "bt2020",
+        "smpte432" => "smpte432",
+        _ => throw new ExportPlanException($"Unsupported HDR color primaries: {value ?? "unknown"}."),
+    };
+
+    private static string MapColorTransfer(string? value) => value switch
+    {
+        "smpte2084" => "smpte2084",
+        "arib-std-b67" => "arib-std-b67",
+        _ => throw new ExportPlanException($"Unsupported HDR transfer: {value ?? "unknown"}."),
+    };
+
+    private static string MapColorSpace(string? value) => value switch
+    {
+        "bt2020nc" => "bt2020nc",
+        "bt2020c" => "bt2020c",
+        "ictcp" => "ictcp",
+        _ => throw new ExportPlanException($"Unsupported HDR color space: {value ?? "unknown"}."),
+    };
 
     private static void AddAudioOutputFilters(
         ICollection<string> filters,

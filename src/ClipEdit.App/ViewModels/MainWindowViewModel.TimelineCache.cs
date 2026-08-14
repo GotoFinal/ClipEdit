@@ -154,7 +154,9 @@ public sealed partial class MainWindowViewModel
                 request.VideoStreamIndex,
                 ToMediaTime(request.DecodeTimestamp),
                 request.CacheKey.MaximumSize,
-                cancellationToken);
+                cancellationToken,
+                IsHdrVideo(request.Clip.Source.Media?.Probe.VideoStreams.FirstOrDefault(
+                    video => video.Index == request.VideoStreamIndex)));
             _timelineFrameCache.Set(request.CacheKey, decoded.EncodedImage);
         }
         finally
@@ -389,7 +391,9 @@ public sealed partial class MainWindowViewModel
                     videoStreamIndex,
                     Min(sourceTime, clip.SourceEnd),
                     TimelineHoverSize,
-                    token);
+                    token,
+                    IsHdrVideo(clip.Source.Media?.Probe.VideoStreams.FirstOrDefault(
+                        video => video.Index == videoStreamIndex)));
             }
             finally
             {

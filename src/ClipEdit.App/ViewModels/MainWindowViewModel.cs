@@ -1281,7 +1281,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     slice.Clip.CanvasTransform,
                     embeddedAudio,
                     slice.Clip.Model.SourceTimeToTimeline(slice.SourceRange.Start),
-                    slice.Clip.PlaybackSpeedPercent);
+                    slice.Clip.PlaybackSpeedPercent,
+                    new ExportVideoColorInfo(
+                        video.PixelFormat,
+                        video.ColorRange,
+                        video.ColorSpace,
+                        video.ColorTransfer,
+                        video.ColorPrimaries));
             }).ToImmutableArray();
             var externalAudio = AudioTracks
                 .Where(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty)
@@ -3522,7 +3528,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                             video.Index,
                             ToMediaTime(timestamp),
                             new PixelSize(240, 120),
-                            token);
+                            token,
+                            IsHdrVideo(video));
                     }
                     finally
                     {
@@ -3621,7 +3628,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 videoStreamIndex,
                 Min(sourceTime, clip.SourceEnd),
                 new PixelSize(360, 202),
-                token);
+                token,
+                IsHdrVideo(clip.Source.Media?.Probe.VideoStreams.FirstOrDefault(
+                    video => video.Index == videoStreamIndex)));
             await using var stream = new MemoryStream(decoded.EncodedImage.ToArray(), writable: false);
             token.ThrowIfCancellationRequested();
             if (ReferenceEquals(_timelineHoverCancellation, request))
@@ -4406,7 +4415,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 video.Index,
                 previewTimestamp,
                 new PixelSize(1_280, 720),
-                cancellationToken);
+                cancellationToken,
+                IsHdrVideo(video));
 
             await using var stream = new MemoryStream(decodedFrame.EncodedImage.ToArray(), writable: false);
             cancellationToken.ThrowIfCancellationRequested();
@@ -4494,7 +4504,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         video.Index,
                         ToMediaTime(timestamp),
                         new PixelSize(240, 112),
-                        cancellationToken);
+                        cancellationToken,
+                        IsHdrVideo(video));
                 }
                 finally
                 {
@@ -4700,6 +4711,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var microseconds = checked((long)Math.Round(Math.Max(0, seconds) * 1_000_000));
         return new MediaTime(microseconds, 1_000_000);
     }
+
+    private static bool IsHdrVideo(VideoStreamInfo? video) =>
+        video?.ColorTransfer is not null &&
+        (video.ColorTransfer.Equals("smpte2084", StringComparison.OrdinalIgnoreCase) ||
+         video.ColorTransfer.Equals("arib-std-b67", StringComparison.OrdinalIgnoreCase));
 
     private static double CombineAudioGain(double trackGainDb, double clipGainDb) =>
         Math.Clamp(trackGainDb + clipGainDb, -60, 12);

@@ -58,6 +58,7 @@ fi
     libsm6 \
     libvpx-dev \
     libx264-dev \
+    libzimg-dev \
     libtool \
     nasm \
     ninja-build \

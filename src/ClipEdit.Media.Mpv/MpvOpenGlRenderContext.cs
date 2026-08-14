@@ -9,6 +9,8 @@ public sealed class MpvOpenGlRenderContext : IDisposable
     private const int RenderParameterOpenGlInit = 2;
     private const int RenderParameterOpenGlFramebuffer = 3;
     private const int RenderParameterFlipY = 4;
+    private const int RenderParameterDepth = 5;
+    private const int GlRgba8 = 0x8058;
     private readonly MpvNativeLibrary _native;
     private readonly Func<string, nint> _getProcAddress;
     private readonly Action _requestRender;
@@ -86,18 +88,22 @@ public sealed class MpvOpenGlRenderContext : IDisposable
         }
 
         _ = _native.RenderContextUpdate(_context);
-        var target = new MpvOpenGlFramebuffer(framebuffer, width, height, internalFormat: 0);
+        var target = new MpvOpenGlFramebuffer(framebuffer, width, height, GlRgba8);
         var flip = flipY ? 1 : 0;
+        var depth = 8;
         var targetPointer = Marshal.AllocCoTaskMem(Marshal.SizeOf<MpvOpenGlFramebuffer>());
         var flipPointer = Marshal.AllocCoTaskMem(sizeof(int));
+        var depthPointer = Marshal.AllocCoTaskMem(sizeof(int));
         try
         {
             Marshal.StructureToPtr(target, targetPointer, fDeleteOld: false);
             Marshal.WriteInt32(flipPointer, flip);
+            Marshal.WriteInt32(depthPointer, depth);
             using var parameters = new NativeStructureArray<MpvRenderParameter>(
             [
                 new MpvRenderParameter(RenderParameterOpenGlFramebuffer, targetPointer),
                 new MpvRenderParameter(RenderParameterFlipY, flipPointer),
+                new MpvRenderParameter(RenderParameterDepth, depthPointer),
                 new MpvRenderParameter(0, nint.Zero),
             ]);
             Check(
@@ -106,6 +112,7 @@ public sealed class MpvOpenGlRenderContext : IDisposable
         }
         finally
         {
+            Marshal.FreeCoTaskMem(depthPointer);
             Marshal.FreeCoTaskMem(flipPointer);
             Marshal.FreeCoTaskMem(targetPointer);
         }

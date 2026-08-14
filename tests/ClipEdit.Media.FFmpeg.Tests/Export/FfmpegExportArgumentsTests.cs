@@ -203,9 +203,111 @@ public sealed class FfmpegExportArgumentsTests
         Assert.DoesNotContain("rotw(iw)", graph);
         Assert.DoesNotContain("roth(ih)", graph);
         Assert.Contains(
-            "overlay=x=(W-w)/2+120.5:y=(H-h)/2-40:shortest=1," +
+            "overlay=x=(W-w)/2+120.5:y=(H-h)/2-40:shortest=1:format=yuv420," +
             "crop=1080:1080:420:0",
             graph);
+    }
+
+    [Fact]
+    public void Compatible_hdr10_source_exports_ten_bit_pixels_and_explicit_color_signaling()
+    {
+        var hdr = Hdr10;
+        var basePlan = CreatePlan(
+            "C:\\hdr.mp4",
+            "C:\\hdr-export.mp4",
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            sourceVideoColorInfo: hdr);
+
+        var arguments = FfmpegExportArguments.Create(plan, "C:\\.hdr.partial");
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.True(plan.PreservesHdr);
+        Assert.Contains("format=yuv420p10le,setparams=range=tv:color_primaries=bt2020:" +
+                        "color_trc=smpte2084:colorspace=bt2020nc", graph);
+        Assert.Equal("yuv420p10le", ValueAfter(arguments, "-pix_fmt"));
+        Assert.Equal("high10", ValueAfter(arguments, "-profile:v"));
+        Assert.Equal("tv", ValueAfter(arguments, "-color_range"));
+        Assert.Equal("bt2020", ValueAfter(arguments, "-color_primaries"));
+        Assert.Equal("smpte2084", ValueAfter(arguments, "-color_trc"));
+        Assert.Equal("bt2020nc", ValueAfter(arguments, "-colorspace"));
+    }
+
+    [Fact]
+    public void Hdr_canvas_transform_keeps_high_precision_rotation_and_overlay()
+    {
+        var canvas = new PixelSize(1_280, 720);
+        var crop = CropRegion.FullFrame(canvas);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    "C:\\hdr.mp4",
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvas,
+                    crop,
+                    new ClipCanvasTransform(0, 0, 0.8, 0.8, 17),
+                    videoColorInfo: Hdr10),
+            ],
+            canvas,
+            "C:\\hdr-transform.mp4",
+            Mp4Compatible);
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.True(plan.PreservesHdr);
+        Assert.Contains("format=rgba64le,rotate=17*PI/180", graph);
+        Assert.Contains("shortest=1:format=yuv420p10", graph);
+        Assert.Contains("format=yuv420p10le", graph);
+        Assert.DoesNotContain("format=rgba,rotate", graph);
+    }
+
+    [Fact]
+    public void Mixed_hdr_and_sdr_sequence_tone_maps_hdr_to_a_common_sdr_output()
+    {
+        var canvas = new PixelSize(1_280, 720);
+        var crop = CropRegion.FullFrame(canvas);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    "C:\\hdr.mp4",
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(1, 1)),
+                    canvas,
+                    crop,
+                    ClipCanvasTransform.Identity,
+                    videoColorInfo: Hdr10),
+                new ExportVideoSegmentPlan(
+                    "C:\\sdr.mp4",
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(1, 1)),
+                    canvas,
+                    crop,
+                    ClipCanvasTransform.Identity,
+                    videoColorInfo: new ExportVideoColorInfo(
+                        "yuv420p", "tv", "bt709", "bt709", "bt709")),
+            ],
+            canvas,
+            "C:\\mixed.mp4",
+            Mp4Compatible);
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+        var arguments = FfmpegExportArguments.Create(plan, "C:\\.mixed.partial");
+
+        Assert.False(plan.PreservesHdr);
+        Assert.Contains("zscale=transfer=linear:npl=100", graph);
+        Assert.Contains("tonemap=mobius:desat=0", graph);
+        Assert.Equal(1, graph.Split("tonemap=mobius", StringSplitOptions.None).Length - 1);
+        Assert.Equal("yuv420p", ValueAfter(arguments, "-pix_fmt"));
+        Assert.DoesNotContain("-color_trc", arguments);
     }
 
     [Fact]
@@ -448,4 +550,11 @@ public sealed class FfmpegExportArgumentsTests
         VideoCodecFamily.Vp9,
         AudioCodecFamily.Opus,
         requiresEvenDimensions: true);
+
+    private static ExportVideoColorInfo Hdr10 { get; } = new(
+        "yuv420p10le",
+        "tv",
+        "bt2020nc",
+        "smpte2084",
+        "bt2020");
 }

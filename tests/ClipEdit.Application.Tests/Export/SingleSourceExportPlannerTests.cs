@@ -41,6 +41,7 @@ public sealed class SingleSourceExportPlannerTests
         Assert.Equal(edit.KeptRanges, plan.SourceRanges);
         Assert.Equal(new MediaTime(5, 1), plan.ExpectedDuration);
         Assert.Equal(ExportStrategy.ExactTranscode, plan.Strategy);
+        Assert.Equal("bt709", plan.SourceVideoColorInfo?.ColorPrimaries);
     }
 
     [Fact]

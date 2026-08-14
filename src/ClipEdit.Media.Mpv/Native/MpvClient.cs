@@ -35,18 +35,10 @@ internal sealed class MpvClient : IDisposable
 
         try
         {
-            SetOption("config", "no");
-            SetOption("terminal", "no");
-            SetOption("input-default-bindings", "no");
-            SetOption("input-vo-keyboard", "no");
-            SetOption("audio-file-auto", "no");
-            SetOption("keep-open", "yes");
-            SetOption("pause", "yes");
-            SetOption("audio-pitch-correction", "yes");
-            SetOption("vo", "libmpv");
-            SetOption("hwdec", "auto");
-            SetOption("hr-seek-framedrop", "yes");
-            SetOption("video-unscaled", "yes");
+            foreach (var option in GetInitializationOptions())
+            {
+                SetOption(option.Name, option.Value);
+            }
             Check(_native.Initialize(_handle), "initialize libmpv");
         }
         catch
@@ -57,6 +49,31 @@ internal sealed class MpvClient : IDisposable
     }
 
     public nint Handle => _handle;
+
+    internal static IReadOnlyList<(string Name, string Value)> GetInitializationOptions() =>
+    [
+        ("config", "no"),
+        ("terminal", "no"),
+        ("input-default-bindings", "no"),
+        ("input-vo-keyboard", "no"),
+        ("audio-file-auto", "no"),
+        ("keep-open", "yes"),
+        ("pause", "yes"),
+        ("audio-pitch-correction", "yes"),
+        ("vo", "libmpv"),
+        ("hwdec", "auto"),
+        ("hr-seek-framedrop", "yes"),
+        ("video-unscaled", "yes"),
+        // Avalonia owns the final 8-bit desktop-composited surface, so libmpv
+        // must render display-referred SDR instead of sending PQ/HLG values to
+        // a framebuffer that cannot carry HDR swapchain metadata.
+        ("target-prim", "bt.709"),
+        ("target-trc", "srgb"),
+        ("target-peak", "auto"),
+        ("tone-mapping", "auto"),
+        ("gamut-mapping-mode", "perceptual"),
+        ("hdr-compute-peak", "auto"),
+    ];
 
     public void Load(string sourcePath, CancellationToken cancellationToken)
     {

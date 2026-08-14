@@ -129,7 +129,8 @@ expected_revisions="$(printf '%s\n' \
     "ffmpeg=$ffmpeg_revision" \
     "libplacebo=$libplacebo_revision" \
     "libass=$libass_revision" \
-    "meson=$meson_version")"
+    "meson=$meson_version" \
+    "recipe=linux-hdr-v1")"
 
 ffmpeg_binary="$mpv_build_root/build_libs/bin/ffmpeg"
 ffprobe_binary="$mpv_build_root/build_libs/bin/ffprobe"
@@ -166,6 +167,7 @@ if [[ "$actual_revisions" != "$expected_revisions" || \
         scripts/ffmpeg-config \
             --enable-libx264 \
             --enable-libvpx \
+            --enable-libzimg \
             --enable-libopus
         scripts/ffmpeg-build -j"$(nproc)"
 
@@ -211,6 +213,13 @@ encoders="$($ffmpeg_binary -hide_banner -encoders 2>&1)"
 for encoder in libx264 libvpx-vp9 aac libopus; do
     if ! grep -E "[[:space:]]$encoder[[:space:]]" <<<"$encoders" >/dev/null; then
         echo "The Linux FFmpeg binary is missing encoder $encoder." >&2
+        exit 1
+    fi
+done
+filters="$($ffmpeg_binary -hide_banner -filters 2>&1)"
+for filter in crop scale zscale tonemap format setparams rotate overlay concat; do
+    if ! grep -E "[[:space:]]${filter}[[:space:]]" <<<"$filters" >/dev/null; then
+        echo "The Linux FFmpeg binary is missing filter $filter." >&2
         exit 1
     fi
 done

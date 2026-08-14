@@ -42,6 +42,12 @@ public sealed class SingleSourceExportPlanner
             edit.KeptRanges,
             preset,
             replaceExistingDestination,
-            audioTracks);
+            audioTracks,
+            sourceVideoColorInfo: new ExportVideoColorInfo(
+                video.PixelFormat,
+                video.ColorRange,
+                video.ColorSpace,
+                video.ColorTransfer,
+                video.ColorPrimaries));
     }
 }

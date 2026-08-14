@@ -40,7 +40,8 @@ public sealed class FfmpegFrameDecoder : IFrameDecoder
         int videoStreamIndex,
         MediaTime timestamp,
         PixelSize maximumSize,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool toneMapHdr = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         var fullSourcePath = Path.GetFullPath(sourcePath);
@@ -57,7 +58,8 @@ public sealed class FfmpegFrameDecoder : IFrameDecoder
                 fullSourcePath,
                 videoStreamIndex,
                 timestamp,
-                maximumSize),
+                maximumSize,
+                toneMapHdr),
         };
 
         try
@@ -140,7 +142,8 @@ public sealed class FfmpegFrameDecoder : IFrameDecoder
         string sourcePath,
         int videoStreamIndex,
         MediaTime timestamp,
-        PixelSize maximumSize)
+        PixelSize maximumSize,
+        bool toneMapHdr)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -157,7 +160,8 @@ public sealed class FfmpegFrameDecoder : IFrameDecoder
                      sourcePath,
                      videoStreamIndex,
                      timestamp,
-                     maximumSize))
+                     maximumSize,
+                     toneMapHdr))
         {
             startInfo.ArgumentList.Add(argument);
         }

@@ -30,7 +30,8 @@ public sealed record ExportPlan
         ExportPreset preset,
         bool replaceExistingDestination = false,
         ImmutableArray<ExportAudioTrackPlan> audioTracks = default,
-        ExportEncodingSettings? encodingSettings = null)
+        ExportEncodingSettings? encodingSettings = null,
+        ExportVideoColorInfo? sourceVideoColorInfo = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
@@ -91,6 +92,8 @@ public sealed record ExportPlan
         Preset = preset;
         ReplaceExistingDestination = replaceExistingDestination;
         VideoSegments = [];
+        SourceVideoColorInfo = sourceVideoColorInfo;
+        OutputVideoColorInfo = ResolveSingleSourceOutputColorInfo(preset, sourceVideoColorInfo);
         SequenceTimelineStart = MediaTime.Zero;
         _timelineDuration = SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
         _expectedDuration = EncodingSettings.ApplyPlaybackSpeed(_timelineDuration);
@@ -177,6 +180,8 @@ public sealed record ExportPlan
         _timelineDuration = resolvedDuration;
         _expectedDuration = EncodingSettings.ApplyPlaybackSpeed(resolvedDuration);
         VideoSegments = videoSegments;
+        SourceVideoColorInfo = videoSegments[0].VideoColorInfo;
+        OutputVideoColorInfo = ResolveSequenceOutputColorInfo(preset, videoSegments);
         _outputSize = scaledOutputSize;
         DestinationPath = Path.GetFullPath(destinationPath);
         Preset = preset;
@@ -198,6 +203,12 @@ public sealed record ExportPlan
     public ImmutableArray<ExportAudioTrackPlan> AudioTracks { get; }
 
     public ImmutableArray<ExportVideoSegmentPlan> VideoSegments { get; }
+
+    public ExportVideoColorInfo? SourceVideoColorInfo { get; }
+
+    public ExportVideoColorInfo? OutputVideoColorInfo { get; }
+
+    public bool PreservesHdr => OutputVideoColorInfo?.IsHdr == true;
 
     public bool IsSequence => !VideoSegments.IsDefaultOrEmpty;
 
@@ -273,6 +284,27 @@ public sealed record ExportPlan
 
         return false;
     }
+
+    private static ExportVideoColorInfo? ResolveSingleSourceOutputColorInfo(
+        ExportPreset preset,
+        ExportVideoColorInfo? colorInfo) =>
+        preset.VideoCodec != VideoCodecFamily.Gif && colorInfo?.CanPreserveHdr == true
+            ? colorInfo
+            : null;
+
+    private static ExportVideoColorInfo? ResolveSequenceOutputColorInfo(
+        ExportPreset preset,
+        ImmutableArray<ExportVideoSegmentPlan> segments)
+    {
+        if (preset.VideoCodec == VideoCodecFamily.Gif || segments[0].VideoColorInfo is not { CanPreserveHdr: true } first)
+        {
+            return null;
+        }
+
+        return segments.All(segment => first.IsCompatibleHdr(segment.VideoColorInfo))
+            ? first
+            : null;
+    }
 }
 
 public sealed record ExportVideoSegmentPlan
@@ -282,7 +314,8 @@ public sealed record ExportVideoSegmentPlan
         int videoStreamIndex,
         MediaRange sourceRange,
         CropRegion crop,
-        ImmutableArray<ExportAudioTrackPlan> audioTracks = default)
+        ImmutableArray<ExportAudioTrackPlan> audioTracks = default,
+        ExportVideoColorInfo? videoColorInfo = null)
         : this(
             sourcePath,
             videoStreamIndex,
@@ -290,7 +323,8 @@ public sealed record ExportVideoSegmentPlan
             crop.SourceSize,
             crop,
             ClipCanvasTransform.Identity,
-            audioTracks)
+            audioTracks,
+            videoColorInfo: videoColorInfo)
     {
         UsesCanvasTransform = false;
     }
@@ -304,7 +338,8 @@ public sealed record ExportVideoSegmentPlan
         ClipCanvasTransform canvasTransform,
         ImmutableArray<ExportAudioTrackPlan> audioTracks = default,
         MediaTime? timelineStart = null,
-        int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent)
+        int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent,
+        ExportVideoColorInfo? videoColorInfo = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
@@ -346,6 +381,7 @@ public sealed record ExportVideoSegmentPlan
         AudioTracks = embeddedTracks;
         TimelineStart = timelineStart;
         PlaybackSpeedPercent = playbackSpeedPercent;
+        VideoColorInfo = videoColorInfo;
         UsesCanvasTransform = true;
     }
 
@@ -368,6 +404,8 @@ public sealed record ExportVideoSegmentPlan
     public MediaTime TimelineDuration => SourceRange.Duration * 100 / PlaybackSpeedPercent;
 
     public ClipCanvasTransform CanvasTransform { get; }
+
+    public ExportVideoColorInfo? VideoColorInfo { get; }
 
     public bool UsesCanvasTransform { get; private init; }
 

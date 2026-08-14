@@ -65,6 +65,9 @@ public sealed class MpvVideoView : OpenGlControlBase
     public static readonly StyledProperty<bool> HasCutsProperty =
         AvaloniaProperty.Register<MpvVideoView, bool>(nameof(HasCuts));
 
+    public static readonly StyledProperty<bool> IsHdrSourceProperty =
+        AvaloniaProperty.Register<MpvVideoView, bool>(nameof(IsHdrSource));
+
     public static readonly DirectProperty<MpvVideoView, bool> IsPlaybackAvailableProperty =
         AvaloniaProperty.RegisterDirect<MpvVideoView, bool>(
             nameof(IsPlaybackAvailable),
@@ -113,6 +116,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private string _playbackStatus = "Initializing the local preview engine…";
     private string _playButtonText = "▶";
     private string _decoderStatus = "Decoder pending";
+    private string? _lastHardwareDecoder;
     private bool _mediaLoaded;
     private bool _shutdownStarted;
     private bool _positionPollInProgress;
@@ -145,6 +149,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             static (view, _) => view.OnInteractiveTransformActiveChanged());
         AudioTracksProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartAudioMixChange());
+        IsHdrSourceProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.UpdateDecoderStatus(view._lastHardwareDecoder));
     }
 
     public MpvVideoView()
@@ -242,6 +248,12 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => GetValue(HasCutsProperty);
         set => SetValue(HasCutsProperty, value);
+    }
+
+    public bool IsHdrSource
+    {
+        get => GetValue(IsHdrSourceProperty);
+        set => SetValue(IsHdrSourceProperty, value);
     }
 
     public bool IsPlaybackAvailable
@@ -1308,17 +1320,19 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     private void UpdateDecoderStatus(string? hardwareDecoder)
     {
+        _lastHardwareDecoder = hardwareDecoder;
+        var colorStatus = IsHdrSource ? " · HDR tone-mapped" : string.Empty;
         if (string.IsNullOrWhiteSpace(hardwareDecoder))
         {
-            DecoderStatus = "Decoder unavailable";
+            DecoderStatus = "Decoder unavailable" + colorStatus;
         }
         else if (string.Equals(hardwareDecoder, "no", StringComparison.OrdinalIgnoreCase))
         {
-            DecoderStatus = "Software decode";
+            DecoderStatus = "Software decode" + colorStatus;
         }
         else
         {
-            DecoderStatus = $"Hardware decode · {hardwareDecoder}";
+            DecoderStatus = $"Hardware decode · {hardwareDecoder}{colorStatus}";
         }
     }
 }

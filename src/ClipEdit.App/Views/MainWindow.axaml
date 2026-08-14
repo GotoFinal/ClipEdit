@@ -897,6 +897,7 @@
                       CanvasSize="{Binding CanvasSize}"
                       CanvasTransform="{Binding SelectedVideoClip.CanvasTransform}"
                       HasCuts="{Binding SelectedVideoClip.IsTrimmed}"
+                      IsHdrSource="{Binding SelectedMedia.IsHdrVideo}"
                       IsInteractiveTransformActive="{Binding IsClipTransformEditing}"
                       IsPaused="True"
                       PlaybackCompleted="LivePreview_PlaybackCompleted"

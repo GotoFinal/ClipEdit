@@ -117,7 +117,7 @@ try {
         }
     }
     $filters = (Invoke-NativeWindowsTool $ffmpegPath @('-hide_banner', '-filters') 2>&1 | Out-String)
-    foreach ($filter in @('crop', 'scale', 'rotate', 'overlay', 'concat', 'atrim', 'asetpts', 'aeval', 'volume', 'amix', 'alimiter', 'apad', 'showwavespic')) {
+    foreach ($filter in @('crop', 'scale', 'zscale', 'tonemap', 'format', 'setparams', 'rotate', 'overlay', 'concat', 'atrim', 'asetpts', 'aeval', 'volume', 'amix', 'alimiter', 'apad', 'showwavespic')) {
         if ($filters -notmatch "\b$([regex]::Escape($filter))\b") {
             throw "The source-built FFmpeg does not expose the required $filter filter."
         }

@@ -56,6 +56,7 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(HasVideo));
                 OnPropertyChanged(nameof(HasAudio));
                 OnPropertyChanged(nameof(IsExternalAudio));
+                OnPropertyChanged(nameof(IsHdrVideo));
                 OnPropertyChanged(nameof(VideoSize));
                 OnPropertyChanged(nameof(FrameStepSeconds));
                 OnPropertyChanged(nameof(Summary));
@@ -77,6 +78,10 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     public bool HasAudio => Media?.HasAudio == true;
 
     public bool IsExternalAudio => Media?.IsExternalAudio == true;
+
+    public bool IsHdrVideo => Media?.Probe.VideoStreams.FirstOrDefault()?.ColorTransfer is { } transfer &&
+                              (transfer.Equals("smpte2084", StringComparison.OrdinalIgnoreCase) ||
+                               transfer.Equals("arib-std-b67", StringComparison.OrdinalIgnoreCase));
 
     public PixelSize VideoSize =>
         Media?.Probe.VideoStreams.FirstOrDefault()?.OrientedSize ?? new PixelSize(1, 1);

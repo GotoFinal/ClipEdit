@@ -10,5 +10,6 @@ public interface IFrameDecoder
         int videoStreamIndex,
         MediaTime timestamp,
         PixelSize maximumSize,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool toneMapHdr = false);
 }

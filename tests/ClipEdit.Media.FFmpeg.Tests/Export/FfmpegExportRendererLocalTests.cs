@@ -13,6 +13,80 @@ public sealed class FfmpegExportRendererLocalTests
 {
     [Fact]
     [Trait("Category", "LocalMedia")]
+    public async Task Renderer_preserves_hdr10_colorimetry_and_ten_bit_pixels()
+    {
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_HDR_MEDIA");
+        var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+        var ffprobePath = FfprobeExecutableLocator.Find();
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            !File.Exists(sourcePath) ||
+            ffmpegPath is null ||
+            ffprobePath is null)
+        {
+            return;
+        }
+
+        var source = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(sourcePath);
+        var video = source.VideoStreams.First();
+        var colorInfo = new ExportVideoColorInfo(
+            video.PixelFormat,
+            video.ColorRange,
+            video.ColorSpace,
+            video.ColorTransfer,
+            video.ColorPrimaries);
+        if (!colorInfo.CanPreserveHdr)
+        {
+            return;
+        }
+
+        var outputSize = new PixelSize(
+            Math.Min(video.OrientedSize.Width, 640) & ~1,
+            Math.Min(video.OrientedSize.Height, 480) & ~1);
+        var destinationPath = Path.Combine(
+            Path.GetTempPath(),
+            $"clipedit-hdr-{Guid.NewGuid():N}.mp4");
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    sourcePath,
+                    video.Index,
+                    new MediaRange(MediaTime.Zero, new MediaTime(1, 1)),
+                    video.OrientedSize,
+                    CropRegion.FullFrame(video.OrientedSize),
+                    new ClipCanvasTransform(0, 0, 0.9, 0.9, 7),
+                    videoColorInfo: colorInfo),
+            ],
+            outputSize,
+            destinationPath,
+            new ExportPreset(
+                "mp4-local-hdr",
+                "MP4 local HDR",
+                ".mp4",
+                ExportContainer.Mp4,
+                VideoCodecFamily.H264,
+                AudioCodecFamily.None,
+                requiresEvenDimensions: true));
+
+        try
+        {
+            await new FfmpegExportRenderer(ffmpegPath).RenderAsync(plan);
+            var rendered = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(destinationPath);
+            var output = rendered.VideoStreams.Single();
+
+            Assert.Contains("10", output.PixelFormat, StringComparison.Ordinal);
+            Assert.Equal(video.ColorRange, output.ColorRange);
+            Assert.Equal(video.ColorSpace, output.ColorSpace);
+            Assert.Equal(video.ColorTransfer, output.ColorTransfer);
+            Assert.Equal(video.ColorPrimaries, output.ColorPrimaries);
+        }
+        finally
+        {
+            File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "LocalMedia")]
     public async Task Renderer_applies_clip_and_global_speed_to_video_and_audio()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");

@@ -1729,8 +1729,10 @@ public sealed class MainWindowViewModelTests
             int videoStreamIndex,
             MediaTime timestamp,
             PixelSize maximumSize,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool toneMapHdr = false)
         {
+            _ = toneMapHdr;
             cancellationToken.ThrowIfCancellationRequested();
             if (maximumSize == new PixelSize(240, 120))
             {
