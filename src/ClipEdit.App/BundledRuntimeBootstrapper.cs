@@ -2,9 +2,9 @@ namespace ClipEdit.App;
 
 internal static class BundledRuntimeBootstrapper
 {
-    internal const string FfmpegEnvironmentVariable = "CLIPEDIT_FFMPEG_PATH";
-    internal const string FfprobeEnvironmentVariable = "CLIPEDIT_FFPROBE_PATH";
-    internal const string LibMpvEnvironmentVariable = "CLIPEDIT_LIBMPV_PATH";
+    internal const string BundledFfmpegEnvironmentVariable = "CLIPEDIT_BUNDLED_FFMPEG_PATH";
+    internal const string BundledFfprobeEnvironmentVariable = "CLIPEDIT_BUNDLED_FFPROBE_PATH";
+    internal const string BundledLibMpvEnvironmentVariable = "CLIPEDIT_BUNDLED_LIBMPV_PATH";
 
     public static void Prepare(string baseDirectory) =>
         Prepare(baseDirectory, OperatingSystem.IsWindows(), OperatingSystem.IsLinux());
@@ -14,9 +14,9 @@ internal static class BundledRuntimeBootstrapper
         ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
 
         var layout = Discover(baseDirectory, isWindows);
-        SetBundledDefault(FfmpegEnvironmentVariable, layout.FfmpegPath);
-        SetBundledDefault(FfprobeEnvironmentVariable, layout.FfprobePath);
-        SetBundledDefault(LibMpvEnvironmentVariable, layout.LibMpvPath);
+        SetBundledDefault(BundledFfmpegEnvironmentVariable, layout.FfmpegPath);
+        SetBundledDefault(BundledFfprobeEnvironmentVariable, layout.FfprobePath);
+        SetBundledDefault(BundledLibMpvEnvironmentVariable, layout.LibMpvPath);
 
         if (isLinux && OperatingSystem.IsLinux())
         {

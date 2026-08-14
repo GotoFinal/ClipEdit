@@ -75,14 +75,14 @@ public sealed class BundledRuntimeBootstrapperTests
     }
 
     [Fact]
-    public void Bundled_payload_sets_defaults_without_overriding_explicit_paths()
+    public void Bundled_payload_paths_are_advertised_for_media_locators()
     {
         var root = CreateTemporaryDirectory();
         var variables = new[]
         {
-            BundledRuntimeBootstrapper.FfmpegEnvironmentVariable,
-            BundledRuntimeBootstrapper.FfprobeEnvironmentVariable,
-            BundledRuntimeBootstrapper.LibMpvEnvironmentVariable,
+            BundledRuntimeBootstrapper.BundledFfmpegEnvironmentVariable,
+            BundledRuntimeBootstrapper.BundledFfprobeEnvironmentVariable,
+            BundledRuntimeBootstrapper.BundledLibMpvEnvironmentVariable,
         };
         var priorValues = variables.ToDictionary(
             variable => variable,
@@ -93,24 +93,30 @@ public sealed class BundledRuntimeBootstrapperTests
             var ffmpegPath = WriteEmptyFile(toolDirectory.FullName, "ffmpeg.exe");
             var ffprobePath = WriteEmptyFile(toolDirectory.FullName, "ffprobe.exe");
             _ = WriteEmptyFile(root, "libmpv-2.dll");
-            const string explicitLibMpvPath = "explicit-libmpv.dll";
-            Environment.SetEnvironmentVariable(BundledRuntimeBootstrapper.FfmpegEnvironmentVariable, null);
-            Environment.SetEnvironmentVariable(BundledRuntimeBootstrapper.FfprobeEnvironmentVariable, null);
             Environment.SetEnvironmentVariable(
-                BundledRuntimeBootstrapper.LibMpvEnvironmentVariable,
-                explicitLibMpvPath);
+                BundledRuntimeBootstrapper.BundledFfmpegEnvironmentVariable,
+                null);
+            Environment.SetEnvironmentVariable(
+                BundledRuntimeBootstrapper.BundledFfprobeEnvironmentVariable,
+                null);
+            Environment.SetEnvironmentVariable(
+                BundledRuntimeBootstrapper.BundledLibMpvEnvironmentVariable,
+                null);
 
             BundledRuntimeBootstrapper.Prepare(root, isWindows: true, isLinux: false);
 
             Assert.Equal(
                 ffmpegPath,
-                Environment.GetEnvironmentVariable(BundledRuntimeBootstrapper.FfmpegEnvironmentVariable));
+                Environment.GetEnvironmentVariable(
+                    BundledRuntimeBootstrapper.BundledFfmpegEnvironmentVariable));
             Assert.Equal(
                 ffprobePath,
-                Environment.GetEnvironmentVariable(BundledRuntimeBootstrapper.FfprobeEnvironmentVariable));
+                Environment.GetEnvironmentVariable(
+                    BundledRuntimeBootstrapper.BundledFfprobeEnvironmentVariable));
             Assert.Equal(
-                explicitLibMpvPath,
-                Environment.GetEnvironmentVariable(BundledRuntimeBootstrapper.LibMpvEnvironmentVariable));
+                Path.Combine(root, "libmpv-2.dll"),
+                Environment.GetEnvironmentVariable(
+                    BundledRuntimeBootstrapper.BundledLibMpvEnvironmentVariable));
         }
         finally
         {

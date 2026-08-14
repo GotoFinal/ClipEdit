@@ -17,6 +17,9 @@ public sealed class MpvVideoView : OpenGlControlBase
     public static readonly StyledProperty<string?> SourcePathProperty =
         AvaloniaProperty.Register<MpvVideoView, string?>(nameof(SourcePath));
 
+    public static readonly StyledProperty<string?> LibraryPathProperty =
+        AvaloniaProperty.Register<MpvVideoView, string?>(nameof(LibraryPath));
+
     public static readonly StyledProperty<MediaTime> PositionProperty =
         AvaloniaProperty.Register<MpvVideoView, MediaTime>(nameof(Position), MediaTime.Zero);
 
@@ -200,6 +203,12 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => GetValue(VolumeProperty);
         set => SetValue(VolumeProperty, value);
+    }
+
+    public string? LibraryPath
+    {
+        get => GetValue(LibraryPathProperty);
+        set => SetValue(LibraryPathProperty, value);
     }
 
     public double FrameStepSeconds
@@ -508,6 +517,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         try
         {
             var engine = await MpvPreviewEngine.CreateAsync(
+                LibraryPath,
                 cancellationToken: _lifetimeCancellation.Token);
             _engine = engine;
             PlaybackStatus = "Live preview is ready";

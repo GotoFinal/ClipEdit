@@ -122,7 +122,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         else
         {
-            StatusText = "ffprobe was not found. Configure CLIPEDIT_FFPROBE_PATH to import media.";
+            StatusText = "ffprobe was not found. Configure it in Media runtime settings to import media.";
         }
 
         ResetEditHistory();

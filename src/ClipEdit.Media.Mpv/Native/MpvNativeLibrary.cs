@@ -86,7 +86,10 @@ internal sealed class MpvNativeLibrary : IDisposable
         nint handle;
         try
         {
-            handle = NativeLibrary.Load(Path.GetFullPath(libraryPath));
+            var loadTarget = Path.IsPathFullyQualified(libraryPath)
+                ? Path.GetFullPath(libraryPath)
+                : libraryPath;
+            handle = NativeLibrary.Load(loadTarget);
         }
         catch (Exception exception) when (
             exception is DllNotFoundException or BadImageFormatException or FileNotFoundException)

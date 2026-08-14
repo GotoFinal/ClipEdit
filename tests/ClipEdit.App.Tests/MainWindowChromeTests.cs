@@ -108,6 +108,28 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Media_runtime_controls_expose_system_preference_and_manual_paths()
+    {
+        var window = new MainWindow
+        {
+            DataContext = new MainWindowViewModel(mediaProbe: null),
+        };
+
+        var preferSystem = window.FindControl<CheckBox>("PreferSystemMediaToolsCheckBox");
+        var ffmpegPath = window.FindControl<TextBox>("FfmpegPathTextBox");
+        var ffprobePath = window.FindControl<TextBox>("FfprobePathTextBox");
+        var libMpvPath = window.FindControl<TextBox>("LibMpvPathTextBox");
+
+        Assert.NotNull(preferSystem);
+        Assert.NotNull(ffmpegPath);
+        Assert.NotNull(ffprobePath);
+        Assert.NotNull(libMpvPath);
+        Assert.False(preferSystem.IsChecked);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Export_settings_are_a_narrow_joined_sub_button()
     {
         var window = new MainWindow();

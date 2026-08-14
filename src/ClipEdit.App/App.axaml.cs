@@ -14,6 +14,7 @@ using ClipEdit.Media.FFmpeg.Frames;
 using ClipEdit.Media.FFmpeg.Probe;
 using ClipEdit.Media.FFmpeg.Process;
 using ClipEdit.Media.Frames;
+using ClipEdit.Media.Mpv;
 using ClipEdit.Media.Probe;
 using ClipEdit.Persistence.Json;
 
@@ -30,11 +31,23 @@ public sealed partial class App : Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var ffprobePath = FfprobeExecutableLocator.Find();
+            var applicationDataDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipEdit");
+            var mediaRuntimeSettingsStore = new MediaRuntimeSettingsStore(
+                Path.Combine(applicationDataDirectory, "media-tools.json"));
+            var mediaRuntimeSettings = mediaRuntimeSettingsStore.Load();
+            var ffprobePath = FfprobeExecutableLocator.Find(
+                mediaRuntimeSettings.FfprobePath,
+                mediaRuntimeSettings.PreferSystemMediaTools);
             IMediaProbe? mediaProbe = ffprobePath is null
                 ? null
                 : new FfprobeMediaProbe(ffprobePath);
-            var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+            var ffmpegPath = FfmpegToolLocator.FindFfmpeg(
+                mediaRuntimeSettings.FfmpegPath,
+                mediaRuntimeSettings.PreferSystemMediaTools);
+            var libMpvPath = MpvNativeLibraryLocator.Find(
+                mediaRuntimeSettings.LibMpvPath,
+                mediaRuntimeSettings.PreferSystemMediaTools);
             IFrameDecoder? frameDecoder = ffmpegPath is null
                 ? null
                 : new FfmpegFrameDecoder(ffmpegPath);
@@ -44,8 +57,6 @@ public sealed partial class App : Avalonia.Application
             IExportRenderer? exportRenderer = ffmpegPath is null
                 ? null
                 : new FfmpegExportRenderer(ffmpegPath);
-            var applicationDataDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipEdit");
             var recoveryDirectory = Path.Combine(
                 applicationDataDirectory,
                 "Recovery");
@@ -57,6 +68,7 @@ public sealed partial class App : Avalonia.Application
                 new JsonProjectStore(),
                 recoveryDirectory,
                 waveformRenderer: waveformRenderer);
+            viewModel.ConfigureMediaRuntime(mediaRuntimeSettings, libMpvPath);
             var settingsStore = new CanvasInteractionSettingsStore(
                 Path.Combine(applicationDataDirectory, "settings.json"));
             var interactionSettings = settingsStore.Load();
@@ -118,6 +130,7 @@ public sealed partial class App : Avalonia.Application
             {
                 SaveInteractionSettings();
                 exportPreferencesStore.Save(viewModel.CreateExportPreferences());
+                mediaRuntimeSettingsStore.Save(viewModel.CreateMediaRuntimeSettings());
             };
 
             desktop.MainWindow = mainWindow;

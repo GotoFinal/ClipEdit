@@ -39,7 +39,7 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     {
         var resolvedPath = MpvNativeLibraryLocator.Find(libraryPath)
             ?? throw new MpvPreviewException(
-                "libmpv was not found. Run eng/Get-LibMpv.ps1 or set CLIPEDIT_LIBMPV_PATH.");
+                "A compatible libmpv was not found. Configure it in Media runtime settings or set CLIPEDIT_LIBMPV_PATH.");
 
         var engine = new MpvPreviewEngine(MpvNativeLibrary.Load(resolvedPath));
         try

@@ -3,33 +3,40 @@ namespace ClipEdit.Media.FFmpeg.Process;
 public static class FfmpegToolLocator
 {
     private const string WindowsFfmpegVersion = "9.0.1";
+    private const string BundledFfmpegVariable = "CLIPEDIT_BUNDLED_FFMPEG_PATH";
+    private const string BundledFfprobeVariable = "CLIPEDIT_BUNDLED_FFPROBE_PATH";
 
-    public static string? FindFfmpeg(string? explicitPath = null)
+    public static string? FindFfmpeg(string? explicitPath = null, bool preferSystem = false)
     {
         return Find(
             "ffmpeg",
             "CLIPEDIT_FFMPEG_PATH",
-            explicitPath);
+            BundledFfmpegVariable,
+            explicitPath,
+            preferSystem);
     }
 
-    public static string? FindFfprobe(string? explicitPath = null)
+    public static string? FindFfprobe(string? explicitPath = null, bool preferSystem = false)
     {
         return Find(
             "ffprobe",
             "CLIPEDIT_FFPROBE_PATH",
-            explicitPath);
+            BundledFfprobeVariable,
+            explicitPath,
+            preferSystem);
     }
 
     private static string? Find(
         string toolName,
         string overrideVariable,
-        string? explicitPath)
+        string bundledVariable,
+        string? explicitPath,
+        bool preferSystem)
     {
         var executableName = OperatingSystem.IsWindows() ? $"{toolName}.exe" : toolName;
-        var candidates = new List<string?>
+        var bundledCandidates = new List<string?>
         {
-            explicitPath,
-            Environment.GetEnvironmentVariable(overrideVariable),
+            Environment.GetEnvironmentVariable(bundledVariable),
             Path.Combine(AppContext.BaseDirectory, "tools", "ffmpeg", executableName),
         };
 
@@ -38,7 +45,7 @@ public static class FfmpegToolLocator
             var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
             if (repositoryRoot is not null)
             {
-                candidates.Add(
+                bundledCandidates.Add(
                     Path.Combine(
                         repositoryRoot,
                         "packages",
@@ -53,13 +60,44 @@ public static class FfmpegToolLocator
             }
         }
 
+        var systemCandidates = new List<string?>();
         var pathVariable = Environment.GetEnvironmentVariable("PATH");
         if (!string.IsNullOrWhiteSpace(pathVariable))
         {
-            candidates.AddRange(
+            systemCandidates.AddRange(
                 pathVariable
                     .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Select(directory => Path.Combine(directory, executableName)));
+        }
+
+        return FindCore(
+            explicitPath,
+            Environment.GetEnvironmentVariable(overrideVariable),
+            bundledCandidates,
+            systemCandidates,
+            preferSystem);
+    }
+
+    internal static string? FindCore(
+        string? explicitPath,
+        string? overridePath,
+        IEnumerable<string?> bundledCandidates,
+        IEnumerable<string?> systemCandidates,
+        bool preferSystem)
+    {
+        var candidates = new List<string?>
+        {
+            explicitPath,
+            overridePath,
+        };
+        if (preferSystem)
+        {
+            candidates.AddRange(systemCandidates);
+        }
+        candidates.AddRange(bundledCandidates);
+        if (!preferSystem)
+        {
+            candidates.AddRange(systemCandidates);
         }
 
         foreach (var candidate in candidates)
