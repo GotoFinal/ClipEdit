@@ -201,6 +201,20 @@ public sealed partial class MainWindow : Window
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
 
+    private void ClipTransformEditStarted(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.BeginClipTransformEdit();
+    }
+
+    private void ClipTransformEditCompleted(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.EndClipTransformEdit();
+    }
+
     private async void NewProject_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

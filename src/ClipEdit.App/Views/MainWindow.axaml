@@ -871,6 +871,8 @@
                       IsActive="{Binding IsClipTransformOverlayActive}"
                       IsHitTestVisible="{Binding IsClipTransformOverlayActive}"
                       SourceSize="{Binding SelectedVideoClip.VideoSize}"
+                      TransformEditCompleted="ClipTransformEditCompleted"
+                      TransformEditStarted="ClipTransformEditStarted"
                       WheelRotationDegrees="{Binding ClipWheelRotationDegrees}"
                       WheelZoomPercent="{Binding ClipWheelZoomPercent}"
                       Transform="{Binding SelectedVideoClip.CanvasTransform, Mode=TwoWay}"
@@ -900,6 +902,8 @@
                       IsVisible="{Binding IsAutoCanvasOverlayActive}"
                       SourceSize="{Binding SelectedVideoClip.VideoSize}"
                       Transform="{Binding SelectedVideoClip.CanvasTransform, Mode=TwoWay}"
+                      TransformEditCompleted="ClipTransformEditCompleted"
+                      TransformEditStarted="ClipTransformEditStarted"
                       WheelRotationDegrees="{Binding ClipWheelRotationDegrees}"
                       WheelZoomPercent="{Binding ClipWheelZoomPercent}"
                       ZIndex="12" />

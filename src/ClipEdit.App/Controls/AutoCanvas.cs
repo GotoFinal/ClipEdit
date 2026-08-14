@@ -51,6 +51,11 @@ public sealed class AutoCanvas : Control
     private Point _dragStartCanvas;
     private ClipCanvasTransform _dragStartTransform;
     private CropRegion _dragStartCrop;
+    private bool _isTransformEditActive;
+
+    public event EventHandler? TransformEditStarted;
+
+    public event EventHandler? TransformEditCompleted;
 
     public AutoCanvas()
     {
@@ -150,6 +155,11 @@ public sealed class AutoCanvas : Control
         _dragStartTransform = Transform;
         _dragStartCrop = Crop;
         eventArgs.Pointer.Capture(this);
+        if (_dragTarget == CanvasAutoDragTarget.Clip)
+        {
+            BeginTransformEdit();
+        }
+
         eventArgs.Handled = true;
     }
 
@@ -216,6 +226,7 @@ public sealed class AutoCanvas : Control
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs eventArgs)
     {
         base.OnPointerCaptureLost(eventArgs);
+        EndTransformEdit();
         ClearDragState();
     }
 
@@ -304,6 +315,7 @@ public sealed class AutoCanvas : Control
 
     private void EndDrag(IPointer pointer)
     {
+        EndTransformEdit();
         if (pointer.Captured == this)
         {
             pointer.Capture(null);
@@ -317,6 +329,28 @@ public sealed class AutoCanvas : Control
         _dragTarget = CanvasAutoDragTarget.None;
         _clipDragMode = ClipTransformDragMode.None;
         _cropDragMode = CropDragMode.None;
+    }
+
+    private void BeginTransformEdit()
+    {
+        if (_isTransformEditActive)
+        {
+            return;
+        }
+
+        _isTransformEditActive = true;
+        TransformEditStarted?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EndTransformEdit()
+    {
+        if (!_isTransformEditActive)
+        {
+            return;
+        }
+
+        _isTransformEditActive = false;
+        TransformEditCompleted?.Invoke(this, EventArgs.Empty);
     }
 }
 

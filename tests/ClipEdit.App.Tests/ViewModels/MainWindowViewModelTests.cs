@@ -649,6 +649,28 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Continuous_clip_transform_edit_records_one_history_state_when_completed()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "continuous-transform.mkv")]);
+        var clip = Assert.Single(viewModel.VideoClips);
+        var initialTransform = clip.CanvasTransform;
+
+        viewModel.BeginClipTransformEdit();
+        clip.CanvasTransform = new ClipCanvasTransform(10, -5, 1, 5);
+        clip.CanvasTransform = new ClipCanvasTransform(20, -10, 1, 15);
+        clip.CanvasTransform = new ClipCanvasTransform(30, -15, 1, 25);
+
+        Assert.False(viewModel.CanUndo);
+        viewModel.EndClipTransformEdit();
+
+        Assert.True(viewModel.CanUndo);
+        Assert.True(viewModel.Undo());
+        Assert.Equal(initialTransform, Assert.Single(viewModel.VideoClips).CanvasTransform);
+        Assert.False(viewModel.CanUndo);
+    }
+
+    [Fact]
     public async Task Split_and_delete_operate_on_the_selected_timeline_clip_not_the_source_asset()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());

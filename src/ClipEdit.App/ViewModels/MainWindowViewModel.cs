@@ -91,6 +91,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private bool _isSequenceTimelineFreeMode;
     private bool _isSequencePlayheadInGap;
     private bool _isSynchronizingAudioTimeline;
+    private bool _isClipTransformEditActive;
+    private bool _clipTransformChangedDuringEdit;
 
     public MainWindowViewModel(
         IMediaProbe? mediaProbe,
@@ -234,6 +236,31 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public bool CanApplyCropPreset => SelectedVideoClip is not null;
 
     public bool CanApplyCropPresetToAll => VideoClips.Count > 1;
+
+    internal void BeginClipTransformEdit()
+    {
+        _isClipTransformEditActive = true;
+        _clipTransformChangedDuringEdit = false;
+    }
+
+    internal void EndClipTransformEdit()
+    {
+        if (!_isClipTransformEditActive)
+        {
+            return;
+        }
+
+        _isClipTransformEditActive = false;
+        if (!_clipTransformChangedDuringEdit)
+        {
+            return;
+        }
+
+        _clipTransformChangedDuringEdit = false;
+        var clip = SelectedVideoClip;
+        MarkProjectDirty(clip is null ? "clip:visual-transform" : $"clip:{clip.Id}:visual-transform");
+        RaiseExportStateChanged();
+    }
 
     public bool CanMoveSelectedVideoLeft =>
         SelectedVideoClip is { } clip && VideoClips.IndexOf(clip) > 0;
@@ -3169,6 +3196,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             MarkProjectDirty($"clip:{clip.Id}:audio-gain");
             RaiseExportStateChanged();
             OnPropertyChanged(nameof(PreviewAudioTracks));
+        }
+
+        if (eventArgs.PropertyName == nameof(VideoClipViewModel.CanvasTransform) &&
+            _isClipTransformEditActive)
+        {
+            IsProjectDirty = true;
+            _clipTransformChangedDuringEdit = true;
+            return;
         }
 
         if (eventArgs.PropertyName is nameof(VideoClipViewModel.SourceWindow) or

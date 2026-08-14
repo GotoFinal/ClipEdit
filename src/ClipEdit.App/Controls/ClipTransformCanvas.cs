@@ -48,6 +48,11 @@ public sealed class ClipTransformCanvas : Control
     private Point _dragStartCanvas;
     private ClipCanvasTransform _dragStartTransform;
     private ClipTransformDragMode _dragMode;
+    private bool _isTransformEditActive;
+
+    public event EventHandler? TransformEditStarted;
+
+    public event EventHandler? TransformEditCompleted;
 
     static ClipTransformCanvas()
     {
@@ -173,6 +178,7 @@ public sealed class ClipTransformCanvas : Control
         _dragStartCanvas = ViewToCanvas(pointer, viewport);
         _dragStartTransform = Transform;
         eventArgs.Pointer.Capture(this);
+        BeginTransformEdit();
         eventArgs.Handled = true;
     }
 
@@ -214,6 +220,7 @@ public sealed class ClipTransformCanvas : Control
     {
         base.OnPointerReleased(eventArgs);
         _dragMode = ClipTransformDragMode.None;
+        EndTransformEdit();
         if (eventArgs.Pointer.Captured == this)
         {
             eventArgs.Pointer.Capture(null);
@@ -226,6 +233,29 @@ public sealed class ClipTransformCanvas : Control
     {
         base.OnPointerCaptureLost(eventArgs);
         _dragMode = ClipTransformDragMode.None;
+        EndTransformEdit();
+    }
+
+    private void BeginTransformEdit()
+    {
+        if (_isTransformEditActive)
+        {
+            return;
+        }
+
+        _isTransformEditActive = true;
+        TransformEditStarted?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EndTransformEdit()
+    {
+        if (!_isTransformEditActive)
+        {
+            return;
+        }
+
+        _isTransformEditActive = false;
+        TransformEditCompleted?.Invoke(this, EventArgs.Empty);
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs eventArgs)
