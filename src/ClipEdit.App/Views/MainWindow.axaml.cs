@@ -344,11 +344,10 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        await viewModel.OpenProjectWithRelinkingAsync(
+        return await viewModel.OpenProjectWithRelinkingAsync(
             projectPath,
             discardUnsavedChanges: true,
             cancellationToken: _lifetimeCancellation.Token);
-        return true;
     }
 
     private async void RecoverCandidate_Click(object? sender, RoutedEventArgs eventArgs)

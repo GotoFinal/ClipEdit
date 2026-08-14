@@ -157,6 +157,24 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Dirty_project_can_start_open_action_but_still_requires_explicit_discard()
+    {
+        var store = new RecordingProjectStore();
+        using var viewModel = new MainWindowViewModel(
+            new StubProbe(),
+            projectStore: store,
+            recoveryDirectory: Path.GetTempPath(),
+            autosaveDelay: TimeSpan.FromHours(1));
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "current-project.mkv")]);
+
+        Assert.True(viewModel.IsProjectDirty);
+        Assert.True(viewModel.CanOpenProject);
+        Assert.False(await viewModel.OpenProjectWithRelinkingAsync("replacement.clipedit"));
+        Assert.Single(viewModel.MediaItems);
+        Assert.Contains("save", viewModel.StatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Removing_selected_media_removes_its_tracks_but_never_its_source()
     {
         var videoPath = Path.Combine(Path.GetTempPath(), "remove.mkv");

@@ -196,7 +196,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         IsProjectPersistenceAvailable && HasReadyMedia && !IsBusy && !IsExporting;
 
     public bool CanOpenProject =>
-        IsProjectPersistenceAvailable && !IsBusy && !IsExporting && !IsProjectDirty;
+        IsProjectPersistenceAvailable && !IsBusy && !IsExporting;
 
     public bool CanNewProject =>
         !IsBusy && !IsExporting && (MediaItems.Count > 0 || ProjectPath is not null || IsProjectDirty);
