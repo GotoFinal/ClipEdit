@@ -12,9 +12,10 @@ RUN printf 'Server = https://archive.archlinux.org/repos/2026/08/12/$repo/os/$ar
     && python -m pip install --break-system-packages 'roman==5.2' \
     && pacman -Scc --noconfirm
 
-COPY build.sh /opt/clipedit/build.sh
-COPY mpv-winbuild-cmake.patch /opt/clipedit/mpv-winbuild-cmake.patch
-COPY source-lock.tsv /opt/clipedit/source-lock.tsv
+COPY native/windows-shared-media/build.sh /opt/clipedit/build.sh
+COPY native/windows-shared-media/mpv-winbuild-cmake.patch /opt/clipedit/mpv-winbuild-cmake.patch
+COPY native/windows-shared-media/source-lock.tsv /opt/clipedit/source-lock.tsv
+COPY native/native-dependencies.json /opt/clipedit/native-dependencies.json
 
 RUN chmod 0755 /opt/clipedit/build.sh
 

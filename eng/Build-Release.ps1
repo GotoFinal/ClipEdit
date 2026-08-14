@@ -33,6 +33,9 @@ $ErrorActionPreference = 'Stop'
 
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $workspaceRoot 'src/ClipEdit.App/ClipEdit.App.csproj'
+. (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
+$nativeDependencies = Get-ClipEditNativeDependencies
+Assert-ClipEditNativeSourceLock -Dependencies $nativeDependencies
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $safeWorkspace = $workspaceRoot.Replace('\', '/')
@@ -68,25 +71,12 @@ if (-not $SkipPayloadPreparation -and -not (Test-Path -LiteralPath $fullPayloadP
 }
 
 $executableSuffix = if ($RuntimeId -eq 'win-x64') { '.exe' } else { '' }
-$requiredPayload = @(
-    "tools/ffmpeg/ffmpeg$executableSuffix",
-    "tools/ffmpeg/ffprobe$executableSuffix",
-    $(if ($RuntimeId -eq 'win-x64') { 'tools/ffmpeg/libmpv-2.dll' } else { 'libmpv.so.2' }),
-    'LICENSE.txt',
-    'licenses/THIRD_PARTY_NOTICES.md'
-)
-
-if ($RuntimeId -eq 'win-x64') {
-    $requiredPayload += @(
-        'tools/ffmpeg/avcodec-63.dll',
-        'tools/ffmpeg/avdevice-63.dll',
-        'tools/ffmpeg/avfilter-12.dll',
-        'tools/ffmpeg/avformat-63.dll',
-        'tools/ffmpeg/avutil-61.dll',
-        'tools/ffmpeg/swresample-7.dll',
-        'tools/ffmpeg/swscale-10.dll',
-        'tools/ffmpeg/vulkan-1.dll'
-    )
+$requiredPayload = @('LICENSE.txt', 'licenses/THIRD_PARTY_NOTICES.md')
+$requiredPayload += if ($RuntimeId -eq 'win-x64') {
+    @($nativeDependencies.windows.requiredBinaries | ForEach-Object { "tools/ffmpeg/$_" })
+}
+else {
+    @('tools/ffmpeg/ffmpeg', 'tools/ffmpeg/ffprobe', 'libmpv.so.2')
 }
 
 $missingPayload = @($requiredPayload | Where-Object {
@@ -282,11 +272,7 @@ try {
         requiredManagedFramework = if ($selfContained) { $null } else { 'Microsoft.NETCore.App' }
         requiredManagedFrameworkVersion = if ($selfContained) { $null } else { '10.0.0' }
         compressionEnabled = $compressionEnabled
-        nativeMediaProfile = if ($RuntimeId -eq 'win-x64') {
-            'ffmpeg-9.0.1-shared+libmpv-shared-libav-v1'
-        } else {
-            'ffmpeg-9.0.1-source-built+libmpv'
-        }
+        nativeMediaProfile = [string]$nativeDependencies.releaseProfiles.$RuntimeId
         includesFFmpeg = $true
         includesLibMpv = $true
         complianceBundleIncluded = $GenerateCompliance.IsPresent
@@ -318,7 +304,7 @@ try {
         Where-Object FullName -ne $rootChecksumsPath |
         Sort-Object FullName |
         ForEach-Object {
-            $relativePath = $_.FullName.Substring($stagingPath.Length).TrimStart([char]'\').Replace('\', '/')
+            $relativePath = $_.FullName.Substring($stagingPath.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
             $releaseHash = if ($knownReleaseHashes.ContainsKey($relativePath)) {
                 $knownReleaseHashes[$relativePath]
             }

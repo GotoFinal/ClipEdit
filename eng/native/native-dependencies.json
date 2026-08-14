@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "releaseProfiles": {
+    "win-x64": "ffmpeg-9.0.1-shared+libmpv-shared-libav-v1",
+    "linux-x64": "ffmpeg-9.0.1-source-built+libmpv"
+  },
+  "windows": {
+    "stackId": "mpv-f4d13-ffmpeg-9.0.1-shared",
+    "builderImage": "clipedit-windows-shared-media:2026-08-13",
+    "toolchainRepository": "https://github.com/zhongfly/mpv-winbuild-cmake.git",
+    "toolchainRevision": "cd1edc11dc6887a50f705717619d879f5a93a488",
+    "requiredBinaries": [
+      "ffmpeg.exe",
+      "ffprobe.exe",
+      "libmpv-2.dll",
+      "avcodec-63.dll",
+      "avdevice-63.dll",
+      "avfilter-12.dll",
+      "avformat-63.dll",
+      "avutil-61.dll",
+      "swresample-7.dll",
+      "swscale-10.dll",
+      "vulkan-1.dll"
+    ],
+    "sharedLibavImports": [
+      "avcodec-63.dll",
+      "avdevice-63.dll",
+      "avfilter-12.dll",
+      "avformat-63.dll",
+      "avutil-61.dll",
+      "swresample-7.dll",
+      "swscale-10.dll"
+    ]
+  },
+  "linux": {
+    "mpvClientApi": "2.5",
+    "libmpvBuildFile": "libmpv.so.2.5.0"
+  },
+  "components": {
+    "ffmpeg": {
+      "version": "9.0.1",
+      "tag": "n9.0.1",
+      "revision": "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa",
+      "repository": "https://github.com/FFmpeg/FFmpeg.git",
+      "tracking": "stable-tag"
+    },
+    "mpv": {
+      "version": "git-f4d13e1",
+      "tag": null,
+      "revision": "f4d13e1c2c91f3a56e589aef9cb44cbc02e26e47",
+      "repository": "https://github.com/mpv-player/mpv.git",
+      "tracking": "stable-tag"
+    },
+    "mpvBuild": {
+      "version": "git-9443097",
+      "tag": null,
+      "revision": "9443097290e82008f26f1597590926c63e7ae053",
+      "repository": "https://github.com/mpv-player/mpv-build.git",
+      "tracking": "default-branch"
+    },
+    "libplacebo": {
+      "version": "git-cee9b07",
+      "tag": null,
+      "revision": "cee9b076f2c63104ccfd497fa79c39a867293ec4",
+      "repository": "https://code.videolan.org/videolan/libplacebo.git",
+      "tracking": "default-branch"
+    },
+    "libass": {
+      "version": "git-3087d2b",
+      "tag": null,
+      "revision": "3087d2b2ffda76602a17f9b09d25cb8addc8d313",
+      "repository": "https://github.com/libass/libass.git",
+      "tracking": "stable-tag"
+    },
+    "meson": {
+      "version": "1.9.2",
+      "repository": "https://github.com/mesonbuild/meson.git",
+      "tracking": "stable-tag"
+    }
+  }
+}

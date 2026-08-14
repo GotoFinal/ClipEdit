@@ -87,6 +87,9 @@ function Get-PackageMetadata([string]$Id, [string]$VersionValue, [string]$Packag
 }
 
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
+$nativeDependencies = Get-ClipEditNativeDependencies
+Assert-ClipEditNativeSourceLock -Dependencies $nativeDependencies
 $depsFullPath = [System.IO.Path]::GetFullPath($DepsJsonPath)
 if (-not (Test-Path -LiteralPath $depsFullPath -PathType Leaf)) {
     throw "The exact publish dependency manifest is missing: $depsFullPath"
@@ -152,12 +155,7 @@ foreach ($name in @(
 }
 
 $requiredNativeFiles = if ($RuntimeId -eq 'win-x64') {
-    @(
-        'tools/ffmpeg/ffmpeg.exe', 'tools/ffmpeg/ffprobe.exe', 'tools/ffmpeg/libmpv-2.dll',
-        'tools/ffmpeg/avcodec-63.dll', 'tools/ffmpeg/avdevice-63.dll',
-        'tools/ffmpeg/avfilter-12.dll', 'tools/ffmpeg/avformat-63.dll',
-        'tools/ffmpeg/avutil-61.dll', 'tools/ffmpeg/swresample-7.dll',
-        'tools/ffmpeg/swscale-10.dll', 'tools/ffmpeg/vulkan-1.dll')
+    @($nativeDependencies.windows.requiredBinaries | ForEach-Object { "tools/ffmpeg/$_" })
 }
 else {
     @('tools/ffmpeg/ffmpeg', 'tools/ffmpeg/ffprobe', 'libmpv.so.2')
@@ -466,7 +464,7 @@ try {
     $checksums = Get-ChildItem -LiteralPath $stagingPath -Recurse -File |
         Sort-Object FullName |
         ForEach-Object {
-            $relativePath = $_.FullName.Substring($stagingPath.Length).TrimStart([char]'\').Replace('\', '/')
+            $relativePath = $_.FullName.Substring($stagingPath.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
             $fileHash = if ($knownOutputHashes.ContainsKey($relativePath)) {
                 $knownOutputHashes[$relativePath]
             }

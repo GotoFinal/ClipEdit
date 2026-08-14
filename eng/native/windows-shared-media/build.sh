@@ -1,8 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly TOOLCHAIN_REVISION="cd1edc11dc6887a50f705717619d879f5a93a488"
-readonly TOOLCHAIN_REPOSITORY="https://github.com/zhongfly/mpv-winbuild-cmake.git"
+eval "$(python - /opt/clipedit/native-dependencies.json <<'PY'
+import json, shlex, sys
+with open(sys.argv[1], encoding='utf-8') as stream:
+    pins = json.load(stream)
+components = pins['components']
+values = {
+    'TOOLCHAIN_REVISION': pins['windows']['toolchainRevision'],
+    'TOOLCHAIN_REPOSITORY': pins['windows']['toolchainRepository'],
+    'FFMPEG_VERSION': components['ffmpeg']['version'],
+    'FFMPEG_REVISION': components['ffmpeg']['revision'],
+    'MPV_REVISION': components['mpv']['revision'],
+}
+for name, value in values.items():
+    print(f'{name}={shlex.quote(value)}')
+for name, values in (
+    ('REQUIRED_BINARIES', pins['windows']['requiredBinaries']),
+    ('SHARED_IMPORTS', pins['windows']['sharedLibavImports']),
+):
+    print(f"{name}=({' '.join(shlex.quote(value) for value in values)})")
+PY
+)"
+readonly TOOLCHAIN_REVISION TOOLCHAIN_REPOSITORY FFMPEG_VERSION FFMPEG_REVISION
+readonly MPV_REVISION
+readonly -a REQUIRED_BINARIES SHARED_IMPORTS
 readonly CACHE_ROOT="/cache"
 readonly TOOLCHAIN_ROOT="${CACHE_ROOT}/mpv-winbuild-cmake"
 readonly BUILD_ROOT="${TOOLCHAIN_ROOT}/build64"
@@ -29,6 +51,12 @@ rm -f "${TOOLCHAIN_ROOT}/cmake/copy_ffmpeg_dlls.cmake"
 git -C "${TOOLCHAIN_ROOT}" fetch origin "${TOOLCHAIN_REVISION}"
 git -C "${TOOLCHAIN_ROOT}" checkout --detach "${TOOLCHAIN_REVISION}"
 git -C "${TOOLCHAIN_ROOT}" apply /opt/clipedit/mpv-winbuild-cmake.patch
+sed -i \
+    -e "s/@CLIPEDIT_FFMPEG_REVISION@/${FFMPEG_REVISION}/g" \
+    "${TOOLCHAIN_ROOT}/packages/ffmpeg.cmake"
+sed -i \
+    -e "s/@CLIPEDIT_MPV_REVISION@/${MPV_REVISION}/g" \
+    "${TOOLCHAIN_ROOT}/packages/mpv.cmake"
 git config --global user.email build@clipedit.local
 git config --global user.name ClipEdit-Native-Builder
 
@@ -89,6 +117,18 @@ while IFS=$'\t' read -r name revision; do
     fi
 done < /opt/clipedit/source-lock.tsv
 
+declare -A primary_locks=(
+    [ffmpeg]="${FFMPEG_REVISION}"
+    [mpv]="${MPV_REVISION}"
+)
+for component in "${!primary_locks[@]}"; do
+    locked_revision="$(awk -F '\t' -v name="${component}" '$1 == name { print $2; exit }' /opt/clipedit/source-lock.tsv)"
+    if [[ "${locked_revision}" != "${primary_locks[${component}]}" ]]; then
+        echo "Primary source lock mismatch for ${component}: ${locked_revision}; expected ${primary_locks[${component}]}" >&2
+        exit 3
+    fi
+done
+
 # mpv's package rename target leaves dated output directories outside its
 # fullclean target. Remove only those generated packages before a cached retry.
 find "${BUILD_ROOT}" -maxdepth 1 -type d -name 'mpv-*' -exec rm -rf -- {} +
@@ -99,19 +139,8 @@ bin_output="${OUTPUT_ROOT}/bin"
 license_output="${OUTPUT_ROOT}/licenses"
 mkdir -p "${bin_output}" "${license_output}"
 
-readonly native_files=(
-    ffmpeg.exe
-    ffprobe.exe
-    avcodec-63.dll
-    avdevice-63.dll
-    avfilter-12.dll
-    avformat-63.dll
-    avutil-61.dll
-    swresample-7.dll
-    swscale-10.dll
-    vulkan-1.dll
-)
-for name in "${native_files[@]}"; do
+for name in "${REQUIRED_BINARIES[@]}"; do
+    [[ "${name}" == 'libmpv-2.dll' ]] && continue
     install -m 0755 "${PREFIX}/bin/${name}" "${bin_output}/${name}"
 done
 
@@ -129,18 +158,9 @@ install -m 0644 /opt/clipedit/source-lock.tsv "${OUTPUT_ROOT}/SOURCE-LOCK.tsv"
 pacman -Q > "${OUTPUT_ROOT}/BUILDER-PACKAGES.txt"
 
 objdump_path="${BUILD_ROOT}/install/bin/cross-objdump"
-readonly shared_imports=(
-    avcodec-63.dll
-    avdevice-63.dll
-    avfilter-12.dll
-    avformat-63.dll
-    avutil-61.dll
-    swresample-7.dll
-    swscale-10.dll
-)
 for program in libmpv-2.dll ffmpeg.exe ffprobe.exe; do
     imports="$(${objdump_path} -p "${bin_output}/${program}")"
-    for library in "${shared_imports[@]}"; do
+    for library in "${SHARED_IMPORTS[@]}"; do
         if ! grep -Fqi "DLL Name: ${library}" <<< "${imports}"; then
             echo "${program} does not import the shared ${library}." >&2
             exit 5
@@ -149,12 +169,12 @@ for program in libmpv-2.dll ffmpeg.exe ffprobe.exe; do
 done
 
 cat > "${OUTPUT_ROOT}/NATIVE-STACK.txt" <<EOF
-mpv_revision=f4d13e1c2c91f3a56e589aef9cb44cbc02e26e47
-ffmpeg_revision=bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa
-ffmpeg_version=9.0.1
+mpv_revision=${MPV_REVISION}
+ffmpeg_revision=${FFMPEG_REVISION}
+ffmpeg_version=${FFMPEG_VERSION}
 openssl_revision=aae016bfd52fcad2bc9657c2c782cfdf73b1ed5f
 mpv_winbuild_cmake_revision=${TOOLCHAIN_REVISION}
-shared_libav_imports=${shared_imports[*]}
+shared_libav_imports=${SHARED_IMPORTS[*]}
 EOF
 
 (

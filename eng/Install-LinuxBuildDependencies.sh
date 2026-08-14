@@ -21,6 +21,23 @@ else
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+if [[ "${CLIPEDIT_ENABLE_SOURCE_REPOSITORIES:-0}" == '1' ]]; then
+    if [[ -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
+        "${sudo_command[@]}" sed -i \
+            -e 's/^Types: deb$/Types: deb deb-src/' \
+            /etc/apt/sources.list.d/ubuntu.sources
+    elif [[ -f /etc/apt/sources.list ]]; then
+        source_list="$(mktemp)"
+        awk '/^deb / { line = $0; sub(/^deb /, "deb-src ", line); print line }' \
+            /etc/apt/sources.list > "$source_list"
+        "${sudo_command[@]}" install -m 0644 "$source_list" \
+            /etc/apt/sources.list.d/clipedit-deb-src.list
+        rm -f -- "$source_list"
+    else
+        echo 'Could not locate Ubuntu APT sources to enable corresponding-source downloads.' >&2
+        exit 2
+    fi
+fi
 "${sudo_command[@]}" apt-get update
 "${sudo_command[@]}" apt-get install -y \
     autoconf \

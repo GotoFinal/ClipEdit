@@ -11,6 +11,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
+$nativeDependencies = Get-ClipEditNativeDependencies
+Assert-ClipEditNativeSourceLock -Dependencies $nativeDependencies
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = if ($RuntimeId -eq 'win-x64') {
         Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v1/payload'
@@ -57,21 +60,11 @@ if ($RuntimeId -eq 'linux-x64') {
     return
 }
 
-$nativeStackRoot = Join-Path $workspaceRoot 'packages/native/media-stack/win-x64/mpv-f4d13-ffmpeg-9.0.1-shared/runtime'
+$nativeStackRoot = Get-ClipEditWindowsNativeStackPath `
+    -WorkspaceRoot $workspaceRoot `
+    -Dependencies $nativeDependencies
 $nativeBinPath = Join-Path $nativeStackRoot 'bin'
-$nativeNames = @(
-    'ffmpeg.exe',
-    'ffprobe.exe',
-    'libmpv-2.dll',
-    'avcodec-63.dll',
-    'avdevice-63.dll',
-    'avfilter-12.dll',
-    'avformat-63.dll',
-    'avutil-61.dll',
-    'swresample-7.dll',
-    'swscale-10.dll',
-    'vulkan-1.dll'
-)
+$nativeNames = @($nativeDependencies.windows.requiredBinaries)
 $nativePaths = @($nativeNames | ForEach-Object { Join-Path $nativeBinPath $_ })
 
 $missingNativeFiles = @($nativePaths | Where-Object {
@@ -109,7 +102,7 @@ try {
     $checksums = Get-ChildItem -LiteralPath $stagingPath -Recurse -File |
         Sort-Object FullName |
         ForEach-Object {
-            $relativePath = $_.FullName.Substring($stagingPath.Length).TrimStart([char]'\').Replace('\', '/')
+            $relativePath = $_.FullName.Substring($stagingPath.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
             $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $relativePath"
         }

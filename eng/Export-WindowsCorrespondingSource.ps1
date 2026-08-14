@@ -4,7 +4,9 @@ param(
 
     [string]$CacheVolume = 'clipedit-win-shared-build-v1',
 
-    [string]$BuilderImage = 'clipedit-windows-shared-media:2026-08-13'
+    [string]$CachePath,
+
+    [string]$BuilderImage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,6 +15,12 @@ $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $recipePath = Join-Path $PSScriptRoot 'native/windows-shared-media'
 $engPath = $PSScriptRoot
 $exportScript = Join-Path $PSScriptRoot 'compliance/Export-WindowsCorrespondingSource.sh'
+. (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
+$nativeDependencies = Get-ClipEditNativeDependencies
+Assert-ClipEditNativeSourceLock -Dependencies $nativeDependencies
+if ([string]::IsNullOrWhiteSpace($BuilderImage)) {
+    $BuilderImage = [string]$nativeDependencies.windows.builderImage
+}
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $workspaceRoot 'artifacts/compliance/native/win-x64'
 }
@@ -35,17 +43,29 @@ if ($LASTEXITCODE -ne 0) {
 
 $imageExists = $null -ne (& docker image inspect $BuilderImage 2>$null)
 if (-not $imageExists) {
-    & docker build --tag $BuilderImage $recipePath
+    & docker build `
+        --file (Join-Path $recipePath 'Dockerfile') `
+        --tag $BuilderImage `
+        $PSScriptRoot
     if ($LASTEXITCODE -ne 0) {
         throw "Docker failed to build the pinned native builder image (exit $LASTEXITCODE)."
     }
+}
+
+$cacheMount = if ([string]::IsNullOrWhiteSpace($CachePath)) {
+    "type=volume,source=$CacheVolume,target=/cache"
+}
+else {
+    $fullCachePath = [System.IO.Path]::GetFullPath($CachePath)
+    [System.IO.Directory]::CreateDirectory($fullCachePath) | Out-Null
+    "type=bind,source=$fullCachePath,target=/cache"
 }
 
 $stagingPath = "$fullOutputPath.staging-$([Guid]::NewGuid().ToString('N'))"
 try {
     [System.IO.Directory]::CreateDirectory($stagingPath) | Out-Null
     & docker run --rm `
-        --mount "type=volume,source=$CacheVolume,target=/cache" `
+        --mount $cacheMount `
         --mount "type=bind,source=$engPath,target=/clipedit-eng,readonly" `
         --mount "type=bind,source=$stagingPath,target=/output" `
         --entrypoint /bin/bash `
@@ -54,6 +74,7 @@ try {
         /clipedit-eng/native/windows-shared-media/source-lock.tsv `
         /clipedit-eng/native/windows-shared-media/source-exclusions.tsv `
         /clipedit-eng/native/windows-shared-media `
+        /clipedit-eng/native/native-dependencies.json `
         /output
     if ($LASTEXITCODE -ne 0) {
         throw "The Windows corresponding-source export failed with exit code $LASTEXITCODE."

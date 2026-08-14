@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 4 ]]; then
-    echo "Usage: $0 SOURCE_LOCK SOURCE_EXCLUSIONS RECIPE_DIRECTORY OUTPUT_DIRECTORY" >&2
+if [[ $# -ne 5 ]]; then
+    echo "Usage: $0 SOURCE_LOCK SOURCE_EXCLUSIONS RECIPE_DIRECTORY NATIVE_DEPENDENCIES OUTPUT_DIRECTORY" >&2
     exit 2
 fi
 
 readonly source_lock="$1"
 readonly source_exclusions="$2"
 readonly recipe_directory="$3"
-readonly output_directory="$4"
-readonly toolchain_revision='cd1edc11dc6887a50f705717619d879f5a93a488'
+readonly native_dependencies="$4"
+readonly output_directory="$5"
+toolchain_revision="$(python - "$native_dependencies" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as stream:
+    print(json.load(stream)['windows']['toolchainRevision'])
+PY
+)"
+readonly toolchain_revision
 readonly cache_root='/cache'
 
 toolchain_root="${cache_root}/mpv-winbuild-cmake"
@@ -124,6 +131,7 @@ cp -a -- "$recipe_directory/Dockerfile" "${archive_root}/build-recipe/"
 cp -a -- "$recipe_directory/mpv-winbuild-cmake.patch" "${archive_root}/build-recipe/"
 cp -a -- "$source_lock" "${archive_root}/build-recipe/source-lock.tsv"
 cp -a -- "$source_exclusions" "${archive_root}/build-recipe/source-exclusions.tsv"
+cp -a -- "$native_dependencies" "${archive_root}/build-recipe/native-dependencies.json"
 cat > "${archive_root}/README.txt" <<'EOF'
 This archive contains the exact upstream source revisions and the complete
 ClipEdit build recipe used to produce the Windows x64 native media payload.

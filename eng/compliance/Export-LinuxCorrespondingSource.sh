@@ -13,6 +13,7 @@ readonly cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/clipedit/compliance/linux-s
 readonly native_build_root="${CLIPEDIT_LINUX_NATIVE_BUILD_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/clipedit/native/linux-x64}/mpv-build"
 readonly provenance_root="${payload_root}/licenses/linux-system-provenance"
 readonly debian_provenance="${provenance_root}/linux-debian-binary-provenance.tsv"
+readonly native_dependencies_path="${recipe_directory}/native/native-dependencies.json"
 
 if [[ ! -f "$debian_provenance" ]]; then
     echo "The Linux payload has no build-time Debian provenance: ${debian_provenance}" >&2
@@ -40,13 +41,22 @@ license_manifest_path="${license_root}/LICENSE-MANIFEST.tsv"
 printf 'component\trevision\torigin\n' > "$provenance_path"
 printf 'component\trevision\tpath\n' > "$license_manifest_path"
 
-readonly source_components=(
-    'mpv-build|9443097290e82008f26f1597590926c63e7ae053|https://github.com/mpv-player/mpv-build.git'
-    'mpv|f4d13e1c2c91f3a56e589aef9cb44cbc02e26e47|https://github.com/mpv-player/mpv.git'
-    'ffmpeg|bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa|https://github.com/FFmpeg/FFmpeg.git'
-    'libplacebo|cee9b076f2c63104ccfd497fa79c39a867293ec4|https://code.videolan.org/videolan/libplacebo.git'
-    'libass|3087d2b2ffda76602a17f9b09d25cb8addc8d313|https://github.com/libass/libass.git'
+mapfile -t source_components < <(python3 - "$native_dependencies_path" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as stream:
+    components = json.load(stream)['components']
+for key, name in (
+    ('mpvBuild', 'mpv-build'),
+    ('mpv', 'mpv'),
+    ('ffmpeg', 'ffmpeg'),
+    ('libplacebo', 'libplacebo'),
+    ('libass', 'libass'),
+):
+    component = components[key]
+    print(f"{name}|{component['revision']}|{component['repository']}")
+PY
 )
+readonly -a source_components
 
 for entry in "${source_components[@]}"; do
     IFS='|' read -r name revision origin <<< "$entry"
@@ -136,6 +146,7 @@ done < "$debian_provenance"
 
 cp -a -- "$recipe_directory/Prepare-LinuxReleasePayload.sh" "${archive_root}/build-recipe/"
 cp -a -- "$recipe_directory/Install-LinuxBuildDependencies.sh" "${archive_root}/build-recipe/"
+cp -a -- "$native_dependencies_path" "${archive_root}/build-recipe/"
 cp -a -- "$recipe_directory/compliance/Collect-LinuxPayloadProvenance.sh" \
     "${archive_root}/build-recipe/"
 cp -a -- "$debian_provenance" "${archive_root}/build-recipe/"

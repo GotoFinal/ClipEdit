@@ -18,13 +18,7 @@ build_root="${CLIPEDIT_LINUX_NATIVE_BUILD_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/
 mpv_build_root="$build_root/mpv-build"
 venv_root="$build_root/venv"
 staging_path="$output_path.staging-$$"
-
-mpv_build_revision='9443097290e82008f26f1597590926c63e7ae053'
-mpv_revision='f4d13e1c2c91f3a56e589aef9cb44cbc02e26e47'
-ffmpeg_revision='bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa'
-libplacebo_revision='cee9b076f2c63104ccfd497fa79c39a867293ec4'
-libass_revision='3087d2b2ffda76602a17f9b09d25cb8addc8d313'
-meson_version='1.9.2'
+native_dependencies_path="$workspace_root/eng/native/native-dependencies.json"
 
 if [[ -e "$output_path" ]]; then
     echo "The payload output path already exists: $output_path" >&2
@@ -45,6 +39,29 @@ if (( ${#missing_commands[@]} > 0 )); then
     echo "Run eng/Install-LinuxBuildDependencies.sh once, then retry." >&2
     exit 2
 fi
+
+eval "$(python3 - "$native_dependencies_path" <<'PY'
+import json, shlex, sys
+with open(sys.argv[1], encoding='utf-8') as stream:
+    pins = json.load(stream)
+components = pins['components']
+values = {
+    'mpv_build_revision': components['mpvBuild']['revision'],
+    'mpv_revision': components['mpv']['revision'],
+    'ffmpeg_revision': components['ffmpeg']['revision'],
+    'ffmpeg_version': components['ffmpeg']['version'],
+    'libplacebo_revision': components['libplacebo']['revision'],
+    'libass_revision': components['libass']['revision'],
+    'meson_version': components['meson']['version'],
+    'mpv_client_api': pins['linux']['mpvClientApi'],
+    'libmpv_build_file': pins['linux']['libmpvBuildFile'],
+}
+for name, value in values.items():
+    print(f'{name}={shlex.quote(value)}')
+PY
+)"
+readonly mpv_build_revision mpv_revision ffmpeg_revision ffmpeg_version
+readonly libplacebo_revision libass_revision meson_version mpv_client_api libmpv_build_file
 
 required_packages=(
     alsa fontconfig freetype2 fribidi gnutls harfbuzz libpulse opus vpx x264
@@ -116,7 +133,7 @@ expected_revisions="$(printf '%s\n' \
 
 ffmpeg_binary="$mpv_build_root/build_libs/bin/ffmpeg"
 ffprobe_binary="$mpv_build_root/build_libs/bin/ffprobe"
-libmpv_binary="$mpv_build_root/mpv/build/libmpv.so.2.5.0"
+libmpv_binary="$mpv_build_root/mpv/build/$libmpv_build_file"
 actual_revisions=''
 if [[ -f "$revision_stamp" ]]; then
     actual_revisions="$(<"$revision_stamp")"
@@ -185,8 +202,9 @@ if [[ "$actual_revisions" != "$expected_revisions" || \
     printf '%s\n' "$expected_revisions" > "$revision_stamp"
 fi
 
-if ! "$ffmpeg_binary" -version | head -n 1 | grep -E '^ffmpeg version n?9\.0\.1([[:space:]]|$)' >/dev/null; then
-    echo "The Linux FFmpeg binary did not report version 9.0.1." >&2
+escaped_ffmpeg_version="${ffmpeg_version//./\\.}"
+if ! "$ffmpeg_binary" -version | head -n 1 | grep -E "^ffmpeg version n?${escaped_ffmpeg_version}([[:space:]]|$)" >/dev/null; then
+    echo "The Linux FFmpeg binary did not report version $ffmpeg_version." >&2
     exit 1
 fi
 encoders="$($ffmpeg_binary -hide_banner -encoders 2>&1)"
@@ -206,8 +224,8 @@ version = library.mpv_client_api_version()
 print(f"{version >> 16}.{version & 0xffff}")
 PY
 } 2>/dev/null)"
-if [[ "$client_api" != '2.5' ]]; then
-    echo "The Linux libmpv binary reported client API $client_api; expected 2.5." >&2
+if [[ "$client_api" != "$mpv_client_api" ]]; then
+    echo "The Linux libmpv binary reported client API $client_api; expected $mpv_client_api." >&2
     exit 1
 fi
 

@@ -7,6 +7,8 @@ param(
 
     [string]$CacheVolume = 'clipedit-win-shared-build',
 
+    [string]$CachePath,
+
     [switch]$RebuildBuilderImage
 )
 
@@ -14,9 +16,14 @@ $ErrorActionPreference = 'Stop'
 
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $recipePath = Join-Path $PSScriptRoot 'native/windows-shared-media'
-$builderImage = 'clipedit-windows-shared-media:2026-08-13'
+. (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
+$nativeDependencies = Get-ClipEditNativeDependencies
+Assert-ClipEditNativeSourceLock -Dependencies $nativeDependencies
+$builderImage = [string]$nativeDependencies.windows.builderImage
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $workspaceRoot 'packages/native/media-stack/win-x64/mpv-f4d13-ffmpeg-9.0.1-shared/runtime'
+    $OutputPath = Get-ClipEditWindowsNativeStackPath `
+        -WorkspaceRoot $workspaceRoot `
+        -Dependencies $nativeDependencies
 }
 
 $fullOutputPath = [System.IO.Path]::GetFullPath($OutputPath)
@@ -31,17 +38,29 @@ if ($LASTEXITCODE -ne 0) {
 
 $imageExists = -not $RebuildBuilderImage -and $null -ne (& docker image inspect $builderImage 2>$null)
 if (-not $imageExists) {
-    & docker build --tag $builderImage $recipePath
+    & docker build `
+        --file (Join-Path $recipePath 'Dockerfile') `
+        --tag $builderImage `
+        $PSScriptRoot
     if ($LASTEXITCODE -ne 0) {
         throw "Docker failed to build the pinned native builder image (exit $LASTEXITCODE)."
     }
+}
+
+$cacheMount = if ([string]::IsNullOrWhiteSpace($CachePath)) {
+    "type=volume,source=$CacheVolume,target=/cache"
+}
+else {
+    $fullCachePath = [System.IO.Path]::GetFullPath($CachePath)
+    [System.IO.Directory]::CreateDirectory($fullCachePath) | Out-Null
+    "type=bind,source=$fullCachePath,target=/cache"
 }
 
 $stagingPath = "$fullOutputPath.staging-$([Guid]::NewGuid().ToString('N'))"
 try {
     [System.IO.Directory]::CreateDirectory($stagingPath) | Out-Null
     & docker run --rm `
-        --mount "type=volume,source=$CacheVolume,target=/cache" `
+        --mount $cacheMount `
         --mount "type=bind,source=$stagingPath,target=/output" `
         --env "CLIPEDIT_NATIVE_JOBS=$Jobs" `
         $builderImage
@@ -50,19 +69,7 @@ try {
     }
 
     $binPath = Join-Path $stagingPath 'bin'
-    $requiredNames = @(
-        'ffmpeg.exe',
-        'ffprobe.exe',
-        'libmpv-2.dll',
-        'avcodec-63.dll',
-        'avdevice-63.dll',
-        'avfilter-12.dll',
-        'avformat-63.dll',
-        'avutil-61.dll',
-        'swresample-7.dll',
-        'swscale-10.dll',
-        'vulkan-1.dll'
-    )
+    $requiredNames = @($nativeDependencies.windows.requiredBinaries)
     foreach ($name in $requiredNames) {
         $requiredPath = Join-Path $binPath $name
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -72,22 +79,44 @@ try {
 
     $ffmpegPath = Join-Path $binPath 'ffmpeg.exe'
     $ffprobePath = Join-Path $binPath 'ffprobe.exe'
-    $versionText = (& $ffmpegPath -version | Select-Object -First 1)
-    if ($versionText -notmatch 'ffmpeg version n9\.0\.1') {
-        throw "The source-built FFmpeg did not report version n9.0.1: $versionText"
+    $windowsExecutor = $null
+    $hostIsWindows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows)
+    if (-not $hostIsWindows) {
+        $windowsExecutor = Get-Command wine64 -ErrorAction SilentlyContinue
+        if ($null -eq $windowsExecutor) {
+            $windowsExecutor = Get-Command wine -ErrorAction SilentlyContinue
+        }
+        if ($null -eq $windowsExecutor) {
+            throw 'wine64 or wine is required to validate the Windows native stack on a non-Windows host.'
+        }
     }
-    $probeVersionText = (& $ffprobePath -version | Select-Object -First 1)
-    if ($probeVersionText -notmatch 'ffprobe version n9\.0\.1') {
-        throw "The source-built ffprobe did not report version n9.0.1: $probeVersionText"
+    function Invoke-NativeWindowsTool([string]$Executable, [string[]]$Arguments) {
+        if ($null -eq $windowsExecutor) {
+            & $Executable @Arguments
+        }
+        else {
+            & $windowsExecutor.Source $Executable @Arguments
+        }
     }
 
-    $encoders = (& $ffmpegPath -hide_banner -encoders 2>&1 | Out-String)
+    $ffmpegVersion = [string]$nativeDependencies.components.ffmpeg.version
+    $versionText = (Invoke-NativeWindowsTool $ffmpegPath @('-version') | Select-Object -First 1)
+    if ($versionText -notmatch "ffmpeg version n?$([regex]::Escape($ffmpegVersion))") {
+        throw "The source-built FFmpeg did not report version ${ffmpegVersion}: $versionText"
+    }
+    $probeVersionText = (Invoke-NativeWindowsTool $ffprobePath @('-version') | Select-Object -First 1)
+    if ($probeVersionText -notmatch "ffprobe version n?$([regex]::Escape($ffmpegVersion))") {
+        throw "The source-built ffprobe did not report version ${ffmpegVersion}: $probeVersionText"
+    }
+
+    $encoders = (Invoke-NativeWindowsTool $ffmpegPath @('-hide_banner', '-encoders') 2>&1 | Out-String)
     foreach ($encoder in @('libx264', 'libvpx-vp9', 'aac', 'libopus')) {
         if ($encoders -notmatch "\b$([regex]::Escape($encoder))\b") {
             throw "The source-built FFmpeg does not expose the required $encoder encoder."
         }
     }
-    $filters = (& $ffmpegPath -hide_banner -filters 2>&1 | Out-String)
+    $filters = (Invoke-NativeWindowsTool $ffmpegPath @('-hide_banner', '-filters') 2>&1 | Out-String)
     foreach ($filter in @('crop', 'scale', 'rotate', 'overlay', 'concat', 'atrim', 'asetpts', 'aeval', 'volume', 'amix', 'alimiter', 'apad', 'showwavespic')) {
         if ($filters -notmatch "\b$([regex]::Escape($filter))\b") {
             throw "The source-built FFmpeg does not expose the required $filter filter."
