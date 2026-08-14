@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate on Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/cache@v5
+        with:
+          path: packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
+      - name: Validate Bash scripts
+        shell: bash
+        run: |
+          mapfile -d '' scripts < <(find eng -type f -name '*.sh' -print0)
+          if (( ${#scripts[@]} == 0 )); then
+            echo 'No Bash scripts were found.' >&2
+            exit 1
+          fi
+          for script in "${scripts[@]}"; do
+            if [[ ! -x "$script" ]]; then
+              echo "Bash script is not executable: $script" >&2
+              exit 1
+            fi
+            bash -n "$script"
+            shellcheck "$script"
+          done
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $parseErrors = @(
+              Get-ChildItem eng -Recurse -Filter '*.ps1' -File | ForEach-Object {
+                  $tokens = $null
+                  $errors = $null
+                  [System.Management.Automation.Language.Parser]::ParseFile(
+                      $_.FullName,
+                      [ref]$tokens,
+                      [ref]$errors) | Out-Null
+                  $errors
+              }
+          )
+          if ($parseErrors.Count -gt 0) {
+              $parseErrors | Format-List | Out-String | Write-Host
+              throw "$($parseErrors.Count) PowerShell parse error(s) found."
+          }
+      - run: dotnet restore ClipEdit.sln
+      - run: dotnet format ClipEdit.sln --verify-no-changes --no-restore
+      - run: dotnet test ClipEdit.sln --no-restore --configuration Release
+      - name: Validate native dependency locks
+        shell: pwsh
+        run: ./eng/Test-NativeDependencies.ps1
