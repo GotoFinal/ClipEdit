@@ -124,24 +124,14 @@ jobs:
           VERSION: ${{ steps.values.outputs.version }}
           PRERELEASE: ${{ steps.values.outputs.prerelease }}
         run: |
-          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>/dev/null || true)"
-          if [[ -n "$release_json" ]]; then
-            release_url="$(jq -r '.html_url // empty' <<<"$release_json")"
-            if [[ -z "$release_url" ]]; then
-              echo "GitHub returned invalid release metadata for $TAG." >&2
-              exit 3
-            fi
-            if [[ "$(jq -r .draft <<<"$release_json")" == "true" ]]; then
-              echo "Reusing existing draft release $TAG."
-            else
-              echo "Reusing published release $TAG. Missing assets will be uploaded; existing published assets will not be replaced."
-            fi
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" >/dev/null 2>&1; then
+            echo "Using existing release $TAG."
           else
             args=(release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "ClipEdit $VERSION" --generate-notes --target "$GITHUB_SHA")
             if [[ "$PRERELEASE" == "true" ]]; then args+=(--prerelease); fi
-            release_url="$(gh "${args[@]}")"
+            gh "${args[@]}"
           fi
-          echo "Release: $release_url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
 
   windows:
     name: Windows x64
@@ -218,7 +208,7 @@ jobs:
             "$root/ClipEdit-$VERSION-win-x64-compliance.tar.zst"
             "$root/ClipEdit-$VERSION-win-x64-compliance.tar.zst.sha256"
           )
-          ./eng/Upload-ReleaseAssets.sh "$TAG" "${assets[@]}"
+          gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
 
   linux:
     name: Linux x64
@@ -290,4 +280,4 @@ jobs:
             "$root/ClipEdit-$VERSION-linux-x64-compliance.tar.zst"
             "$root/ClipEdit-$VERSION-linux-x64-compliance.tar.zst.sha256"
           )
-          ./eng/Upload-ReleaseAssets.sh "$TAG" "${assets[@]}"
+          gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
