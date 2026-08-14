@@ -43,6 +43,41 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
+    public void Source_framebuffer_downscales_to_the_preview_without_upscaling_small_media()
+    {
+        Assert.Equal(
+            new DomainPixelSize(889, 500),
+            MpvVideoView.CalculateSourceRenderSize(
+                new DomainPixelSize(3_840, 2_160),
+                new Size(1_200, 500)));
+        Assert.Equal(
+            new DomainPixelSize(640, 360),
+            MpvVideoView.CalculateSourceRenderSize(
+                new DomainPixelSize(640, 360),
+                new Size(1_920, 1_080)));
+    }
+
+    [Fact]
+    public void Identity_video_quad_fills_a_matching_canvas_inside_the_framebuffer()
+    {
+        var vertices = MpvVideoView.CalculateVideoQuadVertices(
+            new DomainPixelSize(1_920, 1_080),
+            new DomainPixelSize(1_920, 1_080),
+            ClipCanvasTransform.Identity,
+            new Size(960, 540));
+
+        Assert.Equal(
+            new float[]
+            {
+                -1, 1, 0, 1,
+                1, 1, 1, 1,
+                -1, -1, 0, 0,
+                1, -1, 1, 0,
+            },
+            vertices);
+    }
+
+    [Fact]
     public void Position_inside_kept_range_continues()
     {
         var decision = MpvVideoView.GetPlaybackRangeDecision(new MediaTime(3, 1), Ranges);
@@ -178,66 +213,11 @@ public sealed class MpvVideoViewTests
     }
 
     [Fact]
-    public void Interactive_canvas_matrix_maps_the_applied_clip_to_the_desired_clip()
-    {
-        var canvasSize = new DomainPixelSize(1_920, 1_080);
-        var applied = new ClipCanvasTransform(120, -40, 1.25, 0.75, 17);
-        var desired = new ClipCanvasTransform(-80, 90, 0.8, 1.4, 63);
-        var viewport = new Size(960, 540);
-        var relative = MpvVideoView.CalculateInteractiveCanvasMatrix(
-            canvasSize,
-            applied,
-            desired,
-            viewport);
-        var sourcePoint = new Point(240, -130);
-        var appliedPoint = MapSourcePoint(sourcePoint, canvasSize, applied, viewport);
-        var desiredPoint = MapSourcePoint(sourcePoint, canvasSize, desired, viewport);
-
-        var transformed = relative.Transform(appliedPoint);
-
-        Assert.Equal(desiredPoint.X, transformed.X, 6);
-        Assert.Equal(desiredPoint.Y, transformed.Y, 6);
-    }
-
-    [Fact]
-    public void Interactive_canvas_matrix_is_identity_when_no_clip_transform_is_requested()
-    {
-        var transform = new ClipCanvasTransform(50, -20, 1.1, 0.9, 31);
-
-        var matrix = MpvVideoView.CalculateInteractiveCanvasMatrix(
-            new DomainPixelSize(1_920, 1_080),
-            transform,
-            transform,
-            new Size(960, 540));
-
-        Assert.True(matrix.IsIdentity);
-    }
-
-    [Fact]
     public void Interactive_transform_flag_defaults_to_inactive()
     {
         var view = new MpvVideoView();
 
         Assert.False(view.IsInteractiveTransformActive);
-    }
-
-    private static Point MapSourcePoint(
-        Point point,
-        DomainPixelSize canvasSize,
-        ClipCanvasTransform transform,
-        Size viewport)
-    {
-        var displayScale = Math.Min(
-            viewport.Width / canvasSize.Width,
-            viewport.Height / canvasSize.Height);
-        var radians = transform.RotationDegrees * Math.PI / 180;
-        var cosine = Math.Cos(radians);
-        var sine = Math.Sin(radians);
-        return new Point(
-            (viewport.Width / 2) + (transform.OffsetX * displayScale) +
-            (((point.X * cosine) - (point.Y * sine)) * transform.ScaleX * displayScale),
-            (viewport.Height / 2) + (transform.OffsetY * displayScale) +
-            (((point.X * sine) + (point.Y * cosine)) * transform.ScaleY * displayScale));
     }
 
 }

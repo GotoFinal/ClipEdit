@@ -848,7 +848,7 @@
           <Border Classes="panel" Padding="10">
             <Grid RowDefinitions="*,Auto,Auto" RowSpacing="6">
               <Border Background="#0B0D12" ClipToBounds="True" CornerRadius="8">
-                <Grid>
+                <Grid ClipToBounds="True">
                   <Image
                       Margin="5"
                       IsVisible="{Binding HasPreviewImage}"

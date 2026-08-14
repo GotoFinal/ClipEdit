@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
-using Avalonia.Media.Immutable;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ClipEdit.Domain.Geometry;
@@ -97,6 +96,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private Task<MpvPreviewEngine>? _engineTask;
     private MpvPreviewEngine? _engine;
     private MpvOpenGlRenderContext? _renderContext;
+    private OpenGlVideoCompositor? _videoCompositor;
     private bool _isPlaybackAvailable;
     private string _playbackStatus = "Initializing the local preview engine…";
     private string _playButtonText = "▶";
@@ -126,9 +126,9 @@ public sealed class MpvVideoView : OpenGlControlBase
         SourceVideoSizeProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartNativeGeometryChange());
         CanvasSizeProperty.Changed.AddClassHandler<MpvVideoView>(
-            static (view, _) => view.StartNativeGeometryChange());
+            static (view, _) => view.QueueRenderRequest());
         CanvasTransformProperty.Changed.AddClassHandler<MpvVideoView>(
-            static (view, _) => view.UpdateInteractiveCanvasTransform());
+            static (view, _) => view.QueueRenderRequest());
         IsInteractiveTransformActiveProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.OnInteractiveTransformActiveChanged());
         AudioTracksProperty.Changed.AddClassHandler<MpvVideoView>(
@@ -142,10 +142,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             Interval = TimeSpan.FromMilliseconds(50),
         };
         _positionTimer.Tick += OnPositionTimerTick;
-        RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Absolute);
         SizeChanged += (_, _) =>
         {
-            UpdateInteractiveCanvasTransform();
             StartNativeGeometryChange();
         };
         EffectiveViewportChanged += (_, eventArgs) =>
@@ -388,7 +386,7 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     protected override void OnOpenGlInit(GlInterface gl)
     {
-        _ = gl;
+        _videoCompositor = new OpenGlVideoCompositor(gl);
         RequestNextFrameRendering();
     }
 
@@ -410,10 +408,27 @@ public sealed class MpvVideoView : OpenGlControlBase
                 TryStartPendingLoad();
             }
 
+            var compositor = _videoCompositor ??
+                throw new InvalidOperationException("The live-preview compositor is not initialized.");
             var physicalViewport = GetPhysicalViewportSize();
             var width = Math.Max(1, (int)Math.Round(physicalViewport.Width));
             var height = Math.Max(1, (int)Math.Round(physicalViewport.Height));
-            _renderContext.Render(framebuffer, width, height);
+            var sourceTarget = CalculateSourceRenderSize(SourceVideoSize, physicalViewport);
+            compositor.EnsureSourceTarget(sourceTarget.Width, sourceTarget.Height);
+            _renderContext.Render(
+                compositor.SourceFramebuffer,
+                sourceTarget.Width,
+                sourceTarget.Height,
+                flipY: false);
+            compositor.Composite(
+                framebuffer,
+                width,
+                height,
+                CalculateVideoQuadVertices(
+                    SourceVideoSize,
+                    CanvasSize,
+                    CanvasTransform,
+                    physicalViewport));
             if (ShouldContinueRenderingDuringLoad(_loadTask.IsCompleted))
             {
                 RequestNextFrameRendering();
@@ -430,6 +445,8 @@ public sealed class MpvVideoView : OpenGlControlBase
         _ = gl;
         _renderContext?.Dispose();
         _renderContext = null;
+        _videoCompositor?.Dispose();
+        _videoCompositor = null;
         if (_shutdownStarted && _engine is not null)
         {
             _ = _engine.DisposeAsync();
@@ -533,12 +550,12 @@ public sealed class MpvVideoView : OpenGlControlBase
             await engine.SetVideoTransformAsync(
                 CalculatePreviewVideoTransform(
                     SourceVideoSize,
-                    CanvasSize,
+                    SourceVideoSize,
                     ClipCanvasTransform.Identity,
-                    GetPhysicalViewportSize()),
+                    GetSourceRenderViewportSize()),
                 cancellationToken);
             _appliedVideoTransformRevision = initialVideoTransformRevision;
-            UpdateInteractiveCanvasTransform();
+            QueueRenderRequest();
             await engine.SeekAsync(Position, cancellationToken);
             await engine.SetVolumeAsync(Volume, cancellationToken);
             await engine.SetPlaybackSpeedAsync(PlaybackSpeed, cancellationToken);
@@ -712,13 +729,13 @@ public sealed class MpvVideoView : OpenGlControlBase
     private void StartNativeGeometryChange()
     {
         _videoTransformRevision++;
-        UpdateInteractiveCanvasTransform();
+        QueueRenderRequest();
         TryStartVideoTransformLoop();
     }
 
     private void OnInteractiveTransformActiveChanged()
     {
-        UpdateInteractiveCanvasTransform();
+        QueueRenderRequest();
         if (!IsInteractiveTransformActive)
         {
             TryStartVideoTransformLoop();
@@ -751,9 +768,9 @@ public sealed class MpvVideoView : OpenGlControlBase
                 var handledRevision = _videoTransformRevision;
                 var transform = CalculatePreviewVideoTransform(
                     SourceVideoSize,
-                    CanvasSize,
+                    SourceVideoSize,
                     ClipCanvasTransform.Identity,
-                    GetPhysicalViewportSize());
+                    GetSourceRenderViewportSize());
                 await _engine.QueueVideoTransformAsync(
                     transform,
                     _lifetimeCancellation.Token);
@@ -813,16 +830,6 @@ public sealed class MpvVideoView : OpenGlControlBase
             canvasTransform.ScaleY / uniformScale);
     }
 
-    private void UpdateInteractiveCanvasTransform()
-    {
-        var matrix = CalculateInteractiveCanvasMatrix(
-            CanvasSize,
-            ClipCanvasTransform.Identity,
-            CanvasTransform,
-            Bounds.Size);
-        RenderTransform = matrix.IsIdentity ? null : new ImmutableTransform(matrix);
-    }
-
     private void SubscribeToTopLevelScaling()
     {
         var topLevel = TopLevel.GetTopLevel(this);
@@ -857,6 +864,12 @@ public sealed class MpvVideoView : OpenGlControlBase
         return ScaleViewportForRender(Bounds.Size, scaling);
     }
 
+    private Size GetSourceRenderViewportSize()
+    {
+        var target = CalculateSourceRenderSize(SourceVideoSize, GetPhysicalViewportSize());
+        return new Size(target.Width, target.Height);
+    }
+
     internal static Size ScaleViewportForRender(Size logicalViewport, double scaling)
     {
         var safeScaling = double.IsFinite(scaling) && scaling > 0 ? scaling : 1;
@@ -865,20 +878,49 @@ public sealed class MpvVideoView : OpenGlControlBase
             Math.Max(1, logicalViewport.Height * safeScaling));
     }
 
-    internal static Matrix CalculateInteractiveCanvasMatrix(
-        DomainPixelSize canvasSize,
-        ClipCanvasTransform applied,
-        ClipCanvasTransform desired,
-        Size viewportSize)
+    internal static DomainPixelSize CalculateSourceRenderSize(
+        DomainPixelSize sourceSize,
+        Size physicalViewport)
     {
-        var appliedMatrix = CalculateCanvasToViewportMatrix(canvasSize, applied, viewportSize);
-        if (!appliedMatrix.TryInvert(out var inverseApplied))
-        {
-            return Matrix.Identity;
-        }
-
-        return inverseApplied * CalculateCanvasToViewportMatrix(canvasSize, desired, viewportSize);
+        var scale = Math.Min(
+            Math.Max(1, physicalViewport.Width) / sourceSize.Width,
+            Math.Max(1, physicalViewport.Height) / sourceSize.Height);
+        scale = Math.Min(1, scale);
+        return new DomainPixelSize(
+            Math.Max(1, (int)Math.Round(sourceSize.Width * scale)),
+            Math.Max(1, (int)Math.Round(sourceSize.Height * scale)));
     }
+
+    internal static float[] CalculateVideoQuadVertices(
+        DomainPixelSize sourceSize,
+        DomainPixelSize canvasSize,
+        ClipCanvasTransform transform,
+        Size physicalViewport)
+    {
+        var matrix = CalculateCanvasToViewportMatrix(canvasSize, transform, physicalViewport);
+        var halfWidth = sourceSize.Width / 2d;
+        var halfHeight = sourceSize.Height / 2d;
+        var topLeft = matrix.Transform(new Point(-halfWidth, -halfHeight));
+        var topRight = matrix.Transform(new Point(halfWidth, -halfHeight));
+        var bottomLeft = matrix.Transform(new Point(-halfWidth, halfHeight));
+        var bottomRight = matrix.Transform(new Point(halfWidth, halfHeight));
+        var viewportWidth = Math.Max(1, physicalViewport.Width);
+        var viewportHeight = Math.Max(1, physicalViewport.Height);
+
+        return
+        [
+            ToNdcX(topLeft.X, viewportWidth), ToNdcY(topLeft.Y, viewportHeight), 0, 1,
+            ToNdcX(topRight.X, viewportWidth), ToNdcY(topRight.Y, viewportHeight), 1, 1,
+            ToNdcX(bottomLeft.X, viewportWidth), ToNdcY(bottomLeft.Y, viewportHeight), 0, 0,
+            ToNdcX(bottomRight.X, viewportWidth), ToNdcY(bottomRight.Y, viewportHeight), 1, 0,
+        ];
+    }
+
+    private static float ToNdcX(double x, double width) =>
+        (float)((2 * x / width) - 1);
+
+    private static float ToNdcY(double y, double height) =>
+        (float)(1 - (2 * y / height));
 
     private static Matrix CalculateCanvasToViewportMatrix(
         DomainPixelSize canvasSize,
