@@ -26,6 +26,9 @@ public sealed class MpvVideoView : OpenGlControlBase
     public static readonly StyledProperty<double> VolumeProperty =
         AvaloniaProperty.Register<MpvVideoView, double>(nameof(Volume), defaultValue: 1);
 
+    public static readonly StyledProperty<double> PlaybackSpeedProperty =
+        AvaloniaProperty.Register<MpvVideoView, double>(nameof(PlaybackSpeed), defaultValue: 1);
+
     public static readonly StyledProperty<DomainPixelSize> SourceVideoSizeProperty =
         AvaloniaProperty.Register<MpvVideoView, DomainPixelSize>(
             nameof(SourceVideoSize),
@@ -112,6 +115,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             static (view, _) => view.StartPauseChange());
         VolumeProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartVolumeChange());
+        PlaybackSpeedProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.StartPlaybackSpeedChange());
         SourceVideoSizeProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartVideoTransformChange());
         CanvasSizeProperty.Changed.AddClassHandler<MpvVideoView>(
@@ -424,6 +429,12 @@ public sealed class MpvVideoView : OpenGlControlBase
         TryStartPendingLoad();
     }
 
+    public double PlaybackSpeed
+    {
+        get => GetValue(PlaybackSpeedProperty);
+        set => SetValue(PlaybackSpeedProperty, value);
+    }
+
     private void TryStartPendingLoad()
     {
         if (!_loadGate.TryConsume(
@@ -480,6 +491,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             await engine.SetVideoTransformAsync(CalculatePreviewVideoTransform(SourceVideoSize, CanvasSize, CanvasTransform, Bounds.Size), cancellationToken);
             await engine.SeekAsync(Position, cancellationToken);
             await engine.SetVolumeAsync(Volume, cancellationToken);
+            await engine.SetPlaybackSpeedAsync(PlaybackSpeed, cancellationToken);
             string? audioWarning = null;
             try
             {
@@ -728,6 +740,30 @@ public sealed class MpvVideoView : OpenGlControlBase
             canvasTransform.RotationDegrees,
             canvasTransform.ScaleX / uniformScale,
             canvasTransform.ScaleY / uniformScale);
+    }
+
+    private void StartPlaybackSpeedChange()
+    {
+        if (_mediaLoaded && _engine is not null && !_shutdownStarted)
+        {
+            _ = ApplyPlaybackSpeedAsync();
+        }
+    }
+
+    private async Task ApplyPlaybackSpeedAsync()
+    {
+        try
+        {
+            await _engine!.SetPlaybackSpeedAsync(PlaybackSpeed, _lifetimeCancellation.Token);
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+            // The preview is shutting down.
+        }
+        catch (Exception exception)
+        {
+            SetFailure($"Live preview speed failed: {exception.Message}");
+        }
     }
 
     internal static bool CanRenderFrame(bool isEngineReady, bool isMediaLoaded) =>

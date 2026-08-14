@@ -112,6 +112,9 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     public Task SetVolumeAsync(double volume, CancellationToken cancellationToken) =>
         InvokeAsync(client => client.SetVolume(volume), cancellationToken);
 
+    public Task SetPlaybackSpeedAsync(double speed, CancellationToken cancellationToken) =>
+        InvokeAsync(client => client.SetPlaybackSpeed(speed), cancellationToken);
+
     public Task SetVideoTransformAsync(
         PreviewVideoTransform transform,
         CancellationToken cancellationToken) =>

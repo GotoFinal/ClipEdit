@@ -66,6 +66,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private int _exportScalePercent = ExportEncodingSettings.DefaultScalePercent;
     private int _exportQuality = ExportEncodingSettings.DefaultQuality;
     private int _gifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
+    private int _exportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;
     private ExportDestinationChoice _selectedExportDestination = ExportDestinationChoice.File;
     private bool _isExporting;
     private double _exportProgress;
@@ -359,8 +360,101 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(CanApplyCropPreset));
             OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
             OnPropertyChanged(nameof(CanMoveSelectedVideoRight));
+            OnPropertyChanged(nameof(SelectedClipPlaybackSpeedPercent));
             RaiseExportStateChanged();
         }
+    }
+
+    public int SelectedClipPlaybackSpeedPercent
+    {
+        get => SelectedVideoClip?.PlaybackSpeedPercent ?? SequenceClip.DefaultPlaybackSpeedPercent;
+        set => SetSelectedClipPlaybackSpeed(value);
+    }
+
+    public bool SetSelectedClipPlaybackSpeed(int playbackSpeedPercent)
+    {
+        if (SelectedVideoClip is not { } clip)
+        {
+            return false;
+        }
+
+        var next = Math.Clamp(
+            playbackSpeedPercent,
+            SequenceClip.MinimumPlaybackSpeedPercent,
+            SequenceClip.MaximumPlaybackSpeedPercent);
+        if (next == clip.PlaybackSpeedPercent)
+        {
+            return false;
+        }
+
+        var previousModel = clip.Model;
+        var previousEnd = previousModel.TimelineEnd;
+        var previousDuration = previousModel.Duration;
+        var previousPlayhead = _sequencePlayhead;
+        var previousSelectionStart = _sequenceSelectionStart;
+        var previousSelectionEnd = _sequenceSelectionEnd;
+        var laterClips = VideoClips
+            .Where(candidate => !ReferenceEquals(candidate, clip) && candidate.TimelineStart >= previousEnd)
+            .ToArray();
+        var wasLoading = _isLoadingProject;
+        _isLoadingProject = true;
+        try
+        {
+            clip.PlaybackSpeedPercent = next;
+            foreach (var audioTrack in AudioTracks)
+            {
+                audioTrack.RemapTimelineForClipSpeedChange(previousModel, clip.Model);
+            }
+            var shift = clip.Duration - previousDuration;
+            foreach (var later in laterClips)
+            {
+                later.TimelineStart += shift;
+            }
+
+            _sequencePlayhead = RemapTimelineTimeForSpeedChange(
+                previousPlayhead,
+                previousModel,
+                clip.Model);
+            _sequenceSelectionStart = RemapTimelineTimeForSpeedChange(
+                previousSelectionStart,
+                previousModel,
+                clip.Model);
+            _sequenceSelectionEnd = RemapTimelineTimeForSpeedChange(
+                previousSelectionEnd,
+                previousModel,
+                clip.Model);
+        }
+        finally
+        {
+            _isLoadingProject = wasLoading;
+        }
+
+        UpdateSequenceLayout(resetSelectionIfEmpty: false);
+        RaiseSequenceSelectionChanged();
+        SyncSourcePreviewToSequenceTime(_sequencePlayhead, selectClip: false);
+        RefreshAudioTimelineSegments(refreshWaveforms: false);
+        StartSequenceTimelineAnalysis(debounce: false);
+        OnPropertyChanged(nameof(SelectedClipPlaybackSpeedPercent));
+        StatusText = $"Set {clip.DisplayName} playback speed to {next}%";
+        MarkProjectDirty($"clip:{clip.Id}:playback-speed");
+        return true;
+    }
+
+    private static MediaTime RemapTimelineTimeForSpeedChange(
+        MediaTime timelineTime,
+        SequenceClip previous,
+        SequenceClip current)
+    {
+        if (timelineTime <= previous.TimelineStart)
+        {
+            return timelineTime;
+        }
+        if (timelineTime < previous.TimelineEnd)
+        {
+            return current.SourceTimeToTimeline(previous.TimelineTimeToSource(timelineTime));
+        }
+
+        return timelineTime + (current.Duration - previous.Duration);
     }
 
     public double SequenceDurationSeconds =>
@@ -719,6 +813,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var duration = HasSequenceSelection
                 ? NormalizedSequenceSelection().Duration
                 : NonNegativeTimelineTime(SequenceDurationSeconds);
+            duration = CurrentExportEncodingSettings.ApplyPlaybackSpeed(duration);
             var gifDetails = preset.VideoCodec == VideoCodecFamily.Gif
                 ? $" · {GifFrameRate} fps"
                 : string.Empty;
@@ -1026,6 +1121,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             clip.SourceWindow,
             clip.CanvasTransform,
             clip.AudioGainDb,
+            clip.PlaybackSpeedPercent,
             clip.ExcludedAudioLaneIndices.ToImmutableArray());
         StatusText = $"Copied {clip.DisplayName}; press Ctrl+V on the timeline to paste";
         return true;
@@ -1048,7 +1144,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         var preferredStart = SelectedVideoClip?.TimelineEnd ?? NonNegativeTimelineTime(SequenceDurationSeconds);
-        var timelineStart = FindAvailableTimelineStart(preferredStart, copied.SourceRange.Duration);
+        var copiedDuration = copied.SourceRange.Duration * 100 / copied.PlaybackSpeedPercent;
+        var timelineStart = FindAvailableTimelineStart(preferredStart, copiedDuration);
         var clip = AddVideoClipInstance(
             source,
             copied.SourceRange,
@@ -1059,7 +1156,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             timelineStart,
             selectClip: true,
             collapseSelection: true,
-            copied.ExcludedAudioLaneIndices);
+            copied.ExcludedAudioLaneIndices,
+            copied.PlaybackSpeedPercent);
         StatusText = $"Pasted {clip.DisplayName} at {FormatSequenceTimestamp(timelineStart)}";
         MarkProjectDirty();
         return true;
@@ -1123,8 +1221,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     CanvasCrop,
                     slice.Clip.CanvasTransform,
                     embeddedAudio,
-                    slice.Clip.TimelineStart +
-                    (slice.SourceRange.Start - slice.Clip.SourceStart));
+                    slice.Clip.Model.SourceTimeToTimeline(slice.SourceRange.Start),
+                    slice.Clip.PlaybackSpeedPercent);
             }).ToImmutableArray();
             var externalAudio = AudioTracks
                 .Where(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty)
@@ -1255,8 +1353,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             var sourceRemoval = new MediaRange(
-                clip.SourceStart + (overlapStart - clip.TimelineStart),
-                clip.SourceStart + (overlapEnd - clip.TimelineStart));
+                clip.Model.TimelineTimeToSource(overlapStart),
+                clip.Model.TimelineTimeToSource(overlapEnd));
             foreach (var part in clip.Model.Remove(sourceRemoval, Guid.NewGuid()))
             {
                 var timelineStart = part.TimelineStart >= selection.End
@@ -1345,8 +1443,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             var sourceSelection = new MediaRange(
-                clip.SourceStart + (overlapStart - clip.TimelineStart),
-                clip.SourceStart + (overlapEnd - clip.TimelineStart));
+                clip.Model.TimelineTimeToSource(overlapStart),
+                clip.Model.TimelineTimeToSource(overlapEnd));
             if (clip.Model.KeepOnly(sourceSelection) is { } kept)
             {
                 firstTouchedClipId ??= clip.Id;
@@ -1409,7 +1507,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return false;
         }
 
-        var sourceTime = clip.SourceStart + (_sequencePlayhead - clip.TimelineStart);
+        var sourceTime = clip.Model.TimelineTimeToSource(_sequencePlayhead);
         var (left, right) = clip.Model.Split(sourceTime, Guid.NewGuid());
         var index = VideoClips.IndexOf(clip);
         var replacements = VideoClips.ToList();
@@ -1730,7 +1828,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         var offset = Min(clip.Duration, Max(MediaTime.Zero, _sequencePlayhead - clip.TimelineStart));
-        var sourcePosition = Min(clip.SourceEnd, clip.SourceStart + offset);
+        var sourcePosition = Min(
+            clip.SourceEnd,
+            clip.SourceStart + clip.Model.TimelineDurationToSource(offset));
         clip.Source.Playhead = sourcePosition;
         return sourcePosition;
     }
@@ -2390,12 +2490,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 ExportQuality = exportSettings.Quality;
                 ExportScalePercent = exportSettings.ScalePercent;
                 GifFrameRate = exportSettings.GifFrameRate;
+                ExportPlaybackSpeedPercent = document.SchemaVersion >= 10
+                    ? exportSettings.PlaybackSpeedPercent
+                    : ExportEncodingSettings.DefaultPlaybackSpeedPercent;
             }
             else
             {
                 ExportQuality = ExportEncodingSettings.DefaultQuality;
                 ExportScalePercent = ExportEncodingSettings.DefaultScalePercent;
                 GifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
+                ExportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;
             }
 
             foreach (var savedMedia in document.Media)
@@ -2520,7 +2624,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 CustomVideoCodec.Value,
                 CustomAudioCodec.Value,
                 CustomUseSourceFrameRate,
-                CustomFrameRate));
+                CustomFrameRate,
+                ExportPlaybackSpeedPercent));
     }
 
     public void Dispose()
@@ -2682,8 +2787,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var sourceOffset = Min(clip.Duration, Max(MediaTime.Zero, mediaItem.Playhead - clip.SourceStart));
-        var timelinePosition = clip.TimelineStart + sourceOffset;
+        var sourceOffset = Min(
+            clip.Model.SourceRange.Duration,
+            Max(MediaTime.Zero, mediaItem.Playhead - clip.SourceStart));
+        var timelinePosition = clip.TimelineStart + clip.Model.SourceDurationToTimeline(sourceOffset);
         if (_sequencePlayhead == timelinePosition)
         {
             return;
@@ -2956,7 +3063,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         MediaTime timelineStart,
         bool selectClip,
         bool collapseSelection,
-        IEnumerable<int>? excludedAudioLaneIndices = null)
+        IEnumerable<int>? excludedAudioLaneIndices = null,
+        int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent)
     {
         var previousDuration = SequenceDurationSeconds;
         var selectionCoveredWholeSequence =
@@ -2974,7 +3082,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             sourceRange,
             availableRange,
             timelineStart,
-            audioGainDb);
+            audioGainDb,
+            playbackSpeedPercent);
         var clip = new VideoClipViewModel(
             mediaItem,
             model,
@@ -3043,8 +3152,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (eventArgs.PropertyName == nameof(VideoClipViewModel.Model))
         {
             UpdateSequenceLayout(resetSelectionIfEmpty: false);
+            RefreshAudioTimelineSegments(refreshWaveforms: false);
             StartSequenceTimelineAnalysis(debounce: true);
             MarkProjectDirty($"clip:{clip.Id}:model");
+        }
+
+        if (ReferenceEquals(clip, SelectedVideoClip) &&
+            eventArgs.PropertyName is nameof(VideoClipViewModel.PlaybackSpeedPercent) or
+                nameof(VideoClipViewModel.Model))
+        {
+            OnPropertyChanged(nameof(SelectedClipPlaybackSpeedPercent));
         }
 
         if (eventArgs.PropertyName == nameof(VideoClipViewModel.AudioGainDb))
@@ -3172,7 +3289,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         var offset = Min(clip.Duration, Max(MediaTime.Zero, timelineTime - clip.TimelineStart));
-        clip.Source.Playhead = Min(clip.SourceEnd, clip.SourceStart + offset);
+        clip.Source.Playhead = Min(
+            clip.SourceEnd,
+            clip.SourceStart + clip.Model.TimelineDurationToSource(offset));
     }
 
     private MediaRange NormalizedSequenceSelection() =>
@@ -3203,8 +3322,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             slices.Add(new SequenceExportSlice(
                 clip,
                 new MediaRange(
-                    clip.SourceStart + (timelineStart - clip.TimelineStart),
-                    clip.SourceStart + (timelineEnd - clip.TimelineStart))));
+                    clip.Model.TimelineTimeToSource(timelineStart),
+                    clip.Model.TimelineTimeToSource(timelineEnd))));
         }
 
         return slices;
@@ -3571,7 +3690,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             clip.TimelineStart.Numerator,
             clip.TimelineStart.Denominator,
             clip.AudioGainDb,
-            clip.ExcludedAudioLaneIndices.Order().ToArray());
+            clip.ExcludedAudioLaneIndices.Order().ToArray(),
+            clip.PlaybackSpeedPercent);
     }
 
     private static ProjectAudioTrackDocument? CreateAudioTrackDocumentForMedia(
@@ -3687,7 +3807,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                             : legacyTimelineCursor,
                         document.SchemaVersion >= 6
                             ? savedClip.AudioGainDb
-                            : 0);
+                            : 0,
+                        document.SchemaVersion >= 10
+                            ? savedClip.PlaybackSpeedPercent
+                            : SequenceClip.DefaultPlaybackSpeedPercent);
                     var window = new CropRegion(
                         source.VideoSize,
                         savedClip.SourceWindowX,
@@ -4370,10 +4493,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             track.WaveformErrorText = null;
             var renderTasks = visibleSegments.Select(async visible =>
             {
-                var sourceStart = visible.Segment.SourceStartSeconds +
-                                  (visible.Start - visible.Segment.TimelineStartSeconds);
-                var sourceEnd = visible.Segment.SourceStartSeconds +
-                                (visible.End - visible.Segment.TimelineStartSeconds);
+                var sourceStart = visible.Segment.TimelineTimeToSource(
+                    ToMediaTime(visible.Start)).TotalSeconds;
+                var sourceEnd = visible.Segment.TimelineTimeToSource(
+                    ToMediaTime(visible.End)).TotalSeconds;
                 var pixelWidth = Math.Clamp(
                     (int)Math.Ceiling(
                         1_600 * (visible.End - visible.Start) /
@@ -4509,4 +4632,5 @@ internal readonly record struct VideoClipClipboard(
     CropRegion SourceWindow,
     ClipCanvasTransform CanvasTransform,
     double AudioGainDb,
+    int PlaybackSpeedPercent,
     ImmutableArray<int> ExcludedAudioLaneIndices);

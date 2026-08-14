@@ -170,8 +170,8 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
                 continue;
             }
 
-            var sourceStart = clip.SourceStart + (overlapStart - clip.TimelineStart);
-            var sourceEnd = clip.SourceStart + (overlapEnd - clip.TimelineStart);
+            var sourceStart = clip.Model.TimelineTimeToSource(overlapStart);
+            var sourceEnd = clip.Model.TimelineTimeToSource(overlapEnd);
             var boundedStart = Max(MediaTime.Zero, sourceStart);
             var boundedEnd = Min(binding.Edit.SourceDuration, sourceEnd);
             if (boundedEnd > boundedStart)
@@ -544,8 +544,8 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
                 continue;
             }
 
-            var sourceStart = segment.SourceRange.Start + (overlapStart - segment.TimelineStart);
-            var sourceEnd = segment.SourceRange.Start + (overlapEnd - segment.TimelineStart);
+            var sourceStart = segment.TimelineTimeToSource(overlapStart);
+            var sourceEnd = segment.TimelineTimeToSource(overlapEnd);
             var removal = new MediaRange(
                 Quantize(sourceStart.TotalSeconds),
                 Quantize(sourceEnd.TotalSeconds));
@@ -583,6 +583,35 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
         OnPropertyChanged(nameof(TimelineSegments));
         OnPropertyChanged(nameof(AdjustableTimelineSegments));
+        RebuildTimelineKeptRanges();
+    }
+
+    internal void RemapTimelineForClipSpeedChange(SequenceClip previous, SequenceClip current)
+    {
+        if (IsExternal || _timelineSilencedRanges.IsDefaultOrEmpty)
+        {
+            return;
+        }
+
+        MediaTime Remap(MediaTime time)
+        {
+            if (time <= previous.TimelineStart)
+            {
+                return time;
+            }
+            if (time < previous.TimelineEnd)
+            {
+                return current.SourceTimeToTimeline(previous.TimelineTimeToSource(time));
+            }
+
+            return time + (current.Duration - previous.Duration);
+        }
+
+        _timelineSilencedRanges = MergeRanges(_timelineSilencedRanges
+            .Select(range => new MediaRange(Remap(range.Start), Remap(range.End)))
+            .Where(range => !range.IsEmpty));
+        OnPropertyChanged(nameof(TimelineSilencedRanges));
+        OnPropertyChanged(nameof(IsEdited));
         RebuildTimelineKeptRanges();
     }
 
@@ -667,10 +696,10 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
                     continue;
                 }
 
-                var timelineStart = segment.TimelineStart + (sourceStart - segment.SourceRange.Start);
+                var timelineStart = segment.SourceTimeToTimeline(sourceStart);
                 mapped.Add(new MediaRange(
                     timelineStart,
-                    timelineStart + (sourceEnd - sourceStart)));
+                    segment.SourceTimeToTimeline(sourceEnd)));
             }
         }
 

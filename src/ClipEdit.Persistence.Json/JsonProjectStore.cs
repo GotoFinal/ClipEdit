@@ -237,6 +237,16 @@ public sealed class JsonProjectStore : IProjectStore
                 "The saved custom export format is invalid.");
         }
 
+        if (document.SchemaVersion >= 10 &&
+            document.ExportSettings is { } speedSettings &&
+            speedSettings.PlaybackSpeedPercent is < SequenceClip.MinimumPlaybackSpeedPercent or
+                > SequenceClip.MaximumPlaybackSpeedPercent)
+        {
+            throw new ProjectStoreException(
+                ProjectStoreFailure.InvalidDocument,
+                "The saved export playback speed is invalid.");
+        }
+
         return document;
     }
 
@@ -286,6 +296,9 @@ public sealed class JsonProjectStore : IProjectStore
                  (clip.TimelineStartNumerator < 0 || clip.TimelineStartDenominator <= 0)) ||
                 (document.SchemaVersion >= 6 &&
                  (!double.IsFinite(clip.AudioGainDb) || clip.AudioGainDb is < -60 or > 12)) ||
+                (document.SchemaVersion >= 10 &&
+                 clip.PlaybackSpeedPercent is < SequenceClip.MinimumPlaybackSpeedPercent or
+                     > SequenceClip.MaximumPlaybackSpeedPercent) ||
                 (document.SchemaVersion >= 7 &&
                  clip.ExcludedAudioLaneIndices is { } excluded &&
                  (excluded.Count > MaximumAudioTracksPerMedia ||
@@ -314,7 +327,10 @@ public sealed class JsonProjectStore : IProjectStore
                     timelineStart,
                     document.SchemaVersion >= 6
                         ? clip.AudioGainDb
-                        : 0);
+                        : 0,
+                    document.SchemaVersion >= 10
+                        ? clip.PlaybackSpeedPercent
+                        : SequenceClip.DefaultPlaybackSpeedPercent);
                 _ = new CropRegion(
                     new PixelSize(media.SourceWidth, media.SourceHeight),
                     clip.SourceWindowX,

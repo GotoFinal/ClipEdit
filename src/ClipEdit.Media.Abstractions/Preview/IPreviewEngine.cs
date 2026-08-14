@@ -25,6 +25,8 @@ public interface IPreviewEngine : IAsyncDisposable
 
     Task SetVolumeAsync(double volume, CancellationToken cancellationToken);
 
+    Task SetPlaybackSpeedAsync(double speed, CancellationToken cancellationToken);
+
     Task SetVideoTransformAsync(
         PreviewVideoTransform transform,
         CancellationToken cancellationToken);

@@ -61,7 +61,8 @@ public sealed record SavedExportPresetViewModel(
     int FrameRate,
     int ScalePercent,
     int Quality,
-    int GifFrameRate);
+    int GifFrameRate,
+    int PlaybackSpeedPercent = 100);
 
 public sealed partial class MainWindowViewModel
 {
@@ -287,6 +288,7 @@ public sealed partial class MainWindowViewModel
             ExportScalePercent = normalized.ScalePercent;
             ExportQuality = normalized.Quality;
             GifFrameRate = normalized.GifFrameRate;
+            ExportPlaybackSpeedPercent = normalized.PlaybackSpeedPercent;
             SelectedExportDestination = ExportDestinationChoice.FromValue(normalized.ExportDestination);
             ReplaceSavedExportPresets(normalized.SavedPresets);
             SelectedExportPreset = ExportPresets.FirstOrDefault(preset =>
@@ -310,7 +312,8 @@ public sealed partial class MainWindowViewModel
         CustomUseSourceFrameRate,
         CustomFrameRate,
         ExportDestination,
-        SavedExportPresets.ToArray());
+        SavedExportPresets.ToArray(),
+        ExportPlaybackSpeedPercent);
 
     internal void ApplyCustomExportSettings(
         ExportContainer container,
@@ -363,7 +366,8 @@ public sealed partial class MainWindowViewModel
         CustomFrameRate,
         ExportScalePercent,
         ExportQuality,
-        GifFrameRate);
+        GifFrameRate,
+        ExportPlaybackSpeedPercent);
 
     private void ApplySavedExportPreset(SavedExportPresetViewModel saved)
     {
@@ -376,6 +380,7 @@ public sealed partial class MainWindowViewModel
         ExportScalePercent = saved.ScalePercent;
         ExportQuality = saved.Quality;
         GifFrameRate = saved.GifFrameRate;
+        ExportPlaybackSpeedPercent = saved.PlaybackSpeedPercent;
         SelectedExportPreset = BuiltInExportPresets.Custom;
         CustomPresetName = saved.Name;
     }
@@ -450,5 +455,6 @@ public sealed partial class MainWindowViewModel
         preset.FrameRate is >= 1 and <= 120 &&
         preset.ScalePercent is >= 10 and <= 100 &&
         preset.Quality is >= 1 and <= 100 &&
-        preset.GifFrameRate is >= 1 and <= 60;
+        preset.GifFrameRate is >= 1 and <= 60 &&
+        preset.PlaybackSpeedPercent is >= 25 and <= 400;
 }

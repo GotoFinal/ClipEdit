@@ -17,6 +17,7 @@ public sealed record ExportPlan
 {
     private readonly PixelSize _outputSize;
     private readonly MediaTime _expectedDuration;
+    private readonly MediaTime _timelineDuration;
     private readonly ImmutableArray<MediaTime> _videoSegmentTimelineStarts;
 
     public ExportPlan(
@@ -91,7 +92,8 @@ public sealed record ExportPlan
         ReplaceExistingDestination = replaceExistingDestination;
         VideoSegments = [];
         SequenceTimelineStart = MediaTime.Zero;
-        _expectedDuration = SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
+        _timelineDuration = SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
+        _expectedDuration = EncodingSettings.ApplyPlaybackSpeed(_timelineDuration);
         _videoSegmentTimelineStarts = [];
     }
 
@@ -159,7 +161,7 @@ public sealed record ExportPlan
             }
 
             starts.Add(start);
-            cursor = start + segment.SourceRange.Duration;
+            cursor = start + segment.TimelineDuration;
         }
 
         var resolvedDuration = sequenceDuration ?? (cursor - sequenceTimelineStart);
@@ -172,7 +174,8 @@ public sealed record ExportPlan
         }
 
         _videoSegmentTimelineStarts = starts.MoveToImmutable();
-        _expectedDuration = resolvedDuration;
+        _timelineDuration = resolvedDuration;
+        _expectedDuration = EncodingSettings.ApplyPlaybackSpeed(resolvedDuration);
         VideoSegments = videoSegments;
         _outputSize = scaledOutputSize;
         DestinationPath = Path.GetFullPath(destinationPath);
@@ -225,6 +228,8 @@ public sealed record ExportPlan
     public PixelSize OutputSize => _outputSize;
 
     public MediaTime ExpectedDuration => _expectedDuration;
+
+    public MediaTime TimelineDuration => _timelineDuration;
 
     private static void ValidateRanges(ImmutableArray<MediaRange> ranges)
     {
@@ -298,7 +303,8 @@ public sealed record ExportVideoSegmentPlan
         CropRegion canvasCrop,
         ClipCanvasTransform canvasTransform,
         ImmutableArray<ExportAudioTrackPlan> audioTracks = default,
-        MediaTime? timelineStart = null)
+        MediaTime? timelineStart = null,
+        int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
@@ -310,6 +316,11 @@ public sealed record ExportVideoSegmentPlan
         if (canvasCrop.SourceSize != canvasSize)
         {
             throw new ArgumentException("The canvas crop must use the segment canvas size.", nameof(canvasCrop));
+        }
+        if (playbackSpeedPercent is < SequenceClip.MinimumPlaybackSpeedPercent or
+            > SequenceClip.MaximumPlaybackSpeedPercent)
+        {
+            throw new ArgumentOutOfRangeException(nameof(playbackSpeedPercent));
         }
 
         var embeddedTracks = audioTracks.IsDefault ? [] : audioTracks;
@@ -334,6 +345,7 @@ public sealed record ExportVideoSegmentPlan
         CanvasTransform = canvasTransform;
         AudioTracks = embeddedTracks;
         TimelineStart = timelineStart;
+        PlaybackSpeedPercent = playbackSpeedPercent;
         UsesCanvasTransform = true;
     }
 
@@ -348,6 +360,12 @@ public sealed record ExportVideoSegmentPlan
     public CropRegion CanvasCrop { get; }
 
     public MediaTime? TimelineStart { get; }
+
+    public int PlaybackSpeedPercent { get; }
+
+    public double PlaybackSpeed => PlaybackSpeedPercent / 100d;
+
+    public MediaTime TimelineDuration => SourceRange.Duration * 100 / PlaybackSpeedPercent;
 
     public ClipCanvasTransform CanvasTransform { get; }
 

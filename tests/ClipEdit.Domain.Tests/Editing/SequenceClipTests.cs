@@ -115,6 +115,41 @@ public sealed class SequenceClipTests
         Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithAudioGain(double.NaN));
     }
 
+    [Fact]
+    public void Playback_speed_maps_source_time_to_a_scaled_timeline_and_survives_edits()
+    {
+        var clip = new SequenceClip(
+            Guid.NewGuid(),
+            _sourceId,
+            Range(2, 12),
+            Range(0, 20),
+            Seconds(4),
+            playbackSpeedPercent: 200);
+
+        Assert.Equal(Seconds(5), clip.Duration);
+        Assert.Equal(Seconds(9), clip.TimelineEnd);
+        Assert.Equal(new MediaTime(13, 2), clip.SourceTimeToTimeline(Seconds(7)));
+        Assert.Equal(Seconds(7), clip.TimelineTimeToSource(new MediaTime(13, 2)));
+
+        var (left, right) = clip.Split(Seconds(8), Guid.NewGuid());
+        Assert.Equal(Seconds(3), left.Duration);
+        Assert.Equal(Seconds(7), right.TimelineStart);
+        Assert.Equal(200, right.PlaybackSpeedPercent);
+        Assert.Equal(200, clip.TrimStart(Seconds(4)).PlaybackSpeedPercent);
+        Assert.Equal(200, clip.MoveTo(Seconds(20)).PlaybackSpeedPercent);
+    }
+
+    [Fact]
+    public void Playback_speed_is_bounded()
+    {
+        var clip = CreateClip(0, 10, 0, 10);
+
+        Assert.Equal(25, clip.WithPlaybackSpeed(25).PlaybackSpeedPercent);
+        Assert.Equal(400, clip.WithPlaybackSpeed(400).PlaybackSpeedPercent);
+        Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithPlaybackSpeed(24));
+        Assert.Throws<ArgumentOutOfRangeException>(() => clip.WithPlaybackSpeed(401));
+    }
+
 
     private SequenceClip CreateClip(
         int start,

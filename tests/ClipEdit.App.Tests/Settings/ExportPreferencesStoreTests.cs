@@ -36,8 +36,10 @@ public sealed class ExportPreferencesStoreTests
                         48,
                         43,
                         62,
-                        18),
-                ]);
+                        18,
+                        125),
+                ],
+                150);
 
             Assert.True(store.Save(settings));
             var restored = store.Load();
@@ -81,6 +83,7 @@ public sealed class ExportPreferencesStoreTests
             CustomUseSourceFrameRate = false,
             CustomFrameRate = 50,
             ExportDestination = ExportDestinationMode.Clipboard,
+            PlaybackSpeedPercent = 175,
         };
 
         viewModel.ApplyExportPreferences(preferences);
@@ -94,6 +97,7 @@ public sealed class ExportPreferencesStoreTests
         Assert.False(viewModel.CustomUseSourceFrameRate);
         Assert.Equal(50, viewModel.CustomFrameRate);
         Assert.Equal(ExportDestinationMode.Clipboard, viewModel.ExportDestination);
+        Assert.Equal(175, viewModel.ExportPlaybackSpeedPercent);
         Assert.Equal("Copy", viewModel.ExportActionText);
         Assert.False(viewModel.IsProjectDirty);
     }

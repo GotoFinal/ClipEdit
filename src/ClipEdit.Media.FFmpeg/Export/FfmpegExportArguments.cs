@@ -103,7 +103,8 @@ internal static class FfmpegExportArguments
                 filters.Add(
                     $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
                     $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
-                    $"setpts=PTS-STARTPTS,split=2[vseg{segmentIndex}basein][vseg{segmentIndex}contentin]");
+                    $"{CreateVideoSpeedFilter(segment.PlaybackSpeed)}," +
+                    $"split=2[vseg{segmentIndex}basein][vseg{segmentIndex}contentin]");
                 filters.Add(
                     $"[vseg{segmentIndex}basein]" +
                     $"scale={segment.CanvasSize.Width}:{segment.CanvasSize.Height}:flags=fast_bilinear," +
@@ -127,7 +128,8 @@ internal static class FfmpegExportArguments
                 filters.Add(
                     $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
                     $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
-                    $"setpts=PTS-STARTPTS,crop={segment.Crop.Width}:{segment.Crop.Height}:{segment.Crop.X}:{segment.Crop.Y}," +
+                    $"{CreateVideoSpeedFilter(segment.PlaybackSpeed)}," +
+                    $"crop={segment.Crop.Width}:{segment.Crop.Height}:{segment.Crop.X}:{segment.Crop.Y}," +
                     $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format=yuv420p,setsar=1[vseg{segmentIndex}]");
             }
 
@@ -139,7 +141,7 @@ internal static class FfmpegExportArguments
             if (segment.AudioTracks.IsEmpty)
             {
                 filters.Add(
-                    $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(range.Duration)},aformat=sample_fmts=fltp:channel_layouts=stereo[aseg{segmentIndex}]");
+                    $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(segment.TimelineDuration)},aformat=sample_fmts=fltp:channel_layouts=stereo[aseg{segmentIndex}]");
                 continue;
             }
 
@@ -150,7 +152,7 @@ internal static class FfmpegExportArguments
                     $"[{segmentIndex}:{track.StreamIndex}]" +
                     CreateRangeMask(track) +
                     $"apad,atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
-                    "asetpts=PTS-STARTPTS,aresample=48000," +
+                    $"asetpts=PTS-STARTPTS,{CreateAudioSpeedFilter(segment.PlaybackSpeed)},aresample=48000," +
                     "aformat=sample_fmts=fltp:channel_layouts=stereo," +
                     $"volume={FormatGain(track.GainDb)}dB[seg{segmentIndex}a{trackIndex}]");
             }
@@ -181,10 +183,10 @@ internal static class FfmpegExportArguments
             }
 
             sequenceInputs.Add(($"vseg{segmentIndex}", hasEmbeddedAudio ? $"aseg{segmentIndex}" : null));
-            sequenceCursor = segmentStart + plan.VideoSegments[segmentIndex].SourceRange.Duration;
+            sequenceCursor = segmentStart + plan.VideoSegments[segmentIndex].TimelineDuration;
         }
 
-        var sequenceEnd = plan.SequenceTimelineStart + plan.ExpectedDuration;
+        var sequenceEnd = plan.SequenceTimelineStart + plan.TimelineDuration;
         if (sequenceEnd > sequenceCursor)
         {
             AddGap(sequenceEnd - sequenceCursor);
@@ -239,7 +241,7 @@ internal static class FfmpegExportArguments
                 CreateRangeMask(track) +
                 CreateDelay(track.TimelineOffset) +
                 $"apad,atrim=start={FormatTime(plan.SequenceTimelineStart)}:" +
-                $"end={FormatTime(plan.SequenceTimelineStart + plan.ExpectedDuration)},asetpts=PTS-STARTPTS," +
+                $"end={FormatTime(plan.SequenceTimelineStart + plan.TimelineDuration)},asetpts=PTS-STARTPTS," +
                 "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo," +
                 $"volume={FormatGain(track.GainDb)}dB[{output}]");
             mixInputs.Add(output);
@@ -248,14 +250,26 @@ internal static class FfmpegExportArguments
         AddVideoOutputFilters(filters, "vbase", plan);
         if (mixInputs.Count == 1)
         {
-            filters.Add($"[{mixInputs[0]}]anull[aout]");
+            if (plan.EncodingSettings.PlaybackSpeedPercent == 100)
+            {
+                filters.Add($"[{mixInputs[0]}]anull[aout]");
+            }
+            else
+            {
+                AddAudioOutputFilters(filters, mixInputs[0], plan);
+            }
         }
         else if (mixInputs.Count > 1)
         {
+            var mixedOutput = plan.EncodingSettings.PlaybackSpeedPercent == 100 ? "aout" : "amixed";
             filters.Add(
                 string.Concat(mixInputs.Select(input => $"[{input}]")) +
                 $"amix=inputs={mixInputs.Count}:duration=longest:normalize=0," +
-                "alimiter=limit=0.95[aout]");
+                $"alimiter=limit=0.95[{mixedOutput}]");
+            if (mixedOutput == "amixed")
+            {
+                AddAudioOutputFilters(filters, mixedOutput, plan);
+            }
         }
 
         return string.Join(';', filters);
@@ -334,7 +348,9 @@ internal static class FfmpegExportArguments
                     $"concat=n={rangeCount}:v=0:a=1[{trackInput}]");
             }
 
-            var mixedInput = audioTracks.Length == 1 ? "aout" : $"amixin{trackIndex}";
+            var mixedInput = audioTracks.Length == 1
+                ? plan.EncodingSettings.PlaybackSpeedPercent == 100 ? "aout" : "amixed"
+                : $"amixin{trackIndex}";
             var conform = audioTracks.Length == 1
                 ? string.Empty
                 : "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,";
@@ -344,9 +360,15 @@ internal static class FfmpegExportArguments
 
         if (audioTracks.Length > 1)
         {
+            var mixedOutput = plan.EncodingSettings.PlaybackSpeedPercent == 100 ? "aout" : "amixed";
             filters.Add(
                 string.Concat(Enumerable.Range(0, audioTracks.Length).Select(index => $"[amixin{index}]")) +
-                $"amix=inputs={audioTracks.Length}:duration=longest:normalize=0,alimiter=limit=0.95[aout]");
+                $"amix=inputs={audioTracks.Length}:duration=longest:normalize=0,alimiter=limit=0.95[{mixedOutput}]");
+        }
+
+        if (audioTracks.Length > 0 && plan.EncodingSettings.PlaybackSpeedPercent != 100)
+        {
+            AddAudioOutputFilters(filters, "amixed", plan);
         }
 
         return string.Join(';', filters);
@@ -573,23 +595,64 @@ internal static class FfmpegExportArguments
         string input,
         ExportPlan plan)
     {
+        var speed = plan.EncodingSettings.PlaybackSpeedPercent == 100
+            ? string.Empty
+            : $"setpts=(PTS-STARTPTS)/{FormatScalar(plan.EncodingSettings.PlaybackSpeed)},";
         if (plan.Preset.VideoCodec != VideoCodecFamily.Gif)
         {
             filters.Add(
-                $"[{input}]scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos," +
+                $"[{input}]{speed}scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos," +
                 "format=yuv420p,setsar=1[vout]");
             return;
         }
 
         var maximumColors = MapQuality(plan.EncodingSettings.Quality, 32, 256);
         filters.Add(
-            $"[{input}]fps={plan.EncodingSettings.GifFrameRate}," +
+            $"[{input}]{speed}fps={plan.EncodingSettings.GifFrameRate}," +
             $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos," +
             "split=2[gifsource][gifpaletteinput]");
         filters.Add(
             $"[gifpaletteinput]palettegen=max_colors={maximumColors}:stats_mode=diff[gifpalette]");
         filters.Add(
             "[gifsource][gifpalette]paletteuse=dither=sierra2_4a:diff_mode=rectangle[vout]");
+    }
+
+    private static void AddAudioOutputFilters(
+        ICollection<string> filters,
+        string input,
+        ExportPlan plan)
+    {
+        filters.Add(plan.EncodingSettings.PlaybackSpeedPercent == 100
+            ? $"[{input}]anull[aout]"
+            : $"[{input}]{CreateAudioSpeedFilter(plan.EncodingSettings.PlaybackSpeed)}[aout]");
+    }
+
+    private static string CreateVideoSpeedFilter(double speed) =>
+        speed == 1
+            ? "setpts=PTS-STARTPTS"
+            : $"setpts=(PTS-STARTPTS)/{FormatScalar(speed)}";
+
+    private static string CreateAudioSpeedFilter(double speed)
+    {
+        if (speed == 1)
+        {
+            return "anull";
+        }
+
+        var stages = new List<double>();
+        var remaining = speed;
+        while (remaining > 2)
+        {
+            stages.Add(2);
+            remaining /= 2;
+        }
+        while (remaining < 0.5)
+        {
+            stages.Add(0.5);
+            remaining /= 0.5;
+        }
+        stages.Add(remaining);
+        return string.Join(',', stages.Select(stage => $"atempo={FormatScalar(stage)}"));
     }
 
     private static int MapQuality(int quality, int lowQualityValue, int highQualityValue)

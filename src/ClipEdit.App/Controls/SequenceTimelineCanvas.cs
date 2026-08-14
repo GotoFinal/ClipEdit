@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using ClipEdit.App.ViewModels;
+using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.App.Controls;
 
@@ -501,7 +502,12 @@ public sealed class SequenceTimelineCanvas : Control
             return;
         }
 
-        var step = SelectedClip?.Source.FrameStepSeconds ?? (1d / 30);
+        var step = SelectedClip is { } selected
+            ? selected.Model.SourceDurationToTimeline(
+                new MediaTime(
+                    checked((long)Math.Round(selected.Source.FrameStepSeconds * 1_000_000)),
+                    1_000_000)).TotalSeconds
+            : 1d / 30;
         var playhead = eventArgs.Key switch
         {
             Key.Left => Playhead - step,
@@ -536,8 +542,16 @@ public sealed class SequenceTimelineCanvas : Control
         {
             foreach (var frame in clip.TimelineThumbnails)
             {
-                var frameTimelineStart = clipStart + (frame.Start - clip.SourceStartSeconds);
-                var frameTimelineEnd = clipStart + (frame.End - clip.SourceStartSeconds);
+                var frameTimelineStart = clip.Model.SourceTimeToTimeline(
+                    ToMediaTime(frame.Start)).TotalSeconds;
+                var frameTimelineEnd = clip.Model.SourceTimeToTimeline(
+                    ToMediaTime(frame.End)).TotalSeconds;
+                if (clipStart != clip.TimelineStartSeconds)
+                {
+                    var moveDelta = clipStart - clip.TimelineStartSeconds;
+                    frameTimelineStart += moveDelta;
+                    frameTimelineEnd += moveDelta;
+                }
                 var visibleFrameStart = Math.Max(start, frameTimelineStart);
                 var visibleFrameEnd = Math.Min(end, frameTimelineEnd);
                 if (visibleFrameEnd <= visibleFrameStart)
@@ -634,7 +648,8 @@ public sealed class SequenceTimelineCanvas : Control
             return;
         }
 
-        var sourceDelta = pointerDeltaX * EffectiveViewportDuration / Math.Max(1, Bounds.Width);
+        var timelineDelta = pointerDeltaX * EffectiveViewportDuration / Math.Max(1, Bounds.Width);
+        var sourceDelta = timelineDelta * _dragClip.PlaybackSpeed;
         TrySetTrim(_dragMode == SequenceTimelineDragMode.TrimStart
             ? _dragSourceStart + sourceDelta
             : _dragSourceEnd + sourceDelta);
@@ -706,7 +721,8 @@ public sealed class SequenceTimelineCanvas : Control
                     .DefaultIfEmpty(0)
                     .Max();
                 var earliestSourceStart = _dragClip.SourceStartSeconds -
-                                          (_dragClip.TimelineStartSeconds - previousEnd);
+                                          ((_dragClip.TimelineStartSeconds - previousEnd) *
+                                           _dragClip.PlaybackSpeed);
                 var bounded = Math.Clamp(
                     requestedSourceTime,
                     Math.Max(_dragClip.Model.AvailableRange.Start.TotalSeconds, earliestSourceStart),
@@ -723,7 +739,8 @@ public sealed class SequenceTimelineCanvas : Control
                     .Min();
                 var latestSourceEnd = double.IsPositiveInfinity(nextStart)
                     ? _dragClip.Model.AvailableRange.End.TotalSeconds
-                    : _dragClip.SourceEndSeconds + (nextStart - _dragClip.TimelineEndSeconds);
+                    : _dragClip.SourceEndSeconds +
+                      ((nextStart - _dragClip.TimelineEndSeconds) * _dragClip.PlaybackSpeed);
                 var bounded = Math.Clamp(
                     requestedSourceTime,
                     _dragClip.SourceStartSeconds + frameStep,
@@ -743,6 +760,9 @@ public sealed class SequenceTimelineCanvas : Control
         ((Clips?.Count ?? 0) > 0 && Math.Abs(timelineSeconds - Clips![^1].TimelineEndSeconds) < 0.000001
             ? Clips[^1]
             : null);
+
+    private static MediaTime ToMediaTime(double seconds) =>
+        new(checked((long)Math.Round(seconds * 1_000_000)), 1_000_000);
 
     private TimelineTrimHit? FindTrimHit(Point point)
     {

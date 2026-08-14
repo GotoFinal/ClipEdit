@@ -741,6 +741,45 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Clip_speed_ripples_later_clips_and_global_export_speed_scales_the_plan()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        await viewModel.ImportFilesAsync(
+        [
+            Path.Combine(Path.GetTempPath(), "speed-first.mkv"),
+            Path.Combine(Path.GetTempPath(), "speed-second.mkv"),
+        ]);
+        var first = viewModel.VideoClips[0];
+        var second = viewModel.VideoClips[1];
+        viewModel.SelectedVideoClip = first;
+
+        Assert.True(viewModel.SetSelectedClipPlaybackSpeed(200));
+
+        Assert.Equal(30, first.DurationSeconds);
+        Assert.Equal(30, second.TimelineStartSeconds);
+        Assert.Equal(90, viewModel.SequenceDurationSeconds);
+        Assert.Equal(200, viewModel.SelectedClipPlaybackSpeedPercent);
+
+        viewModel.SequenceSelectionStartSeconds = 0;
+        viewModel.SequenceSelectionEndSeconds = 90;
+        viewModel.ExportPlaybackSpeedPercent = 50;
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "speed-output.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(200, renderer.Plan!.VideoSegments[0].PlaybackSpeedPercent);
+        Assert.Equal(100, renderer.Plan.VideoSegments[1].PlaybackSpeedPercent);
+        Assert.Equal(50, renderer.Plan.EncodingSettings.PlaybackSpeedPercent);
+        Assert.Equal(new MediaTime(90, 1), renderer.Plan.TimelineDuration);
+        Assert.Equal(new MediaTime(180, 1), renderer.Plan.ExpectedDuration);
+        var document = viewModel.CreateProjectDocument();
+        Assert.Equal(200, document.VideoClips![0].PlaybackSpeedPercent);
+        Assert.Equal(50, document.ExportSettings!.PlaybackSpeedPercent);
+    }
+
+    [Fact]
     public async Task Dropping_a_clip_on_an_occupied_sequence_position_inserts_it_there()
     {
         var firstPath = Path.Combine(Path.GetTempPath(), "insert-first.mkv");
@@ -890,6 +929,7 @@ public sealed class MainWindowViewModelTests
         viewModel.CustomFrameRate = 60;
         viewModel.ExportScalePercent = 55;
         viewModel.ExportQuality = 64;
+        viewModel.ExportPlaybackSpeedPercent = 150;
         viewModel.CustomPresetName = "Small silent VP9";
 
         Assert.True(viewModel.SaveCustomExportPreset());
@@ -898,6 +938,7 @@ public sealed class MainWindowViewModelTests
 
         viewModel.CustomExportContainer = ExportContainerChoice.Mp4;
         viewModel.ExportScalePercent = 100;
+        viewModel.ExportPlaybackSpeedPercent = 100;
         Assert.True(viewModel.LoadSelectedCustomExportPreset());
 
         Assert.Same(ExportContainerChoice.Matroska, viewModel.CustomExportContainer);
@@ -906,6 +947,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(60, viewModel.CustomFrameRate);
         Assert.Equal(55, viewModel.ExportScalePercent);
         Assert.Equal(64, viewModel.ExportQuality);
+        Assert.Equal(150, viewModel.ExportPlaybackSpeedPercent);
         Assert.True(viewModel.DeleteSelectedCustomExportPreset());
         Assert.Empty(viewModel.SavedExportPresets);
     }

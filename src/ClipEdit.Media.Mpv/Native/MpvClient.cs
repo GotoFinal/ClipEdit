@@ -37,6 +37,7 @@ internal sealed class MpvClient : IDisposable
             SetOption("audio-file-auto", "no");
             SetOption("keep-open", "yes");
             SetOption("pause", "yes");
+            SetOption("audio-pitch-correction", "yes");
             SetOption("vo", "libmpv");
             SetOption("hwdec", "auto");
             SetOption("hr-seek-framedrop", "yes");
@@ -157,6 +158,22 @@ internal sealed class MpvClient : IDisposable
         }
 
         SetProperty("volume", (volume * 100).ToString("R", CultureInfo.InvariantCulture));
+    }
+
+    public void SetPlaybackSpeed(double speed)
+    {
+        var property = GetPlaybackSpeedProperty(speed);
+        SetProperty(property.Name, property.Value);
+    }
+
+    internal static (string Name, string Value) GetPlaybackSpeedProperty(double speed)
+    {
+        if (!double.IsFinite(speed) || speed is < 0.25 or > 4)
+        {
+            throw new ArgumentOutOfRangeException(nameof(speed), "Preview speed must be between 0.25× and 4×.");
+        }
+
+        return ("speed", speed.ToString("R", CultureInfo.InvariantCulture));
     }
 
     public void SetVideoTransform(PreviewVideoTransform transform)

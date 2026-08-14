@@ -126,6 +126,30 @@ public sealed partial class MainWindowViewModel
         set => GifFrameRate = (int)Math.Round(value, MidpointRounding.AwayFromZero);
     }
 
+    public int ExportPlaybackSpeedPercent
+    {
+        get => _exportPlaybackSpeedPercent;
+        set
+        {
+            var next = Math.Clamp(
+                value,
+                ExportEncodingSettings.MinimumPlaybackSpeedPercent,
+                ExportEncodingSettings.MaximumPlaybackSpeedPercent);
+            if (SetProperty(ref _exportPlaybackSpeedPercent, next))
+            {
+                OnPropertyChanged(nameof(ExportPlaybackSpeedSliderValue));
+                RaiseExportStateChanged();
+                MarkProjectDirty("export-playback-speed");
+            }
+        }
+    }
+
+    public double ExportPlaybackSpeedSliderValue
+    {
+        get => ExportPlaybackSpeedPercent;
+        set => ExportPlaybackSpeedPercent = (int)Math.Round(value, MidpointRounding.AwayFromZero);
+    }
+
     public bool IsGifExport => GetEffectiveExportPreset().VideoCodec == VideoCodecFamily.Gif;
 
     public string ExportOutputSizeText
@@ -149,16 +173,20 @@ public sealed partial class MainWindowViewModel
                 ExportDestinationMode.FileAndClipboard => "File + clipboard · ",
                 _ => string.Empty,
             };
+            var speed = ExportPlaybackSpeedPercent == 100
+                ? string.Empty
+                : $" · {ExportPlaybackSpeedPercent}% speed";
             return IsGifExport
-                ? $"{destination}{ExportOutputSizeText} · quality {ExportQuality}% · {GifFrameRate} fps"
-                : $"{destination}{ExportOutputSizeText} · quality {ExportQuality}%";
+                ? $"{destination}{ExportOutputSizeText} · quality {ExportQuality}% · {GifFrameRate} fps{speed}"
+                : $"{destination}{ExportOutputSizeText} · quality {ExportQuality}%{speed}";
         }
     }
 
     private ExportEncodingSettings CurrentExportEncodingSettings => new(
         ExportQuality,
         ExportScalePercent,
-        GifFrameRate);
+        GifFrameRate,
+        ExportPlaybackSpeedPercent);
 
     public bool HasExportBlockingIssue => !IsExporting && ExportAvailabilityText != "Ready to export";
 

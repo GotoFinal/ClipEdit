@@ -12,7 +12,7 @@ public sealed record ProjectDocument(
     ProjectCanvasDocument? Canvas = null,
     ProjectExportSettingsDocument? ExportSettings = null)
 {
-    public const int CurrentSchemaVersion = 9;
+    public const int CurrentSchemaVersion = 10;
 }
 
 public sealed record ProjectExportSettingsDocument(
@@ -23,7 +23,8 @@ public sealed record ProjectExportSettingsDocument(
     VideoCodecFamily CustomVideoCodec = VideoCodecFamily.H264,
     AudioCodecFamily CustomAudioCodec = AudioCodecFamily.Aac,
     bool CustomUseSourceFrameRate = true,
-    int CustomFrameRate = 30);
+    int CustomFrameRate = 30,
+    int PlaybackSpeedPercent = 100);
 
 public sealed record ProjectMediaDocument(
     string SourcePath,
@@ -64,7 +65,8 @@ public sealed record ProjectVideoClipDocument(
     long TimelineStartNumerator = 0,
     int TimelineStartDenominator = 1,
     double AudioGainDb = 0,
-    IReadOnlyList<int>? ExcludedAudioLaneIndices = null);
+    IReadOnlyList<int>? ExcludedAudioLaneIndices = null,
+    int PlaybackSpeedPercent = 100);
 
 public sealed record ProjectCropSettingsDocument(
     string PresetId,

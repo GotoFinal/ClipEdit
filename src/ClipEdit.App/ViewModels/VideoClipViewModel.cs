@@ -207,6 +207,26 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     public string AudioGainText =>
         AudioGainDb <= -59.95 ? "−∞ dB" : $"{AudioGainDb:+0.0;-0.0;0.0} dB";
 
+    public int PlaybackSpeedPercent
+    {
+        get => Model.PlaybackSpeedPercent;
+        internal set
+        {
+            var bounded = Math.Clamp(
+                value,
+                SequenceClip.MinimumPlaybackSpeedPercent,
+                SequenceClip.MaximumPlaybackSpeedPercent);
+            if (bounded != Model.PlaybackSpeedPercent)
+            {
+                ReplaceModel(Model.WithPlaybackSpeed(bounded));
+            }
+        }
+    }
+
+    public double PlaybackSpeed => Model.PlaybackSpeed;
+
+    public string PlaybackSpeedText => $"{PlaybackSpeedPercent}%";
+
     public int CanvasRotationDegrees
     {
         get => CanvasTransform.RotationDegrees;
@@ -402,6 +422,9 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SourceRangeText));
         OnPropertyChanged(nameof(AudioGainDb));
         OnPropertyChanged(nameof(AudioGainText));
+        OnPropertyChanged(nameof(PlaybackSpeedPercent));
+        OnPropertyChanged(nameof(PlaybackSpeed));
+        OnPropertyChanged(nameof(PlaybackSpeedText));
     }
 
     private MediaTime QuantizeSeconds(double seconds)

@@ -13,6 +13,86 @@ public sealed class FfmpegExportRendererLocalTests
 {
     [Fact]
     [Trait("Category", "LocalMedia")]
+    public async Task Renderer_applies_clip_and_global_speed_to_video_and_audio()
+    {
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
+        var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+        var ffprobePath = FfprobeExecutableLocator.Find();
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            !File.Exists(sourcePath) ||
+            ffmpegPath is null ||
+            ffprobePath is null)
+        {
+            return;
+        }
+
+        var probe = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(sourcePath);
+        if (probe.Duration is null || probe.Duration < new MediaTime(2, 1))
+        {
+            return;
+        }
+
+        var video = probe.VideoStreams.First();
+        var outputSize = new PixelSize(
+            Math.Min(video.OrientedSize.Width, 320),
+            Math.Min(video.OrientedSize.Height, 180));
+        var crop = new CropRegion(
+            video.OrientedSize,
+            0,
+            0,
+            outputSize.Width,
+            outputSize.Height);
+        var audioTracks = probe.AudioStreams.FirstOrDefault() is { } audio
+            ? ImmutableArray.Create(new ExportAudioTrackPlan(audio.Index, 0))
+            : ImmutableArray<ExportAudioTrackPlan>.Empty;
+        var destinationPath = Path.Combine(
+            Path.GetTempPath(),
+            $"clipedit-speed-{Guid.NewGuid():N}.mp4");
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    sourcePath,
+                    video.Index,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    video.OrientedSize,
+                    crop,
+                    ClipCanvasTransform.Identity,
+                    audioTracks,
+                    MediaTime.Zero,
+                    playbackSpeedPercent: 150),
+            ],
+            outputSize,
+            destinationPath,
+            new ExportPreset(
+                "mp4-local-speed",
+                "MP4 local speed",
+                ".mp4",
+                ExportContainer.Mp4,
+                VideoCodecFamily.H264,
+                AudioCodecFamily.Aac,
+                requiresEvenDimensions: true),
+            encodingSettings: new ExportEncodingSettings(playbackSpeedPercent: 200));
+
+        try
+        {
+            var result = await new FfmpegExportRenderer(ffmpegPath).RenderAsync(plan);
+            var rendered = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(result.DestinationPath);
+
+            Assert.True(result.FileSizeBytes > 0);
+            Assert.InRange(rendered.Duration!.Value.TotalSeconds, 0.5, 0.9);
+            if (!audioTracks.IsEmpty)
+            {
+                Assert.NotEmpty(rendered.AudioStreams);
+            }
+        }
+        finally
+        {
+            File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "LocalMedia")]
     public async Task Renderer_exports_a_scaled_palette_gif_from_the_opt_in_sample()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");

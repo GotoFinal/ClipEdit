@@ -168,10 +168,11 @@ public sealed class JsonProjectStoreTests
                     0.75,
                     TimelineStartNumerator: 3,
                     TimelineStartDenominator: 2,
-                    AudioGainDb: -5.5),
+                    AudioGainDb: -5.5,
+                    PlaybackSpeedPercent: 160),
             ],
             new ProjectCropSettingsDocument("1-1", true),
             new ProjectCanvasDocument(1_920, 1_080, 420, 0, 1_080, 1_080),
-            new ProjectExportSettingsDocument(62, 47, 18));
+            new ProjectExportSettingsDocument(62, 47, 18, PlaybackSpeedPercent: 75));
     }
 }

@@ -240,6 +240,39 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Fact]
+    public void Clip_and_global_playback_speed_scale_video_duration_and_pitch_preserved_audio()
+    {
+        var canvas = new PixelSize(1_280, 720);
+        var crop = CropRegion.FullFrame(canvas);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    "C:\\source.mkv",
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(8, 1)),
+                    canvas,
+                    crop,
+                    ClipCanvasTransform.Identity,
+                    [new ExportAudioTrackPlan(1, 0)],
+                    MediaTime.Zero,
+                    playbackSpeedPercent: 200),
+            ],
+            canvas,
+            "C:\\sped-up.mp4",
+            Mp4Compatible,
+            encodingSettings: new ExportEncodingSettings(playbackSpeedPercent: 400));
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.Equal(new MediaTime(4, 1), plan.TimelineDuration);
+        Assert.Equal(new MediaTime(1, 1), plan.ExpectedDuration);
+        Assert.Contains("trim=start=0:end=8,setpts=(PTS-STARTPTS)/2", graph);
+        Assert.Contains("asetpts=PTS-STARTPTS,atempo=2,aresample=48000", graph);
+        Assert.Contains("[vbase]setpts=(PTS-STARTPTS)/4,scale=1280:720", graph);
+        Assert.Contains("[abase]atempo=2,atempo=2[aout]", graph);
+    }
+
+    [Fact]
     public void Matched_parameters_use_bitrate_mode_rational_frame_rate_and_matroska_muxing()
     {
         var preset = new ExportPreset(

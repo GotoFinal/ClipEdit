@@ -389,6 +389,40 @@
                               Value="{Binding ExportQualitySliderValue, Mode=TwoWay}" />
                         </Grid>
 
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,72" ColumnSpacing="8" RowSpacing="2">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Playback speed" />
+                          <NumericUpDown
+                              Grid.Column="1"
+                              Height="26"
+                              Padding="6,0"
+                              Minimum="25"
+                              Maximum="400"
+                              Increment="5"
+                              FormatString="0"
+                              ShowButtonSpinner="False"
+                              HorizontalContentAlignment="Right"
+                              Background="#151820"
+                              BorderBrush="#555C6C"
+                              Foreground="#F5F5F8"
+                              Value="{Binding ExportPlaybackSpeedPercent, Mode=TwoWay}">
+                            <NumericUpDown.InnerRightContent>
+                              <TextBlock Margin="3,0,5,0" VerticalAlignment="Center" Foreground="#A8AFC0" Text="%" />
+                            </NumericUpDown.InnerRightContent>
+                          </NumericUpDown>
+                          <Slider
+                              Grid.Row="1"
+                              Grid.ColumnSpan="2"
+                              Height="20"
+                              Margin="8,0"
+                              Minimum="25"
+                              Maximum="400"
+                              SmallChange="5"
+                              LargeChange="25"
+                              TickFrequency="5"
+                              IsSnapToTickEnabled="True"
+                              Value="{Binding ExportPlaybackSpeedSliderValue, Mode=TwoWay}" />
+                        </Grid>
+
                         <Grid
                             RowDefinitions="Auto,Auto"
                             ColumnDefinitions="*,72"
@@ -818,6 +852,7 @@
                       IsPaused="True"
                       PlaybackCompleted="LivePreview_PlaybackCompleted"
                       PlaybackRanges="{Binding SelectedVideoClip.PlaybackRanges}"
+                      PlaybackSpeed="{Binding SelectedVideoClip.PlaybackSpeed}"
                       Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
                       SourceVideoSize="{Binding SelectedVideoClip.VideoSize}"
                       SourcePath="{Binding SelectedMedia.SourcePath}" />
@@ -1132,7 +1167,7 @@
               </Grid>
 
               <Grid
-                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,Auto,*"
+                  ColumnDefinitions="Auto,Auto,58,Auto,58,Auto,58,Auto,58,Auto,58,Auto,66,Auto,Auto,*"
                   ColumnSpacing="5"
                   IsVisible="{Binding ShowAdvancedClipControls}">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="CLIP" />
@@ -1146,21 +1181,37 @@
                 <TextBox Grid.Column="8" Text="{Binding SelectedVideoClip.CanvasScaleYPercent, Mode=TwoWay}" />
                 <TextBlock Grid.Column="9" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="ROTATE °" />
                 <TextBox Grid.Column="10" Text="{Binding SelectedVideoClip.CanvasRotationDegrees, Mode=TwoWay}" />
+                <TextBlock Grid.Column="11" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="SPEED" />
+                <NumericUpDown
+                    Grid.Column="12"
+                    Height="26"
+                    Padding="4,0"
+                    Minimum="25"
+                    Maximum="400"
+                    Increment="5"
+                    FormatString="0"
+                    ShowButtonSpinner="False"
+                    HorizontalContentAlignment="Right"
+                    Value="{Binding SelectedClipPlaybackSpeedPercent, Mode=TwoWay}">
+                  <NumericUpDown.InnerRightContent>
+                    <TextBlock Margin="2,0,3,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="%" />
+                  </NumericUpDown.InnerRightContent>
+                </NumericUpDown>
                 <Button
-                    Grid.Column="11"
+                    Grid.Column="13"
                     Padding="9,5"
                     Classes="secondary"
                     Click="FillClipCanvas_Click"
                     Content="Fill"
                     ToolTip.Tip="Center and fill the canvas" />
                 <Button
-                    Grid.Column="12"
+                    Grid.Column="14"
                     Padding="9,5"
                     Classes="secondary"
                     Click="FitClipCanvas_Click"
                     Content="Fit"
                     ToolTip.Tip="Center and show the whole clip" />
-                <TextBlock Grid.Column="13" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
+                <TextBlock Grid.Column="15" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding CanvasSizeText}" />
               </Grid>
 
               <Border

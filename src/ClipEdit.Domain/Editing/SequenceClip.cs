@@ -8,13 +8,18 @@ namespace ClipEdit.Domain.Editing;
 /// </summary>
 public sealed record SequenceClip
 {
+    public const int MinimumPlaybackSpeedPercent = 25;
+    public const int MaximumPlaybackSpeedPercent = 400;
+    public const int DefaultPlaybackSpeedPercent = 100;
+
     public SequenceClip(
         Guid id,
         Guid sourceId,
         MediaRange sourceRange,
         MediaRange availableRange,
         MediaTime timelineStart = default,
-        double audioGainDb = 0)
+        double audioGainDb = 0,
+        int playbackSpeedPercent = DefaultPlaybackSpeedPercent)
     {
         if (id == Guid.Empty)
         {
@@ -50,12 +55,18 @@ public sealed record SequenceClip
             throw new ArgumentOutOfRangeException(nameof(audioGainDb));
         }
 
+        if (playbackSpeedPercent is < MinimumPlaybackSpeedPercent or > MaximumPlaybackSpeedPercent)
+        {
+            throw new ArgumentOutOfRangeException(nameof(playbackSpeedPercent));
+        }
+
         Id = id;
         SourceId = sourceId;
         SourceRange = sourceRange;
         AudioGainDb = audioGainDb;
         AvailableRange = availableRange;
         TimelineStart = timelineStart;
+        PlaybackSpeedPercent = playbackSpeedPercent;
     }
 
     public Guid Id { get; }
@@ -70,9 +81,13 @@ public sealed record SequenceClip
 
     public MediaTime TimelineStart { get; }
 
+    public int PlaybackSpeedPercent { get; }
+
+    public double PlaybackSpeed => PlaybackSpeedPercent / 100d;
+
     public MediaTime TimelineEnd => TimelineStart + Duration;
 
-    public MediaTime Duration => SourceRange.Duration;
+    public MediaTime Duration => SourceDurationToTimeline(SourceRange.Duration);
 
     public bool HasHeadHandle => SourceRange.Start > AvailableRange.Start;
 
@@ -95,8 +110,9 @@ public sealed record SequenceClip
                 SourceId,
                 new MediaRange(sourceTime, SourceRange.End),
                 AvailableRange,
-                TimelineStart + (sourceTime - SourceRange.Start),
-                AudioGainDb));
+                TimelineStart + SourceDurationToTimeline(sourceTime - SourceRange.Start),
+                AudioGainDb,
+                PlaybackSpeedPercent));
     }
 
     public IReadOnlyList<SequenceClip> Remove(MediaRange removal, Guid rightClipId)
@@ -125,8 +141,9 @@ public sealed record SequenceClip
                     SourceId,
                     new MediaRange(end, SourceRange.End),
                     AvailableRange,
-                    TimelineStart + (end - SourceRange.Start),
-                    AudioGainDb),
+                    TimelineStart + SourceDurationToTimeline(end - SourceRange.Start),
+                    AudioGainDb,
+                    PlaybackSpeedPercent),
             ];
         }
 
@@ -169,21 +186,68 @@ public sealed record SequenceClip
     {
         return timelineStart == TimelineStart
             ? this
-            : new SequenceClip(Id, SourceId, SourceRange, AvailableRange, timelineStart, AudioGainDb);
+            : new SequenceClip(
+                Id,
+                SourceId,
+                SourceRange,
+                AvailableRange,
+                timelineStart,
+                AudioGainDb,
+                PlaybackSpeedPercent);
     }
 
     public SequenceClip WithAudioGain(double audioGainDb)
     {
         return audioGainDb == AudioGainDb
             ? this
-            : new SequenceClip(Id, SourceId, SourceRange, AvailableRange, TimelineStart, audioGainDb);
+            : new SequenceClip(
+                Id,
+                SourceId,
+                SourceRange,
+                AvailableRange,
+                TimelineStart,
+                audioGainDb,
+                PlaybackSpeedPercent);
     }
+
+    public SequenceClip WithPlaybackSpeed(int playbackSpeedPercent)
+    {
+        return playbackSpeedPercent == PlaybackSpeedPercent
+            ? this
+            : new SequenceClip(
+                Id,
+                SourceId,
+                SourceRange,
+                AvailableRange,
+                TimelineStart,
+                AudioGainDb,
+                playbackSpeedPercent);
+    }
+
+    public MediaTime SourceDurationToTimeline(MediaTime sourceDuration) =>
+        sourceDuration * 100 / PlaybackSpeedPercent;
+
+    public MediaTime TimelineDurationToSource(MediaTime timelineDuration) =>
+        timelineDuration * PlaybackSpeedPercent / 100;
+
+    public MediaTime SourceTimeToTimeline(MediaTime sourceTime) =>
+        TimelineStart + SourceDurationToTimeline(sourceTime - SourceRange.Start);
+
+    public MediaTime TimelineTimeToSource(MediaTime timelineTime) =>
+        SourceRange.Start + TimelineDurationToSource(timelineTime - TimelineStart);
 
     private SequenceClip WithRange(MediaRange range)
     {
-        var proposedTimelineStart = TimelineStart + (range.Start - SourceRange.Start);
+        var proposedTimelineStart = TimelineStart + SourceDurationToTimeline(range.Start - SourceRange.Start);
         var timelineStart = proposedTimelineStart < MediaTime.Zero ? MediaTime.Zero : proposedTimelineStart;
-        return new SequenceClip(Id, SourceId, range, AvailableRange, timelineStart, AudioGainDb);
+        return new SequenceClip(
+            Id,
+            SourceId,
+            range,
+            AvailableRange,
+            timelineStart,
+            AudioGainDb,
+            PlaybackSpeedPercent);
     }
 
     private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;

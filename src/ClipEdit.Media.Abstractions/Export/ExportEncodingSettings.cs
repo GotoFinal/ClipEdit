@@ -1,4 +1,5 @@
 using ClipEdit.Domain.Geometry;
+using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.Media.Export;
 
@@ -11,13 +12,17 @@ public sealed record ExportEncodingSettings
     public const int DefaultQuality = 75;
     public const int DefaultScalePercent = 100;
     public const int DefaultGifFrameRate = 15;
+    public const int MinimumPlaybackSpeedPercent = 25;
+    public const int MaximumPlaybackSpeedPercent = 400;
+    public const int DefaultPlaybackSpeedPercent = 100;
 
     public static ExportEncodingSettings Default { get; } = new();
 
     public ExportEncodingSettings(
         int quality = DefaultQuality,
         int scalePercent = DefaultScalePercent,
-        int gifFrameRate = DefaultGifFrameRate)
+        int gifFrameRate = DefaultGifFrameRate,
+        int playbackSpeedPercent = DefaultPlaybackSpeedPercent)
     {
         if (quality is < 1 or > 100)
         {
@@ -31,10 +36,15 @@ public sealed record ExportEncodingSettings
         {
             throw new ArgumentOutOfRangeException(nameof(gifFrameRate));
         }
+        if (playbackSpeedPercent is < MinimumPlaybackSpeedPercent or > MaximumPlaybackSpeedPercent)
+        {
+            throw new ArgumentOutOfRangeException(nameof(playbackSpeedPercent));
+        }
 
         Quality = quality;
         ScalePercent = scalePercent;
         GifFrameRate = gifFrameRate;
+        PlaybackSpeedPercent = playbackSpeedPercent;
     }
 
     public int Quality { get; }
@@ -42,6 +52,13 @@ public sealed record ExportEncodingSettings
     public int ScalePercent { get; }
 
     public int GifFrameRate { get; }
+
+    public int PlaybackSpeedPercent { get; }
+
+    public double PlaybackSpeed => PlaybackSpeedPercent / 100d;
+
+    public MediaTime ApplyPlaybackSpeed(MediaTime duration) =>
+        duration * 100 / PlaybackSpeedPercent;
 
     public PixelSize CalculateOutputSize(PixelSize cropSize, bool requiresEvenDimensions)
     {

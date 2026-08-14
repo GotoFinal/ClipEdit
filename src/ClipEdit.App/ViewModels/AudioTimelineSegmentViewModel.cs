@@ -39,7 +39,9 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
 
     public MediaTime TimelineStart { get; }
 
-    public MediaTime TimelineEnd => TimelineStart + SourceRange.Duration;
+    public MediaTime TimelineDuration => Clip?.Model.SourceDurationToTimeline(SourceRange.Duration) ?? SourceRange.Duration;
+
+    public MediaTime TimelineEnd => TimelineStart + TimelineDuration;
 
     public MediaRange SourceRange { get; }
 
@@ -54,6 +56,14 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
     public double SourceStartSeconds => SourceRange.Start.TotalSeconds;
 
     public double SourceEndSeconds => SourceRange.End.TotalSeconds;
+
+    public MediaTime TimelineTimeToSource(MediaTime timelineTime) => Clip is null
+        ? SourceRange.Start + (timelineTime - TimelineStart)
+        : SourceRange.Start + Clip.Model.TimelineDurationToSource(timelineTime - TimelineStart);
+
+    public MediaTime SourceTimeToTimeline(MediaTime sourceTime) => Clip is null
+        ? TimelineStart + (sourceTime - SourceRange.Start)
+        : TimelineStart + Clip.Model.SourceDurationToTimeline(sourceTime - SourceRange.Start);
 
     public bool IsGainAdjustable => Clip is not null;
 
@@ -87,6 +97,14 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
         {
             OnPropertyChanged(nameof(GainDb));
             OnPropertyChanged(nameof(GainText));
+        }
+        else if (eventArgs.PropertyName is nameof(VideoClipViewModel.PlaybackSpeedPercent) or
+                 nameof(VideoClipViewModel.Duration) or
+                 nameof(VideoClipViewModel.TimelineEnd))
+        {
+            OnPropertyChanged(nameof(TimelineDuration));
+            OnPropertyChanged(nameof(TimelineEnd));
+            OnPropertyChanged(nameof(TimelineEndSeconds));
         }
     }
 }

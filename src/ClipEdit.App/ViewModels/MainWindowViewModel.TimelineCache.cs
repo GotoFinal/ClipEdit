@@ -187,8 +187,8 @@ public sealed partial class MainWindowViewModel
                 (int)Math.Ceiling(viewportThumbnailCount * visibleDuration / viewportDuration),
                 1,
                 viewportThumbnailCount);
-            var sourceVisibleStart = clip.SourceStartSeconds + (visibleStart - clip.TimelineStartSeconds);
-            var sourceVisibleEnd = clip.SourceStartSeconds + (visibleEnd - clip.TimelineStartSeconds);
+            var sourceVisibleStart = clip.Model.TimelineTimeToSource(ToMediaTime(visibleStart)).TotalSeconds;
+            var sourceVisibleEnd = clip.Model.TimelineTimeToSource(ToMediaTime(visibleEnd)).TotalSeconds;
             var cellDuration = (sourceVisibleEnd - sourceVisibleStart) / count;
             for (var index = 0; index < count; index++)
             {
@@ -320,8 +320,7 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
-        var sourceTime = clip.SourceStart +
-                         (timelineTime - clip.TimelineStart);
+        var sourceTime = clip.Model.TimelineTimeToSource(timelineTime);
         var boundedSourceSeconds = Math.Min(sourceTime.TotalSeconds, clip.SourceEndSeconds);
         var exactHoverBucketDuration = Math.Max(clip.Source.FrameStepSeconds, 1d / 120d);
         var exactKey = TimelineFrameCacheKey.Create(
