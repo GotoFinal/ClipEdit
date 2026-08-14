@@ -211,7 +211,7 @@ if ! "$ffmpeg_binary" -version | head -n 1 | grep -E "^ffmpeg version n?${escape
 fi
 encoders="$($ffmpeg_binary -hide_banner -encoders 2>&1)"
 for encoder in libx264 libvpx-vp9 aac libopus; do
-    if ! grep -E "[[:space:]]$encoder[[:space:]]" <<<"$encoders" >/dev/null; then
+    if ! grep -E "[[:space:]]${encoder}[[:space:]]" <<<"$encoders" >/dev/null; then
         echo "The Linux FFmpeg binary is missing encoder $encoder." >&2
         exit 1
     fi
@@ -278,14 +278,15 @@ for dependency_name in "${!visited_dependencies[@]}"; do
     printf 'native/%s\t%s\n' "$dependency_name" "${visited_dependencies[$dependency_name]}" >> "$payload_origin_map"
 done
 
-patchelf --set-rpath '$ORIGIN/../../native' "$staging_path/tools/ffmpeg/ffmpeg"
-patchelf --set-rpath '$ORIGIN/../../native' "$staging_path/tools/ffmpeg/ffprobe"
-patchelf --set-rpath '$ORIGIN/native' "$staging_path/libmpv.so.2"
+readonly elf_origin="\$ORIGIN"
+patchelf --set-rpath "${elf_origin}/../../native" "$staging_path/tools/ffmpeg/ffmpeg"
+patchelf --set-rpath "${elf_origin}/../../native" "$staging_path/tools/ffmpeg/ffprobe"
+patchelf --set-rpath "${elf_origin}/native" "$staging_path/libmpv.so.2"
 for library_name in "${platform_library_names[@]}"; do
-    patchelf --set-rpath '$ORIGIN/native' "$staging_path/$library_name"
+    patchelf --set-rpath "${elf_origin}/native" "$staging_path/$library_name"
 done
 while IFS= read -r native_library; do
-    patchelf --set-rpath '$ORIGIN' "$native_library"
+    patchelf --set-rpath "$elf_origin" "$native_library"
 done < <(find "$staging_path/native" -maxdepth 1 -type f -name '*.so*' -print)
 
 install -m 0644 "$workspace_root/LICENSE" "$staging_path/LICENSE.txt"

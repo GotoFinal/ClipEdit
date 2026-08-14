@@ -75,7 +75,7 @@ while IFS=$'\t' read -r name revision; do
 
     license_count=0
     while IFS= read -r -d '' license_path; do
-        relative_path="${license_path#${source_directory}/}"
+        relative_path="${license_path#"${source_directory}"/}"
         destination="${license_root}/${name}/${relative_path}"
         mkdir -p -- "$(dirname -- "$destination")"
         cp -a -- "$license_path" "$destination"
@@ -91,7 +91,7 @@ while IFS=$'\t' read -r name revision; do
     # files verbatim in the notice bundle instead of guessing a license.
     if (( license_count == 0 )); then
         while IFS= read -r -d '' notice_path; do
-            relative_path="${notice_path#${source_directory}/}"
+            relative_path="${notice_path#"${source_directory}"/}"
             destination="${license_root}/${name}/source-notices/${relative_path}"
             mkdir -p -- "$(dirname -- "$destination")"
             cp -a -- "$notice_path" "$destination"

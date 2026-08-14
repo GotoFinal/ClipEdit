@@ -6,9 +6,10 @@ if [[ $# -ne 3 ]]; then
     exit 2
 fi
 
-readonly payload_root="$(realpath -- "$1")"
-readonly recipe_directory="$(realpath -- "$2")"
-readonly output_directory="$(realpath -m -- "$3")"
+payload_root="$(realpath -- "$1")"
+recipe_directory="$(realpath -- "$2")"
+output_directory="$(realpath -m -- "$3")"
+readonly payload_root recipe_directory output_directory
 readonly cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/clipedit/compliance/linux-source"
 readonly native_build_root="${CLIPEDIT_LINUX_NATIVE_BUILD_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/clipedit/native/linux-x64}/mpv-build"
 readonly provenance_root="${payload_root}/licenses/linux-system-provenance"
@@ -84,7 +85,7 @@ for entry in "${source_components[@]}"; do
 
     license_count=0
     while IFS= read -r -d '' license_path; do
-        relative_path="${license_path#${repository}/}"
+        relative_path="${license_path#"${repository}"/}"
         destination="${license_root}/${name}/${relative_path}"
         mkdir -p -- "$(dirname -- "$destination")"
         cp -a -- "$license_path" "$destination"
@@ -103,7 +104,7 @@ done
 debian_source_root="${source_root}/ubuntu-22.04-source-packages"
 mkdir -p -- "$debian_source_root" "${license_root}/ubuntu-22.04"
 declare -A downloaded_sources=()
-while IFS=$'\t' read -r payload_path payload_hash origin_path binary_package binary_version \
+while IFS=$'\t' read -r payload_path _payload_hash _origin_path _binary_package _binary_version \
     source_package source_version copyright_file; do
     [[ "$payload_path" == 'payloadPath' ]] && continue
     source_key="${source_package}|${source_version}"

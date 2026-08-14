@@ -6,9 +6,10 @@ if [[ $# -ne 3 ]]; then
     exit 2
 fi
 
-readonly payload_root="$(realpath -- "$1")"
-readonly origin_map="$(realpath -- "$2")"
-readonly output_root="$(realpath -m -- "$3")"
+payload_root="$(realpath -- "$1")"
+origin_map="$(realpath -- "$2")"
+output_root="$(realpath -m -- "$3")"
+readonly payload_root origin_map output_root
 
 if [[ ! -x "${payload_root}/tools/ffmpeg/ffmpeg" ||
       ! -x "${payload_root}/tools/ffmpeg/ffprobe" ||
@@ -31,14 +32,13 @@ while IFS=$'\t' read -r mapped_payload_path mapped_origin_path; do
 done < "$origin_map"
 
 while IFS= read -r -d '' payload_path; do
-    relative_path="${payload_path#${payload_root}/}"
+    relative_path="${payload_path#"${payload_root}"/}"
     case "$relative_path" in
         tools/ffmpeg/ffmpeg|tools/ffmpeg/ffprobe|libmpv.so.2)
             continue
             ;;
     esac
 
-    payload_name="$(basename -- "$payload_path")"
     payload_hash="$(sha256sum "$payload_path" | awk '{ print $1 }')"
     matched_path="${origin_paths[$relative_path]:-}"
     if [[ -z "$matched_path" || ! -f "$matched_path" ]]; then
@@ -100,8 +100,15 @@ if (( record_count == 0 )); then
     exit 4
 fi
 
+checksum_staging="$(mktemp "${TMPDIR:-/tmp}/clipedit-linux-provenance-sha.XXXXXXXX")"
+cleanup_checksum() {
+    rm -f -- "$checksum_staging"
+}
+trap cleanup_checksum EXIT
 (
     cd -- "$output_root"
-    find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+    find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$checksum_staging"
 )
+mv -- "$checksum_staging" "$output_root/SHA256SUMS"
+trap - EXIT
 echo "Inventoried ${record_count} Linux payload libraries at ${output_root}."
