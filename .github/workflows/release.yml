@@ -43,8 +43,8 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/cache@v5
         with:
-          path: packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
+          path: packages/nuget
+          key: nuget-v2-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
       - run: dotnet restore ClipEdit.sln
       - run: dotnet test ClipEdit.sln --no-restore --configuration Release
       - name: Validate native dependency locks
@@ -138,8 +138,8 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/cache@v5
         with:
-          path: packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
+          path: packages/nuget
+          key: nuget-v2-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
       - uses: msys2/setup-msys2@v2
         id: msys2
         with:
@@ -217,8 +217,8 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/cache@v5
         with:
-          path: packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
+          path: packages/nuget
+          key: nuget-v2-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
       - uses: actions/cache@v5
         with:
           path: .native-cache/linux-x64
