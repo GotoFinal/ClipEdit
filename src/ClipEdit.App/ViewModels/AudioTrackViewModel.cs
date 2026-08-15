@@ -39,6 +39,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private bool _isWaveformDecimated;
     private bool _isWaveformLoading;
     private string? _waveformErrorText;
+    private double _waveformAmplitudeScale = WaveformAmplitudeMath.Automatic;
 
     public AudioTrackViewModel(
         ImportedMedia media,
@@ -496,6 +497,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(TimelineViewportText));
             OnPropertyChanged(nameof(CanZoomTimelineIn));
             OnPropertyChanged(nameof(CanZoomTimelineOut));
+            OnPropertyChanged(nameof(WaveformAmplitudeScaleText));
         }
     }
 
@@ -663,6 +665,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(TimelineViewportDurationSeconds));
             OnPropertyChanged(nameof(TimelineViewportEndSeconds));
             OnPropertyChanged(nameof(CanZoomTimelineOut));
+            OnPropertyChanged(nameof(WaveformAmplitudeScaleText));
         }
 
         TimelineZoom = zoom;
@@ -827,6 +830,31 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     }
 
     public bool HasWaveformError => !string.IsNullOrWhiteSpace(WaveformErrorText);
+
+    public double WaveformAmplitudeScale
+    {
+        get => _waveformAmplitudeScale;
+        set
+        {
+            var scale = !double.IsFinite(value) || value <= 0
+                ? WaveformAmplitudeMath.Automatic
+                : Math.Clamp(
+                    value,
+                    WaveformAmplitudeMath.MinimumManualScale,
+                    WaveformAmplitudeMath.MaximumManualScale);
+            if (SetProperty(ref _waveformAmplitudeScale, scale))
+            {
+                OnPropertyChanged(nameof(WaveformAmplitudeScaleText));
+            }
+        }
+    }
+
+    public string WaveformAmplitudeScaleText => WaveformAmplitudeScale <= 0
+        ? $"Auto {WaveformAmplitudeMath.Resolve(WaveformAmplitudeScale, TimelineViewportDurationSeconds):0.#}×"
+        : $"{WaveformAmplitudeScale:0.#}×";
+
+    public void ResetWaveformAmplitudeScale() =>
+        WaveformAmplitudeScale = WaveformAmplitudeMath.Automatic;
 
     public bool RemoveSelection()
     {

@@ -49,6 +49,12 @@ public sealed class SourceRangeCanvas : Control
     public static readonly StyledProperty<double> TrackGainDbProperty =
         AvaloniaProperty.Register<SourceRangeCanvas, double>(nameof(TrackGainDb));
 
+    public static readonly StyledProperty<double> WaveformAmplitudeScaleProperty =
+        AvaloniaProperty.Register<SourceRangeCanvas, double>(
+            nameof(WaveformAmplitudeScale),
+            WaveformAmplitudeMath.Automatic,
+            defaultBindingMode: Avalonia.Data.BindingMode.TwoWay);
+
     public static readonly StyledProperty<int> VisualRevisionProperty =
         AvaloniaProperty.Register<SourceRangeCanvas, int>(nameof(VisualRevision));
 
@@ -60,9 +66,9 @@ public sealed class SourceRangeCanvas : Control
         AvaloniaProperty.Register<SourceRangeCanvas, TimelineBitmapVisual?>(nameof(Waveform));
 
     private static readonly IBrush TrackBrush = new ImmutableSolidColorBrush(0xFF252936);
-    private static readonly IBrush KeptBrush = new ImmutableSolidColorBrush(0x665B45BE);
+    private static readonly IBrush KeptBrush = new ImmutableSolidColorBrush(0x185B45BE);
     private static readonly IBrush RemovedBrush = new ImmutableSolidColorBrush(0xB8151820);
-    private static readonly IBrush SelectionBrush = new ImmutableSolidColorBrush(0x41FFFFFF);
+    private static readonly IBrush SelectionBrush = new ImmutableSolidColorBrush(0x18FFFFFF);
     private static readonly IPen SelectionPen = new Pen(0xFFD8CCFF, 1).ToImmutable();
     private static readonly IPen PlayheadPen = new Pen(0xFFF4F5FA, 2).ToImmutable();
     private static readonly IBrush EdgeHandleBrush = new ImmutableSolidColorBrush(0xFFF4F5FA);
@@ -96,6 +102,7 @@ public sealed class SourceRangeCanvas : Control
             TimelineSegmentsProperty,
             FreeViewportProperty,
             TrackGainDbProperty,
+            WaveformAmplitudeScaleProperty,
             VisualRevisionProperty);
     }
 
@@ -191,6 +198,12 @@ public sealed class SourceRangeCanvas : Control
         set => SetValue(TrackGainDbProperty, value);
     }
 
+    public double WaveformAmplitudeScale
+    {
+        get => GetValue(WaveformAmplitudeScaleProperty);
+        set => SetValue(WaveformAmplitudeScaleProperty, value);
+    }
+
     public int VisualRevision
     {
         get => GetValue(VisualRevisionProperty);
@@ -207,8 +220,6 @@ public sealed class SourceRangeCanvas : Control
             return;
         }
 
-        DrawAnalysisVisuals(context);
-
         foreach (var range in KeptRanges ?? [])
         {
             var start = Math.Max(range.Start.TotalSeconds, EffectiveViewportStart);
@@ -223,6 +234,7 @@ public sealed class SourceRangeCanvas : Control
             context.FillRectangle(KeptBrush, new Rect(left, 0, right - left, Bounds.Height), 5);
         }
 
+        DrawAnalysisVisuals(context);
         DrawTimelineSegments(context);
         DrawRemovedRanges(context);
 
@@ -351,13 +363,23 @@ public sealed class SourceRangeCanvas : Control
             return;
         }
 
-        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) && (EffectiveZoom > 1 || FreeViewport))
+        var action = TimelineWheelInteraction.Resolve(eventArgs.KeyModifiers, isWaveform: true);
+        if (action == TimelineWheelAction.ScaleWaveform)
+        {
+            SetCurrentValue(
+                WaveformAmplitudeScaleProperty,
+                WaveformAmplitudeMath.Adjust(
+                    WaveformAmplitudeScale,
+                    EffectiveViewportDuration,
+                    eventArgs.Delta.Y));
+        }
+        else if (action == TimelineWheelAction.PanTime && (EffectiveZoom > 1 || FreeViewport))
         {
             SetCurrentValue(
                 ViewportStartProperty,
                 ClampViewportStart(EffectiveViewportStart - (eventArgs.Delta.Y * EffectiveViewportDuration * 0.12)));
         }
-        else
+        else if (action == TimelineWheelAction.ZoomTime)
         {
             var pointerX = eventArgs.GetPosition(this).X;
             var anchor = XToTime(pointerX);
@@ -369,6 +391,13 @@ public sealed class SourceRangeCanvas : Control
             var newDuration = Duration / requestedZoom;
             SetCurrentValue(ZoomProperty, requestedZoom);
             SetCurrentValue(ViewportStartProperty, ClampViewportStart(anchor - (relative * newDuration), requestedZoom));
+        }
+
+        else
+        {
+            // Leave an unmodified wheel event for the containing editor ScrollViewer.
+            // The mixer can have many tracks, so vertical navigation takes priority here.
+            return;
         }
 
         eventArgs.Handled = true;
@@ -599,7 +628,10 @@ public sealed class SourceRangeCanvas : Control
         var imageWidth = image.PixelSize.Width;
         var sourceLeft = ((visibleStart - imageStart) / (imageEnd - imageStart)) * imageWidth;
         var sourceRight = ((visibleEnd - imageStart) / (imageEnd - imageStart)) * imageWidth;
-        var amplitudeScale = GainToWaveformScale(gainDb);
+        var amplitudeScale = GainToWaveformScale(gainDb) *
+                             WaveformAmplitudeMath.Resolve(
+                                 WaveformAmplitudeScale,
+                                 EffectiveViewportDuration);
         var destinationHeight = Bounds.Height * amplitudeScale;
         var destinationTop = (Bounds.Height - destinationHeight) / 2;
         context.DrawImage(

@@ -1148,30 +1148,12 @@ public sealed partial class MainWindow : Window
         ViewModel?.RestoreMissingAudioTracks();
     }
 
-    private static void AudioTimelineZoomOut_Click(object? sender, RoutedEventArgs eventArgs)
+    private static void ResetWaveformAmplitudeScale_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = eventArgs;
         if (sender is Control { DataContext: AudioTrackViewModel track })
         {
-            track.ZoomTimeline(0.5);
-        }
-    }
-
-    private static void AudioTimelineZoomIn_Click(object? sender, RoutedEventArgs eventArgs)
-    {
-        _ = eventArgs;
-        if (sender is Control { DataContext: AudioTrackViewModel track })
-        {
-            track.ZoomTimeline(2);
-        }
-    }
-
-    private static void AudioTimelineFit_Click(object? sender, RoutedEventArgs eventArgs)
-    {
-        _ = eventArgs;
-        if (sender is Control { DataContext: AudioTrackViewModel track })
-        {
-            track.FitTimeline();
+            track.ResetWaveformAmplitudeScale();
         }
     }
 

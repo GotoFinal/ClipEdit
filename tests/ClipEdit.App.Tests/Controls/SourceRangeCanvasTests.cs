@@ -9,6 +9,23 @@ namespace ClipEdit.App.Tests.Controls;
 
 public sealed class SourceRangeCanvasTests
 {
+    [Theory]
+    [InlineData(KeyModifiers.None, false, (int)TimelineWheelAction.ZoomTime)]
+    [InlineData(KeyModifiers.None, true, (int)TimelineWheelAction.ScrollParent)]
+    [InlineData(KeyModifiers.Alt, false, (int)TimelineWheelAction.ZoomTime)]
+    [InlineData(KeyModifiers.Alt, true, (int)TimelineWheelAction.ZoomTime)]
+    [InlineData(KeyModifiers.Shift, false, (int)TimelineWheelAction.PanTime)]
+    [InlineData(KeyModifiers.Shift, true, (int)TimelineWheelAction.PanTime)]
+    [InlineData(KeyModifiers.Control, false, (int)TimelineWheelAction.ScrollParent)]
+    [InlineData(KeyModifiers.Control, true, (int)TimelineWheelAction.ScaleWaveform)]
+    public void Timeline_and_waveform_wheel_shortcuts_share_one_modifier_map(
+        KeyModifiers modifiers,
+        bool isWaveform,
+        int expected)
+    {
+        Assert.Equal((TimelineWheelAction)expected, TimelineWheelInteraction.Resolve(modifiers, isWaveform));
+    }
+
     [AvaloniaFact]
     public void Dragging_a_visible_selection_edge_updates_that_boundary_and_playhead()
     {
@@ -48,7 +65,7 @@ public sealed class SourceRangeCanvasTests
     }
 
     [AvaloniaFact]
-    public void Wheel_zoom_keeps_the_time_under_the_pointer_stationary()
+    public void Alt_wheel_zoom_keeps_the_time_under_the_pointer_stationary()
     {
         var rangeCanvas = new SourceRangeCanvas
         {
@@ -70,10 +87,83 @@ public sealed class SourceRangeCanvasTests
         window.MouseWheel(
             new Avalonia.Point(300, 20),
             new Avalonia.Vector(0, 1),
-            RawInputModifiers.None);
+            RawInputModifiers.Alt);
 
         Assert.Equal(1.25, rangeCanvas.Zoom, 6);
         Assert.Equal(15, rangeCanvas.ViewportStart, 6);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Plain_wheel_scrolls_the_containing_editor_instead_of_zooming_the_waveform()
+    {
+        var rangeCanvas = new SourceRangeCanvas
+        {
+            Width = 400,
+            Height = 40,
+            Duration = 100,
+        };
+        var content = new StackPanel();
+        var wheelBubbledWithoutBeingHandled = false;
+        content.PointerWheelChanged += (_, eventArgs) =>
+            wheelBubbledWithoutBeingHandled = !eventArgs.Handled;
+        content.Children.Add(rangeCanvas);
+        content.Children.Add(new Border { Height = 200 });
+        var scrollViewer = new ScrollViewer
+        {
+            Width = 400,
+            Height = 60,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            Content = content,
+        };
+        var window = new Window
+        {
+            Width = 400,
+            Height = 60,
+            WindowDecorations = WindowDecorations.None,
+            Content = scrollViewer,
+        };
+        window.Show();
+        window.UpdateLayout();
+
+        window.MouseWheel(
+            new Avalonia.Point(200, 20),
+            new Avalonia.Vector(0, -1),
+            RawInputModifiers.None);
+
+        Assert.Equal(1, rangeCanvas.Zoom);
+        Assert.True(wheelBubbledWithoutBeingHandled);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Control_wheel_changes_only_waveform_amplitude_scale()
+    {
+        var rangeCanvas = new SourceRangeCanvas
+        {
+            Width = 400,
+            Height = 40,
+            Duration = 4 * 60 * 60,
+        };
+        var window = new Window
+        {
+            Width = 400,
+            Height = 40,
+            WindowDecorations = WindowDecorations.None,
+            Content = rangeCanvas,
+        };
+        window.Show();
+
+        window.MouseWheel(
+            new Avalonia.Point(200, 20),
+            new Avalonia.Vector(0, 1),
+            RawInputModifiers.Control);
+
+        Assert.Equal(1, rangeCanvas.Zoom);
+        Assert.Equal(
+            WaveformAmplitudeMath.Resolve(0, 4 * 60 * 60) * 1.2,
+            rangeCanvas.WaveformAmplitudeScale,
+            9);
         window.Close();
     }
 
@@ -200,5 +290,23 @@ public sealed class SourceRangeCanvasTests
     public void Waveform_height_tracks_effective_audio_gain(double gainDb, double expectedScale)
     {
         Assert.Equal(expectedScale, SourceRangeCanvas.GainToWaveformScale(gainDb), 9);
+    }
+
+    [Theory]
+    [InlineData(30, 1)]
+    [InlineData(60, 1)]
+    [InlineData(600, 2)]
+    [InlineData(6_000, 3)]
+    [InlineData(600_000, 4)]
+    public void Automatic_waveform_amplitude_emphasizes_long_overviews(
+        double visibleDurationSeconds,
+        double expectedScale)
+    {
+        Assert.Equal(
+            expectedScale,
+            WaveformAmplitudeMath.Resolve(
+                WaveformAmplitudeMath.Automatic,
+                visibleDurationSeconds),
+            9);
     }
 }

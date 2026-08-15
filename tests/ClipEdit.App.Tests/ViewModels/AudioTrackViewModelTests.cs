@@ -89,6 +89,30 @@ public sealed class AudioTrackViewModelTests
         Assert.Equal(MediaTime.Zero, track.TimelineOffset);
     }
 
+    [Fact]
+    public void Waveform_amplitude_defaults_to_auto_and_can_be_manually_reset()
+    {
+        var track = CreateTrack();
+        track.SynchronizeTimelineState(
+            durationSeconds: 6_000,
+            playheadSeconds: 0,
+            selectionStartSeconds: 0,
+            selectionEndSeconds: 10,
+            zoom: 1,
+            viewportStart: 0,
+            freeViewport: false);
+
+        Assert.Equal(0, track.WaveformAmplitudeScale);
+        Assert.Equal("Auto 3×", track.WaveformAmplitudeScaleText);
+
+        track.WaveformAmplitudeScale = 2.5;
+        Assert.Equal($"{2.5:0.#}×", track.WaveformAmplitudeScaleText);
+
+        track.ResetWaveformAmplitudeScale();
+        Assert.Equal(0, track.WaveformAmplitudeScale);
+        Assert.Equal("Auto 3×", track.WaveformAmplitudeScaleText);
+    }
+
     private static AudioTrackViewModel CreateTrack()
     {
         var sourcePath = Path.GetFullPath("audio.mkv");

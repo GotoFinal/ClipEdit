@@ -419,13 +419,14 @@ public sealed class SequenceTimelineCanvas : Control
             return;
         }
 
-        if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) && (EffectiveZoom > 1 || FreeViewport))
+        var action = TimelineWheelInteraction.Resolve(eventArgs.KeyModifiers, isWaveform: false);
+        if (action == TimelineWheelAction.PanTime && (EffectiveZoom > 1 || FreeViewport))
         {
             SetCurrentValue(
                 ViewportStartProperty,
                 ClampViewportStart(EffectiveViewportStart - (eventArgs.Delta.Y * EffectiveViewportDuration * 0.12)));
         }
-        else
+        else if (action == TimelineWheelAction.ZoomTime)
         {
             var x = eventArgs.GetPosition(this).X;
             var anchor = XToTime(x);
@@ -437,6 +438,11 @@ public sealed class SequenceTimelineCanvas : Control
             var newDuration = TimelineViewportMath.VisibleDuration(Duration, requestedZoom, FreeViewport);
             SetCurrentValue(ZoomProperty, requestedZoom);
             SetCurrentValue(ViewportStartProperty, ClampViewportStart(anchor - (relative * newDuration), requestedZoom));
+        }
+
+        else
+        {
+            return;
         }
 
         eventArgs.Handled = true;

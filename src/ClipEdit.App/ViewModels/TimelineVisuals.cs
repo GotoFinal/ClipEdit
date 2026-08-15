@@ -122,3 +122,38 @@ internal static class TimelineViewportMath
         return (newZoom, newStart);
     }
 }
+
+internal static class WaveformAmplitudeMath
+{
+    public const double Automatic = 0;
+    public const double MinimumManualScale = 0.5;
+    public const double MaximumManualScale = 8;
+
+    public static double Resolve(double requestedScale, double visibleDurationSeconds)
+    {
+        if (double.IsFinite(requestedScale) && requestedScale > 0)
+        {
+            return Math.Clamp(requestedScale, MinimumManualScale, MaximumManualScale);
+        }
+
+        if (!double.IsFinite(visibleDurationSeconds) || visibleDurationSeconds <= 60)
+        {
+            return 1;
+        }
+
+        // A full-timeline waveform needs progressively more vertical emphasis as many
+        // minutes are collapsed into each pixel. Keep it logarithmic so isolated peaks
+        // remain useful and the overview does not turn into a permanently clipped block.
+        return Math.Clamp(
+            1 + Math.Log10(visibleDurationSeconds / 60),
+            1,
+            4);
+    }
+
+    public static double Adjust(double requestedScale, double visibleDurationSeconds, double wheelDelta)
+    {
+        var current = Resolve(requestedScale, visibleDurationSeconds);
+        var next = current * Math.Pow(1.2, wheelDelta);
+        return Math.Clamp(next, MinimumManualScale, MaximumManualScale);
+    }
+}
