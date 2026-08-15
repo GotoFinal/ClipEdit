@@ -179,6 +179,27 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Preview_and_edit_panes_share_a_constrained_drag_splitter()
+    {
+        var window = new MainWindow();
+        var workspace = window.FindControl<Grid>("QuickWorkspaceGrid");
+        var splitter = window.FindControl<GridSplitter>("WorkspacePaneSplitter");
+
+        Assert.NotNull(workspace);
+        Assert.NotNull(splitter);
+        Assert.Equal(3, workspace.RowDefinitions.Count);
+        Assert.Equal(new GridLength(5), workspace.RowDefinitions[1].Height);
+        Assert.Equal(220, workspace.RowDefinitions[0].MinHeight);
+        Assert.Equal(160, workspace.RowDefinitions[2].MinHeight);
+        Assert.Equal(1, Grid.GetRow(splitter));
+        Assert.Equal(GridResizeDirection.Rows, splitter.ResizeDirection);
+        Assert.Equal(GridResizeBehavior.PreviousAndNext, splitter.ResizeBehavior);
+        Assert.False(splitter.ShowsPreview);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Timeline_tool_style_includes_toggle_buttons_without_clipping()
     {
         var window = new MainWindow();

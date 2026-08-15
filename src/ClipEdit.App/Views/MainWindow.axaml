@@ -169,6 +169,12 @@
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="8" />
     </Style>
+    <Style Selector="GridSplitter.workspace-splitter">
+      <Setter Property="Background" Value="#303543" />
+    </Style>
+    <Style Selector="GridSplitter.workspace-splitter:pointerover">
+      <Setter Property="Background" Value="#7C5CFC" />
+    </Style>
     <Style Selector="Button.caption">
       <Setter Property="Width" Value="38" />
       <Setter Property="Height" Value="47" />
@@ -998,10 +1004,14 @@
         </Border>
 
         <Grid
-            RowDefinitions="3*,2*"
-            RowSpacing="10"
+            x:Name="QuickWorkspaceGrid"
             IsVisible="{Binding ShowQuickWorkspace}">
-          <Border Classes="panel" Padding="10">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="3*" MinHeight="220" />
+            <RowDefinition Height="5" />
+            <RowDefinition Height="2*" MinHeight="160" />
+          </Grid.RowDefinitions>
+          <Border Grid.Row="0" Classes="panel" Padding="10">
             <Grid RowDefinitions="*,Auto,Auto" RowSpacing="6">
               <Border Background="#0B0D12" ClipToBounds="True" CornerRadius="8">
                 <Grid ClipToBounds="True">
@@ -1245,7 +1255,21 @@
             </Grid>
           </Border>
 
-          <Border Grid.Row="1" Classes="panel" Padding="10">
+          <GridSplitter
+              x:Name="WorkspacePaneSplitter"
+              Grid.Row="1"
+              Classes="workspace-splitter"
+              AutomationProperties.Name="Resize preview and edit panes"
+              Cursor="SizeNorthSouth"
+              DragIncrement="1"
+              Focusable="True"
+              HorizontalAlignment="Stretch"
+              ResizeBehavior="PreviousAndNext"
+              ResizeDirection="Rows"
+              ShowsPreview="False"
+              VerticalAlignment="Stretch" />
+
+          <Border Grid.Row="2" Classes="panel" Padding="10">
             <ScrollViewer
                 x:Name="EditPaneScrollViewer"
                 HorizontalScrollBarVisibility="Disabled"
