@@ -143,6 +143,44 @@ public sealed partial class App : Avalonia.Application
             var startupArguments = ClassifyStartupArguments(desktop.Args);
             mainWindow.Opened += async (_, _) =>
             {
+                if (BundledRuntimeBootstrapper.HasEmbeddedMediaRuntime)
+                {
+                    viewModel.ReportStatus("Preparing the bundled media runtime…");
+                }
+
+                try
+                {
+                    var preparation = await Task.Run(() =>
+                        BundledRuntimeBootstrapper.PrepareEmbeddedPayloads(applicationDataDirectory));
+                    if (preparation.IsBundled)
+                    {
+                        ffprobePath = FfprobeExecutableLocator.Find(
+                            mediaRuntimeSettings.FfprobePath,
+                            mediaRuntimeSettings.PreferSystemMediaTools);
+                        ffmpegPath = FfmpegToolLocator.FindFfmpeg(
+                            mediaRuntimeSettings.FfmpegPath,
+                            mediaRuntimeSettings.PreferSystemMediaTools);
+                        libMpvPath = MpvNativeLibraryLocator.Find(
+                            mediaRuntimeSettings.LibMpvPath,
+                            mediaRuntimeSettings.PreferSystemMediaTools);
+                        viewModel.ConfigureMediaRuntime(
+                            mediaRuntimeSettings,
+                            ffmpegPath,
+                            ffprobePath,
+                            libMpvPath,
+                            new MediaRuntimeValidator());
+                        viewModel.ReportStatus(preparation.ExtractedRuntime
+                            ? "Bundled media runtime is ready"
+                            : "Bundled media runtime cache is ready");
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                {
+                    viewModel.ReportStatus(
+                        $"Bundled release resources could not be prepared: {exception.Message}");
+                }
+
                 if (startupArguments.ProjectPath is not null)
                 {
                     await viewModel.OpenProjectWithRelinkingAsync(

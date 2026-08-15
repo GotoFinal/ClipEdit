@@ -18,6 +18,20 @@
     <AssemblyMetadata Include="ClipEditReleaseAssetId" Value="$(ClipEditReleaseAssetId)" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(ClipEditBundledMediaArchive)' != ''">
+    <EmbeddedResource Include="$(ClipEditBundledMediaArchive)">
+      <LogicalName>ClipEdit.BundledMediaRuntime</LogicalName>
+    </EmbeddedResource>
+    <AssemblyMetadata Include="ClipEditBundledMediaRuntimeId" Value="$(ClipEditBundledMediaRuntimeId)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ClipEditBundledNoticesArchive)' != ''">
+    <EmbeddedResource Include="$(ClipEditBundledNoticesArchive)">
+      <LogicalName>ClipEdit.BundledNotices</LogicalName>
+    </EmbeddedResource>
+    <AssemblyMetadata Include="ClipEditBundledNoticesId" Value="$(ClipEditBundledNoticesId)" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(ClipEditNativePayloadRoot)' != ''">
     <Content Include="$(ClipEditNativePayloadRoot)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>

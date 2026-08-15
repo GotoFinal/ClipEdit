@@ -25,12 +25,22 @@ public sealed partial class LegalNoticeDialog : Window
     public LegalNoticeDialog()
     {
         InitializeComponent();
-        _licensesPath = Path.Combine(AppContext.BaseDirectory, "licenses");
+        _licensesPath = ResolveLicensesPath();
         NoticeTextBox.Text = NoticeText;
         LicenseLocationText.Text = Directory.Exists(_licensesPath)
             ? $"Bundled license files: {_licensesPath}"
             : "Bundled license files are added to compliance-enabled release builds. See LICENSE and THIRD_PARTY_NOTICES.md in the source repository for this development build.";
         OpenLicensesButton.IsEnabled = Directory.Exists(_licensesPath);
+    }
+
+    internal static string ResolveLicensesPath()
+    {
+        var bundledNoticesPath = Environment.GetEnvironmentVariable(
+            BundledRuntimeBootstrapper.BundledNoticesEnvironmentVariable);
+        var root = string.IsNullOrWhiteSpace(bundledNoticesPath)
+            ? AppContext.BaseDirectory
+            : bundledNoticesPath;
+        return Path.Combine(root, "licenses");
     }
 
     private void OpenLicenses_Click(object? sender, RoutedEventArgs eventArgs)

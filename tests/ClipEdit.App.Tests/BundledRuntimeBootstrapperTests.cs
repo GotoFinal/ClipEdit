@@ -1,4 +1,5 @@
 using ClipEdit.App;
+using System.IO.Compression;
 
 namespace ClipEdit.App.Tests;
 
@@ -129,6 +130,75 @@ public sealed class BundledRuntimeBootstrapperTests
         }
     }
 
+    [Fact]
+    public void Embedded_archive_is_extracted_once_and_reused_from_cache()
+    {
+        var root = CreateTemporaryDirectory();
+        var destination = Path.Combine(root, "runtime", "test-id");
+        var archiveBytes = CreateArchive(
+            ("tools/ffmpeg/ffmpeg.exe", "ffmpeg"),
+            ("tools/ffmpeg/ffprobe.exe", "ffprobe"),
+            ("tools/ffmpeg/libmpv-2.dll", "mpv"));
+        var opened = 0;
+        bool IsComplete(string candidate) =>
+            File.Exists(Path.Combine(candidate, "tools", "ffmpeg", "ffmpeg.exe")) &&
+            File.Exists(Path.Combine(candidate, "tools", "ffmpeg", "ffprobe.exe")) &&
+            File.Exists(Path.Combine(candidate, "tools", "ffmpeg", "libmpv-2.dll"));
+
+        try
+        {
+            Stream OpenArchive()
+            {
+                opened++;
+                return new MemoryStream(archiveBytes, writable: false);
+            }
+
+            var extracted = BundledRuntimeBootstrapper.ExtractArchiveToCache(
+                OpenArchive,
+                "test archive",
+                "test-id",
+                destination,
+                IsComplete);
+            var reused = BundledRuntimeBootstrapper.ExtractArchiveToCache(
+                OpenArchive,
+                "test archive",
+                "test-id",
+                destination,
+                IsComplete);
+
+            Assert.True(extracted);
+            Assert.False(reused);
+            Assert.Equal(1, opened);
+            Assert.Equal("ffmpeg", File.ReadAllText(
+                Path.Combine(destination, "tools", "ffmpeg", "ffmpeg.exe")));
+            Assert.True(File.Exists(Path.Combine(destination, ".complete")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Embedded_archive_rejects_paths_outside_its_cache_directory()
+    {
+        var root = CreateTemporaryDirectory();
+        var destination = Path.Combine(root, "runtime");
+        var archiveBytes = CreateArchive(("../escaped.txt", "bad"));
+        try
+        {
+            using var archive = new MemoryStream(archiveBytes, writable: false);
+
+            Assert.Throws<InvalidDataException>(() =>
+                BundledRuntimeBootstrapper.ExtractZipArchive(archive, destination));
+            Assert.False(File.Exists(Path.Combine(root, "escaped.txt")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTemporaryDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), $"ClipEdit.Tests-{Guid.NewGuid():N}");
@@ -141,5 +211,20 @@ public sealed class BundledRuntimeBootstrapperTests
         var path = Path.Combine(directory, name);
         File.WriteAllBytes(path, []);
         return Path.GetFullPath(path);
+    }
+
+    private static byte[] CreateArchive(params (string Path, string Contents)[] entries)
+    {
+        using var output = new MemoryStream();
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (path, contents) in entries)
+            {
+                var entry = archive.CreateEntry(path, CompressionLevel.Fastest);
+                using var writer = new StreamWriter(entry.Open());
+                writer.Write(contents);
+            }
+        }
+        return output.ToArray();
     }
 }

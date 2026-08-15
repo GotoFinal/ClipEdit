@@ -106,6 +106,144 @@ if ($missingPayload.Count -gt 0) {
     throw "Native release payload '$fullPayloadPath' is incomplete. Missing:$([Environment]::NewLine)$formatted$([Environment]::NewLine)Prepare it with eng/Prepare-ReleasePayload.ps1 -RuntimeId $RuntimeId."
 }
 
+function Get-ClipEditDirectoryContentHash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Directory
+    )
+
+    $fullDirectory = [System.IO.Path]::GetFullPath($Directory)
+    $manifestLines = Get-ChildItem -LiteralPath $fullDirectory -Recurse -File |
+        Sort-Object FullName |
+        ForEach-Object {
+            $relativePath = $_.FullName.Substring($fullDirectory.Length)
+            $relativePath = $relativePath.TrimStart([char[]]@('\', '/')).Replace('\', '/')
+            $fileHash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$fileHash  $relativePath"
+        }
+    $manifest = ($manifestLines -join "`n") + "`n"
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($manifest))
+        return [BitConverter]::ToString($hashBytes).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function New-ClipEditPayloadArchives {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PayloadPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ArchiveRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RuntimeId,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$IncludeMedia
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Directory]::CreateDirectory($ArchiveRoot) | Out-Null
+    $runtimeStagingPath = Join-Path $ArchiveRoot '.runtime-staging'
+    $noticesStagingPath = Join-Path $ArchiveRoot '.notices-staging'
+    $runtimeArchivePath = Join-Path $ArchiveRoot 'media-runtime.zip'
+    $noticesArchivePath = Join-Path $ArchiveRoot 'notices.zip'
+    foreach ($temporaryPath in @($runtimeStagingPath, $noticesStagingPath)) {
+        if (Test-Path -LiteralPath $temporaryPath) {
+            [System.IO.Directory]::Delete($temporaryPath, $true)
+        }
+        [System.IO.Directory]::CreateDirectory($temporaryPath) | Out-Null
+    }
+
+    $runtimeItemNames = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    if ($IncludeMedia) {
+        foreach ($runtimeItemName in @('tools', 'native', 'libmpv.so.2')) {
+            $runtimeItemNames.Add($runtimeItemName) | Out-Null
+        }
+    }
+
+    try {
+        foreach ($payloadItem in Get-ChildItem -LiteralPath $PayloadPath -Force) {
+            $destinationRoot = if ($runtimeItemNames.Contains($payloadItem.Name)) {
+                $runtimeStagingPath
+            }
+            else {
+                $noticesStagingPath
+            }
+            Copy-Item -LiteralPath $payloadItem.FullName `
+                -Destination $destinationRoot `
+                -Recurse `
+                -Force
+        }
+
+        $runtimeArchiveId = $null
+        if ($IncludeMedia) {
+            $runtimeFileCount = @(Get-ChildItem -LiteralPath $runtimeStagingPath -Recurse -File).Count
+            if ($runtimeFileCount -eq 0) {
+                throw "The $RuntimeId payload contains no media runtime files."
+            }
+            [System.IO.Compression.ZipFile]::CreateFromDirectory(
+                $runtimeStagingPath,
+                $runtimeArchivePath,
+                [System.IO.Compression.CompressionLevel]::Optimal,
+                $false)
+            $runtimeContentHash = Get-ClipEditDirectoryContentHash $runtimeStagingPath
+            $runtimeArchiveId = "$RuntimeId-$runtimeContentHash"
+        }
+
+        $noticesArchiveId = $null
+        $noticeFileCount = @(Get-ChildItem -LiteralPath $noticesStagingPath -Recurse -File).Count
+        if ($noticeFileCount -gt 0) {
+            [System.IO.Compression.ZipFile]::CreateFromDirectory(
+                $noticesStagingPath,
+                $noticesArchivePath,
+                [System.IO.Compression.CompressionLevel]::Optimal,
+                $false)
+            $noticesArchiveId = Get-ClipEditDirectoryContentHash $noticesStagingPath
+        }
+
+        return [pscustomobject]@{
+            MediaArchivePath = if ($IncludeMedia) { $runtimeArchivePath } else { $null }
+            MediaArchiveId = $runtimeArchiveId
+            NoticesArchivePath = if ($noticeFileCount -gt 0) { $noticesArchivePath } else { $null }
+            NoticesArchiveId = $noticesArchiveId
+        }
+    }
+    finally {
+        foreach ($temporaryPath in @($runtimeStagingPath, $noticesStagingPath)) {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                [System.IO.Directory]::Delete($temporaryPath, $true)
+            }
+        }
+    }
+}
+
+function Add-ClipEditPayloadArchiveArguments {
+    param(
+        [Parameter(Mandatory = $true)]
+        [Collections.Generic.List[string]]$Arguments,
+
+        [Parameter(Mandatory = $true)]
+        $Archives
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$Archives.MediaArchivePath)) {
+        $Arguments.Add("-p:ClipEditBundledMediaArchive=$($Archives.MediaArchivePath)")
+        $Arguments.Add("-p:ClipEditBundledMediaRuntimeId=$($Archives.MediaArchiveId)")
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Archives.NoticesArchivePath)) {
+        $Arguments.Add("-p:ClipEditBundledNoticesArchive=$($Archives.NoticesArchivePath)")
+        $Arguments.Add("-p:ClipEditBundledNoticesId=$($Archives.NoticesArchiveId)")
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $workspaceRoot "artifacts/release/$Version/$releaseAssetId"
 }
@@ -140,6 +278,7 @@ try {
     $singleFile = $BundleMode -eq 'SingleFile'
     $selfContained = $ManagedDeployment -eq 'SelfContained'
     $compressionEnabled = $singleFile -and $selfContained -and -not $DisableCompression
+    $readyToRunEnabled = $singleFile
     $singleFileValue = $singleFile.ToString().ToLowerInvariant()
     $selfContainedValue = $selfContained.ToString().ToLowerInvariant()
     $publishArguments = @(
@@ -156,13 +295,26 @@ try {
         "-p:ClipEditReleaseAssetId=$releaseAssetId",
         "-p:PublishSingleFile=$singleFileValue",
         "-p:IncludeNativeLibrariesForSelfExtract=$singleFileValue",
-        "-p:IncludeAllContentForSelfExtract=$singleFileValue",
+        '-p:IncludeAllContentForSelfExtract=false',
         "-p:EnableCompressionInSingleFile=$($compressionEnabled.ToString().ToLowerInvariant())",
+        "-p:PublishReadyToRun=$($readyToRunEnabled.ToString().ToLowerInvariant())",
+        '-p:PublishReadyToRunComposite=false',
         '-p:PublishTrimmed=false',
         '-p:DebugSymbols=false',
         '-p:DebugType=None'
     )
-    if ($includesNativeMedia) {
+    if ($includesNativeMedia -and $singleFile) {
+        $initialArchives = New-ClipEditPayloadArchives `
+            -PayloadPath $fullPayloadPath `
+            -ArchiveRoot (Join-Path $buildArtifactsPath 'payload-archives-initial') `
+            -RuntimeId $RuntimeId `
+            -IncludeMedia $true
+        $publishArgumentList = [Collections.Generic.List[string]]::new()
+        $publishArgumentList.AddRange([string[]]$publishArguments)
+        Add-ClipEditPayloadArchiveArguments -Arguments $publishArgumentList -Archives $initialArchives
+        $publishArguments = $publishArgumentList.ToArray()
+    }
+    elseif ($includesNativeMedia) {
         $publishArguments += "-p:ClipEditNativePayloadRoot=$fullPayloadPath"
     }
     if ($GenerateCompliance) {
@@ -261,9 +413,28 @@ try {
         [System.IO.Directory]::Delete($stagingPath, $true)
         [System.IO.Directory]::CreateDirectory($stagingPath) | Out-Null
         $finalPublishArguments = @($publishArguments | Where-Object {
-            $_ -notlike '-p:ClipEditNativePayloadRoot=*'
+            $_ -notlike '-p:ClipEditNativePayloadRoot=*' -and
+            $_ -notlike '-p:ClipEditBundledMediaArchive=*' -and
+            $_ -notlike '-p:ClipEditBundledMediaRuntimeId=*' -and
+            $_ -notlike '-p:ClipEditBundledNoticesArchive=*' -and
+            $_ -notlike '-p:ClipEditBundledNoticesId=*'
         })
-        $finalPublishArguments += "-p:ClipEditNativePayloadRoot=$augmentedPayloadPath"
+        if ($singleFile) {
+            $finalArchives = New-ClipEditPayloadArchives `
+                -PayloadPath $augmentedPayloadPath `
+                -ArchiveRoot (Join-Path $buildArtifactsPath 'payload-archives-final') `
+                -RuntimeId $RuntimeId `
+                -IncludeMedia $includesNativeMedia
+            $finalPublishArgumentList = [Collections.Generic.List[string]]::new()
+            $finalPublishArgumentList.AddRange([string[]]$finalPublishArguments)
+            Add-ClipEditPayloadArchiveArguments `
+                -Arguments $finalPublishArgumentList `
+                -Archives $finalArchives
+            $finalPublishArguments = $finalPublishArgumentList.ToArray()
+        }
+        else {
+            $finalPublishArguments += "-p:ClipEditNativePayloadRoot=$augmentedPayloadPath"
+        }
         & dotnet @finalPublishArguments
         if ($LASTEXITCODE -ne 0) {
             throw "The compliance-embedded dotnet publish failed with exit code $LASTEXITCODE."
@@ -309,6 +480,7 @@ try {
         requiredManagedFramework = if ($selfContained) { $null } else { 'Microsoft.NETCore.App' }
         requiredManagedFrameworkVersion = if ($selfContained) { $null } else { '10.0.0' }
         compressionEnabled = $compressionEnabled
+        readyToRunEnabled = $readyToRunEnabled
         mediaDependencyMode = $MediaDependencyMode
         nativeMediaProfile = if ($includesNativeMedia) {
             [string]$nativeDependencies.releaseProfiles.$RuntimeId
