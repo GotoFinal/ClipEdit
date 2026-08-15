@@ -438,8 +438,34 @@
                               Value="{Binding ExportScaleSliderValue, Mode=TwoWay}" />
                         </Grid>
 
-                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,72" ColumnSpacing="8" RowSpacing="2">
+                        <Grid ColumnDefinitions="*,150" ColumnSpacing="8">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Quality" />
+                          <ComboBox
+                              x:Name="ExportQualityModeInput"
+                              Grid.Column="1"
+                              Height="28"
+                              ItemsSource="{Binding ExportQualityChoices}"
+                              SelectedItem="{Binding SelectedExportQuality}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:ExportQualityChoice">
+                                <TextBlock Text="{Binding DisplayName}" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </Grid>
+                        <TextBlock
+                            Classes="muted"
+                            FontSize="10"
+                            IsVisible="{Binding UsesMatchedInputQuality}"
+                            Text="Uses the first exported clip's bitrate when available. Edits that need filters are still re-encoded."
+                            TextWrapping="Wrap" />
+                        <Grid
+                            RowDefinitions="Auto,Auto"
+                            ColumnDefinitions="*,72"
+                            ColumnSpacing="8"
+                            RowSpacing="2"
+                            IsVisible="{Binding UsesCustomExportQuality}">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Custom quality" />
                           <NumericUpDown
                               Grid.Column="1"
                               Classes="numeric-entry"
@@ -632,6 +658,11 @@
                             <TextBlock Grid.Column="1" FontWeight="SemiBold" Foreground="#BBAEFF" Text="{Binding ExportOutputSizeText}" />
                           </Grid>
                         </Border>
+                        <CheckBox
+                            x:Name="RememberExportAdjustmentsCheckBox"
+                            Content="Remember scale, quality and speed"
+                            IsChecked="{Binding RememberExportAdjustments, Mode=TwoWay}"
+                            ToolTip.Tip="Off resets these adjustments for a new or opened project. Saved export presets are unaffected." />
                         <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="Lower scale and quality reduce file size. GIF quality controls the color palette." />
                       </StackPanel>
                       </ScrollViewer>
