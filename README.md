@@ -5,12 +5,16 @@ Main goal is that video can be super quickly cropped and cut without needing to 
 that most other video editors enforce. You just open it, select the area on video, select time range, and you are ready to export.  
 You can export to file, clipboard, or both.  
 
+https://github.com/user-attachments/assets/e6b9b411-021a-411d-86f6-1dae1ac53cd9
+
 There are extra more advanced features, that you don't even need to look at, or think about, for a bit more advanced edits:
 - muting parts of the video
 - combining multiple clips
 - changing audio gain on each clip
 - rotating/scaling of each clip
 - removing other audio tracks
+
+https://github.com/user-attachments/assets/e66bac40-2d9f-4b9f-bc11-6319faadf551
 
 Disclaimer: This project was developed with heavy use of AI, 
 I was just too annoyed to the point i was recording my clips by using ShareX to record my screen as I play the video,
