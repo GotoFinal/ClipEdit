@@ -150,8 +150,10 @@ public sealed partial class MainWindowViewModel
                 await Task.Delay(MediaRuntimeValidationDelay, cancellationToken);
             }
 
-            var validation = await _mediaRuntimeValidator!
-                .ValidateAsync(settings, cancellationToken);
+            var validator = _mediaRuntimeValidator!;
+            var validation = await Task.Run(
+                () => validator.ValidateAsync(settings, cancellationToken),
+                cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             ApplyMediaRuntimeValidation(validation);
         }

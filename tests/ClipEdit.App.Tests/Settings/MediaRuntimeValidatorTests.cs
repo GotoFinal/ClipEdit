@@ -139,6 +139,49 @@ public sealed class MediaRuntimeValidatorTests
         }
     }
 
+    [Fact]
+    public async Task View_model_runs_dependency_inspection_away_from_the_calling_thread()
+    {
+        var directory = CreateTemporaryDirectory();
+        var viewModel = new MainWindowViewModel(mediaProbe: null);
+        try
+        {
+            var ffmpeg = WriteEmptyFile(directory, "ffmpeg-test");
+            var ffprobe = WriteEmptyFile(directory, "ffprobe-test");
+            var libMpv = WriteEmptyFile(directory, "libmpv-test");
+            var callingThread = Environment.CurrentManagedThreadId;
+            var inspectionThread = new TaskCompletionSource<int>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var validator = new MediaRuntimeValidator(
+                (path, _) => Task.FromResult(new MediaToolExecutionResult(
+                    true,
+                    path == ffmpeg
+                        ? "ffmpeg version 9.0.1"
+                        : "ffprobe version 9.0.1",
+                    null)),
+                _ =>
+                {
+                    inspectionThread.TrySetResult(Environment.CurrentManagedThreadId);
+                    return new LibMpvInspectionResult(true, "client API 2.5", null);
+                });
+
+            viewModel.ConfigureMediaRuntime(
+                new MediaRuntimeSettings(false, ffmpeg, ffprobe, libMpv),
+                ffmpeg,
+                ffprobe,
+                libMpv,
+                validator);
+
+            var workerThread = await inspectionThread.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.NotEqual(callingThread, workerThread);
+        }
+        finally
+        {
+            viewModel.Dispose();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string CreateTemporaryDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), $"clipedit-media-validator-{Guid.NewGuid():N}");
