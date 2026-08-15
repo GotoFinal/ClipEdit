@@ -110,13 +110,27 @@
       <Setter Property="FontSize" Value="10" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
-    <Style Selector="CheckBox.audio-compact">
-      <Setter Property="Height" Value="20" />
+    <Style Selector="ToggleButton.audio-mute">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="22" />
       <Setter Property="MinHeight" Value="0" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="FontSize" Value="10" />
-      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Padding" Value="4" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#C7CBD6" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton.audio-mute:pointerover">
+      <Setter Property="Background" Value="#303542" />
+      <Setter Property="BorderBrush" Value="#464C5C" />
+    </Style>
+    <Style Selector="ToggleButton.audio-mute:checked">
+      <Setter Property="Background" Value="#4A2832" />
+      <Setter Property="Foreground" Value="#FF9AA5" />
+      <Setter Property="BorderBrush" Value="#8B4555" />
     </Style>
     <Style Selector="Slider.audio-compact">
       <Setter Property="Height" Value="18" />
@@ -1413,7 +1427,25 @@
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="9" IsVisible="{Binding IsExternal}" Text="Start (s)" />
                                 <TextBox Grid.Column="2" Classes="audio-compact" IsVisible="{Binding IsExternal}" Text="{Binding TimelineOffsetSeconds, Mode=TwoWay}" />
-                                <CheckBox Grid.Column="3" Classes="audio-compact" Content="Mute" IsChecked="{Binding IsMuted, Mode=TwoWay}" />
+                                <ToggleButton
+                                    Grid.Column="3"
+                                    Classes="audio-mute"
+                                    AutomationProperties.Name="Mute audio track"
+                                    IsChecked="{Binding IsMuted, Mode=TwoWay}"
+                                    ToolTip.Tip="Mute or unmute this audio track">
+                                  <Grid>
+                                    <PathIcon
+                                        Width="14"
+                                        Height="14"
+                                        Data="M3,9 V15 H7 L12,20 V4 L7,9 Z M14,7.97 V10.18 C15.48,10.92 16.5,12.44 16.5,14.21 C16.5,14.43 16.48,14.64 16.45,14.84 L18.08,16.47 C18.35,15.76 18.5,15 18.5,14.21 C18.5,11.31 16.64,8.84 14,7.97 Z M14,3.44 V5.5 C17.89,6.36 20.5,9.79 20.5,14.21 C20.5,15.55 20.26,16.84 19.81,18.02 L21.36,19.57 C22.09,17.95 22.5,16.14 22.5,14.21 C22.5,8.91 18.89,4.51 14,3.44 Z"
+                                        IsVisible="{Binding !IsMuted}" />
+                                    <PathIcon
+                                        Width="14"
+                                        Height="14"
+                                        Data="M4.27,3 L3,4.27 L7.73,9 H3 V15 H7 L12,20 V13.27 L16.25,17.52 C15.58,18.04 14.83,18.45 14,18.7 V20.76 C15.38,20.45 16.63,19.81 17.69,18.95 L19.73,21 L21,19.73 Z M16.5,12 C16.5,10.23 15.48,8.71 14,7.97 V10.18 L16.45,12.63 C16.48,12.43 16.5,12.22 16.5,12 Z M19,12 C19,12.94 18.8,13.82 18.46,14.64 L19.97,16.15 C20.63,14.91 21,13.5 21,12 C21,7.72 18.01,4.14 14,3.23 V5.29 C16.89,6.15 19,8.83 19,12 Z M12,4 L9.91,6.09 L12,8.18 Z"
+                                        IsVisible="{Binding IsMuted}" />
+                                  </Grid>
+                                </ToggleButton>
                                 <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding ContextualGainLabel}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
                                 <Slider Grid.Column="5" Classes="audio-compact" AutomationProperties.Name="{Binding ContextualGainLabel}" Minimum="-60" Maximum="12" Value="{Binding ContextualGainDb, Mode=TwoWay}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
                                 <TextBlock Grid.Column="6" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="9" Text="{Binding ContextualGainText}" />
