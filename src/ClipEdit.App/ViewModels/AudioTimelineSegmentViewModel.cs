@@ -11,7 +11,8 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
         MediaTime timelineStart,
         MediaRange sourceRange,
         string? sourcePath = null,
-        int streamIndex = -1)
+        int streamIndex = -1,
+        int? laneIndex = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         if (timelineStart < MediaTime.Zero || sourceRange.IsEmpty)
@@ -25,6 +26,7 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
         SourceRange = sourceRange;
         SourcePath = sourcePath ?? clip?.SourcePath;
         StreamIndex = streamIndex;
+        LaneIndex = laneIndex;
         if (Clip is not null)
         {
             Clip.PropertyChanged += OnClipPropertyChanged;
@@ -49,6 +51,8 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
 
     public int StreamIndex { get; }
 
+    public int? LaneIndex { get; }
+
     public double TimelineStartSeconds => TimelineStart.TotalSeconds;
 
     public double TimelineEndSeconds => TimelineEnd.TotalSeconds;
@@ -69,17 +73,25 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
 
     public double GainDb
     {
-        get => Clip?.AudioGainDb ?? 0;
+        get => Clip is { } clip && LaneIndex is { } laneIndex
+            ? clip.GetAudioLaneGainDb(laneIndex)
+            : Clip?.AudioGainDb ?? 0;
         set
         {
-            if (Clip is not null)
+            if (Clip is { } clip && LaneIndex is { } laneIndex)
+            {
+                clip.SetAudioLaneGainDb(laneIndex, value);
+            }
+            else if (Clip is not null)
             {
                 Clip.AudioGainDb = value;
             }
         }
     }
 
-    public string GainText => Clip?.AudioGainText ?? "0.0 dB";
+    public string GainText => Clip is { } clip && LaneIndex is { } laneIndex
+        ? clip.GetAudioLaneGainText(laneIndex)
+        : Clip?.AudioGainText ?? "0.0 dB";
 
     public void Dispose()
     {
@@ -93,6 +105,7 @@ public sealed class AudioTimelineSegmentViewModel : ViewModelBase, IDisposable
     {
         _ = sender;
         if (eventArgs.PropertyName is nameof(VideoClipViewModel.AudioGainDb) or
+            nameof(VideoClipViewModel.AudioLaneGainDb) or
             nameof(VideoClipViewModel.AudioGainText))
         {
             OnPropertyChanged(nameof(GainDb));

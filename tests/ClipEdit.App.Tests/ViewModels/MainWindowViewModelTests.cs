@@ -814,6 +814,7 @@ public sealed class MainWindowViewModelTests
             isHorizontallyMirrored: true,
             isVerticallyMirrored: false);
         original.AudioGainDb = -3.5;
+        original.SetAudioLaneGainDb(0, 2.25);
 
         Assert.True(viewModel.CopySelectedVideoClip());
         Assert.True(viewModel.PasteVideoClip());
@@ -824,6 +825,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(original.Model.AvailableRange, pasted.Model.AvailableRange);
         Assert.Equal(original.CanvasTransform, pasted.CanvasTransform);
         Assert.Equal(original.AudioGainDb, pasted.AudioGainDb);
+        Assert.Equal(2.25, pasted.GetAudioLaneGainDb(0));
         Assert.Equal(original.TimelineEnd, pasted.TimelineStart);
     }
 
@@ -1341,6 +1343,7 @@ public sealed class MainWindowViewModelTests
             var externalTrack = Assert.Single(original.AudioTracks, track => track.IsExternal);
             externalTrack.TimelineOffsetSeconds = 3.25;
             original.SelectedVideoClip!.AudioGainDb = -6.25;
+            original.SelectedVideoClip.SetAudioLaneGainDb(0, -2.75);
             original.SelectedExportPreset = BuiltInExportPresets.Custom;
             original.CustomExportContainer = ExportContainerChoice.Matroska;
             original.CustomVideoCodec = VideoCodecChoice.Vp9;
@@ -1376,6 +1379,7 @@ public sealed class MainWindowViewModelTests
             var restoredExternal = Assert.Single(restored.AudioTracks, track => track.IsExternal);
             Assert.Equal(new MediaTime(13, 4), restoredExternal.TimelineOffset);
             Assert.Equal(-6.25, restored.SelectedVideoClip!.AudioGainDb);
+            Assert.Equal(-2.75, restored.SelectedVideoClip.GetAudioLaneGainDb(0));
             Assert.False(restored.IsProjectDirty);
 
             using var recovered = new MainWindowViewModel(new StubProbe(), projectStore: store);
@@ -1780,7 +1784,8 @@ public sealed class MainWindowViewModelTests
         var previousWaveformRevision = track.WaveformVisualRevision;
         Assert.Equal("Clip gain", track.ContextualGainLabel);
         track.ContextualGainDb = -3.5;
-        Assert.Equal(-3.5, secondClip.AudioGainDb);
+        Assert.Equal(-3.5, secondClip.GetAudioLaneGainDb(track.EmbeddedLaneIndex!.Value));
+        Assert.Equal(0, secondClip.AudioGainDb);
         Assert.True(track.WaveformVisualRevision > previousWaveformRevision);
         Assert.True(track.SilenceTimelineSelection());
         Assert.Contains(
@@ -1789,6 +1794,53 @@ public sealed class MainWindowViewModelTests
         Assert.Contains(
             new MediaRange(new MediaTime(44, 1), new MediaTime(70, 1)),
             track.TimelineKeptRanges);
+    }
+
+    [Fact]
+    public async Task Selected_clip_gain_is_independent_for_each_embedded_audio_lane()
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "multi-lane-audio.mkv")]);
+        var tracks = viewModel.AudioTracks
+            .OrderBy(track => track.EmbeddedLaneIndex)
+            .ToArray();
+        Assert.Equal(2, tracks.Length);
+
+        tracks[0].ContextualGainDb = -8.5;
+        tracks[1].ContextualGainDb = 3.25;
+
+        var clip = Assert.Single(viewModel.VideoClips);
+        Assert.Equal(0, clip.AudioGainDb);
+        Assert.Equal(-8.5, clip.GetAudioLaneGainDb(0));
+        Assert.Equal(3.25, clip.GetAudioLaneGainDb(1));
+        Assert.Equal(-8.5, tracks[0].ContextualGainDb);
+        Assert.Equal(3.25, tracks[1].ContextualGainDb);
+        Assert.Equal(
+            [-8.5, 3.25],
+            viewModel.PreviewAudioTracks.OrderBy(track => track.StreamIndex).Select(track => track.GainDb));
+
+        Assert.True(viewModel.Undo());
+        Assert.Equal(0, Assert.Single(viewModel.VideoClips).GetAudioLaneGainDb(0));
+        Assert.Equal(0, Assert.Single(viewModel.VideoClips).GetAudioLaneGainDb(1));
+        Assert.True(viewModel.Redo());
+        clip = Assert.Single(viewModel.VideoClips);
+        Assert.Equal(-8.5, clip.GetAudioLaneGainDb(0));
+        Assert.Equal(3.25, clip.GetAudioLaneGainDb(1));
+
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "multi-lane-output.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            [-8.5, 3.25],
+            Assert.Single(renderer.Plan!.VideoSegments).AudioTracks
+                .OrderBy(track => track.StreamIndex)
+                .Select(track => track.GainDb));
+        Assert.Equal(
+            new Dictionary<int, double> { [0] = -8.5, [1] = 3.25 },
+            Assert.Single(viewModel.CreateProjectDocument().VideoClips!).AudioLaneGainDb);
     }
 
 
@@ -1809,6 +1861,8 @@ public sealed class MainWindowViewModelTests
             return Task.FromResult(
                 string.Equals(extension, ".flac", StringComparison.OrdinalIgnoreCase)
                     ? CreateAudioProbe(sourcePath)
+                    : Path.GetFileName(sourcePath).Contains("multi-lane", StringComparison.OrdinalIgnoreCase)
+                        ? CreateMultiAudioVideoProbe(sourcePath)
                     : CreateVideoProbe(sourcePath));
         }
     }
@@ -2046,6 +2100,20 @@ public sealed class MainWindowViewModelTests
             CreateAudioStream());
     }
 
+    private static MediaProbeResult CreateMultiAudioVideoProbe(string sourcePath)
+    {
+        var probe = CreateVideoProbe(sourcePath);
+        return new MediaProbeResult(
+            probe.SourcePath,
+            probe.FormatName,
+            probe.FormatLongName,
+            probe.StartTime,
+            probe.Duration,
+            probe.FileSizeBytes,
+            probe.BitRateBitsPerSecond,
+            probe.Streams.Add(CreateAudioStream(streamIndex: 2, isDefault: false)));
+    }
+
     private static MediaProbeResult CreateAudioProbe(string sourcePath)
     {
         return CreateProbe(sourcePath, CreateAudioStream());
@@ -2107,16 +2175,16 @@ public sealed class MainWindowViewModelTests
                     192_000)));
     }
 
-    private static AudioStreamInfo CreateAudioStream()
+    private static AudioStreamInfo CreateAudioStream(int streamIndex = 1, bool isDefault = true)
     {
         return new AudioStreamInfo(
-            1,
+            streamIndex,
             "flac",
             null,
             null,
             null,
             null,
-            true,
+            isDefault,
             false,
             new MediaTime(1, 1_000),
             MediaTime.Zero,

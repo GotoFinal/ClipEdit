@@ -273,10 +273,15 @@ public sealed partial class MainWindowViewModel
         ProjectVideoClipDocument left,
         ProjectVideoClipDocument right)
     {
-        return left with { ExcludedAudioLaneIndices = null } ==
-               right with { ExcludedAudioLaneIndices = null } &&
+        return left with { ExcludedAudioLaneIndices = null, AudioLaneGainDb = null } ==
+               right with { ExcludedAudioLaneIndices = null, AudioLaneGainDb = null } &&
                (left.ExcludedAudioLaneIndices ?? [])
-               .SequenceEqual(right.ExcludedAudioLaneIndices ?? []);
+               .SequenceEqual(right.ExcludedAudioLaneIndices ?? []) &&
+               (left.AudioLaneGainDb ?? new Dictionary<int, double>())
+               .OrderBy(pair => pair.Key)
+               .SequenceEqual(
+                   (right.AudioLaneGainDb ?? new Dictionary<int, double>())
+                   .OrderBy(pair => pair.Key));
     }
 
     private static bool AudioTopologyEquivalent(ProjectDocument? left, ProjectDocument right)

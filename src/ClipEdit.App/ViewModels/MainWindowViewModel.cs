@@ -398,7 +398,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return ExportStrategy.StreamCopy;
         }
         if (embedded.Length != 1 ||
-            Math.Abs(CombineAudioGain(embedded[0].GainDb, clip.AudioGainDb)) >= 0.000_001 ||
+            embedded[0].EmbeddedLaneIndex is not { } embeddedLaneIndex ||
+            Math.Abs(CombineAudioGain(
+                embedded[0].GainDb,
+                clip.GetAudioLaneGainDb(embeddedLaneIndex))) >= 0.000_001 ||
             !embedded[0].CreateEditForClip(clip).IsUnedited ||
             !embedded[0].TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex))
         {
@@ -1112,7 +1115,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var edit = track.CreateEditForClip(clip);
             previewTracks.Add(new PreviewAudioTrack(
                 streamIndex,
-                CombineAudioGain(track.GainDb, clip.AudioGainDb),
+                CombineAudioGain(track.GainDb, clip.GetAudioLaneGainDb(laneIndex)),
                 track.IsMuted || edit.IsEmpty,
                 edit));
         }
@@ -1283,7 +1286,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             clip.CanvasTransform,
             clip.AudioGainDb,
             clip.PlaybackSpeedPercent,
-            clip.ExcludedAudioLaneIndices.ToImmutableArray());
+            clip.ExcludedAudioLaneIndices.ToImmutableArray(),
+            clip.AudioLaneGainDb.ToImmutableDictionary());
         StatusText = $"Copied {clip.DisplayName}; press Ctrl+V on the timeline to paste";
         return true;
     }
@@ -1318,7 +1322,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             selectClip: true,
             collapseSelection: true,
             copied.ExcludedAudioLaneIndices,
-            copied.PlaybackSpeedPercent);
+            copied.PlaybackSpeedPercent,
+            copied.AudioLaneGainDb);
         StatusText = $"Pasted {clip.DisplayName} at {FormatSequenceTimestamp(timelineStart)}";
         MarkProjectDirty();
         return true;
@@ -1371,7 +1376,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         var edit = track.CreateEditForClip(slice.Clip);
                         return new ExportAudioTrackPlan(
                             streamIndex,
-                            CombineAudioGain(track.GainDb, slice.Clip.AudioGainDb),
+                            CombineAudioGain(
+                                track.GainDb,
+                                slice.Clip.GetAudioLaneGainDb(track.EmbeddedLaneIndex!.Value)),
                             edit);
                     })
                     .Where(plan => plan.AudioEdit is { IsEmpty: false })
@@ -3061,7 +3068,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     clip.TimelineStart,
                     clip.Model.SourceRange,
                     clip.SourcePath,
-                    streamIndex);
+                    streamIndex,
+                    track.EmbeddedLaneIndex);
             })
             .ToArray();
     }
@@ -3265,7 +3273,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         bool selectClip,
         bool collapseSelection,
         IEnumerable<int>? excludedAudioLaneIndices = null,
-        int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent)
+        int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent,
+        IReadOnlyDictionary<int, double>? audioLaneGainDb = null)
     {
         var previousDuration = SequenceDurationSeconds;
         var selectionCoveredWholeSequence =
@@ -3290,7 +3299,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             model,
             sourceWindow,
             canvasTransform,
-            excludedAudioLaneIndices);
+            excludedAudioLaneIndices,
+            audioLaneGainDb);
         AttachVideoClip(clip);
         VideoClips.Add(clip);
         UpdateSequenceLayout(resetSelectionIfEmpty: false);
@@ -3365,7 +3375,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(SelectedClipPlaybackSpeedPercent));
         }
 
-        if (eventArgs.PropertyName == nameof(VideoClipViewModel.AudioGainDb))
+        if (eventArgs.PropertyName is nameof(VideoClipViewModel.AudioGainDb) or
+            nameof(VideoClipViewModel.AudioLaneGainDb))
         {
             MarkProjectDirty($"clip:{clip.Id}:audio-gain");
             RaiseExportStateChanged();
@@ -3905,7 +3916,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             clip.ExcludedAudioLaneIndices.Order().ToArray(),
             clip.PlaybackSpeedPercent,
             transform.IsHorizontallyMirrored,
-            transform.IsVerticallyMirrored);
+            transform.IsVerticallyMirrored,
+            clip.AudioLaneGainDb
+                .OrderBy(pair => pair.Key)
+                .ToDictionary(pair => pair.Key, pair => pair.Value));
     }
 
     private static ProjectAudioTrackDocument? CreateAudioTrackDocumentForMedia(
@@ -4052,6 +4066,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         transform,
                         document.SchemaVersion >= 7
                             ? savedClip.ExcludedAudioLaneIndices
+                            : null,
+                        document.SchemaVersion >= 12
+                            ? savedClip.AudioLaneGainDb
                             : null));
                     if (document.SchemaVersion < 5)
                     {
@@ -4893,4 +4910,5 @@ internal readonly record struct VideoClipClipboard(
     ClipCanvasTransform CanvasTransform,
     double AudioGainDb,
     int PlaybackSpeedPercent,
-    ImmutableArray<int> ExcludedAudioLaneIndices);
+    ImmutableArray<int> ExcludedAudioLaneIndices,
+    ImmutableDictionary<int, double> AudioLaneGainDb);

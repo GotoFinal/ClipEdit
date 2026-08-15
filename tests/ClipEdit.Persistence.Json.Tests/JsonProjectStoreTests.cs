@@ -57,6 +57,28 @@ public sealed class JsonProjectStoreTests
     }
 
     [Fact]
+    public async Task Out_of_range_clip_audio_lane_gain_is_rejected()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
+        try
+        {
+            var store = new JsonProjectStore();
+            await store.SaveAsync(path, CreateDocument());
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            root["videoClips"]![0]!["audioLaneGainDb"]!["0"] = 99;
+            await File.WriteAllTextAsync(path, root.ToJsonString());
+
+            var exception = await Assert.ThrowsAsync<ProjectStoreException>(() => store.LoadAsync(path));
+
+            Assert.Equal(ProjectStoreFailure.InvalidDocument, exception.Failure);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task Repeated_save_atomically_replaces_the_previous_document()
     {
         var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
@@ -198,7 +220,12 @@ public sealed class JsonProjectStoreTests
                     AudioGainDb: -5.5,
                     PlaybackSpeedPercent: 160,
                     IsHorizontallyMirrored: true,
-                    IsVerticallyMirrored: true),
+                    IsVerticallyMirrored: true,
+                    AudioLaneGainDb: new Dictionary<int, double>
+                    {
+                        [0] = -2.25,
+                        [1] = 3.5,
+                    }),
             ],
             new ProjectCropSettingsDocument("1-1", true),
             new ProjectCanvasDocument(1_920, 1_080, 420, 0, 1_080, 1_080),

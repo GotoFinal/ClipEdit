@@ -323,12 +323,14 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public double ContextualGainDb
     {
-        get => EffectiveContextualGainClip?.AudioGainDb ?? GainDb;
+        get => EffectiveContextualGainClip is { } clip && EmbeddedLaneIndex is { } laneIndex
+            ? clip.GetAudioLaneGainDb(laneIndex)
+            : GainDb;
         set
         {
-            if (EffectiveContextualGainClip is { } clip)
+            if (EffectiveContextualGainClip is { } clip && EmbeddedLaneIndex is { } laneIndex)
             {
-                clip.AudioGainDb = value;
+                clip.SetAudioLaneGainDb(laneIndex, value);
             }
             else
             {
@@ -337,12 +339,16 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string ContextualGainText => EffectiveContextualGainClip?.AudioGainText ?? GainText;
+    public string ContextualGainText =>
+        EffectiveContextualGainClip is { } clip && EmbeddedLaneIndex is { } laneIndex
+            ? clip.GetAudioLaneGainText(laneIndex)
+            : GainText;
 
     public string ContextualGainLabel => EffectiveContextualGainClip is null ? "Track gain" : "Clip gain";
 
-    public string ContextualGainTargetText => EffectiveContextualGainClip is { } clip
-        ? $"Adjust selected clip: {clip.DisplayName}"
+    public string ContextualGainTargetText =>
+        EffectiveContextualGainClip is { } clip && EmbeddedLaneIndex is { } laneIndex
+        ? $"Adjust {clip.DisplayName} on A{laneIndex + 1} only"
         : "Adjust the whole audio track";
 
     public bool CanToggleContextualClip =>
@@ -949,6 +955,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         _ = sender;
         if (eventArgs.PropertyName is nameof(VideoClipViewModel.AudioGainDb) or
             nameof(VideoClipViewModel.AudioGainText) or
+            nameof(VideoClipViewModel.AudioLaneGainDb) or
             nameof(VideoClipViewModel.ExcludedAudioLaneIndices))
         {
             OnPropertyChanged(nameof(ContextualGainDb));

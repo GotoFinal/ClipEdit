@@ -303,7 +303,15 @@ public sealed class JsonProjectStore : IProjectStore
                  clip.ExcludedAudioLaneIndices is { } excluded &&
                  (excluded.Count > MaximumAudioTracksPerMedia ||
                   excluded.Any(index => index < 0 || index >= MaximumAudioTracksPerMedia) ||
-                  excluded.Distinct().Count() != excluded.Count)))
+                  excluded.Distinct().Count() != excluded.Count)) ||
+                (document.SchemaVersion >= 12 &&
+                 clip.AudioLaneGainDb is { } laneGains &&
+                 (laneGains.Count > MaximumAudioTracksPerMedia ||
+                  laneGains.Any(pair =>
+                      pair.Key < 0 ||
+                      pair.Key >= MaximumAudioTracksPerMedia ||
+                      !double.IsFinite(pair.Value) ||
+                      pair.Value is < -60 or > 12))))
             {
                 throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "A saved video clip is invalid.");
             }

@@ -15,6 +15,7 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     private ClipCanvasTransform _canvasTransform;
     private IReadOnlyList<TimelineThumbnailFrame> _timelineThumbnails = [];
     private HashSet<int> _excludedAudioLaneIndices;
+    private readonly Dictionary<int, double> _audioLaneGainDb;
     private bool _isTimelineLoading;
 
     public VideoClipViewModel(
@@ -22,7 +23,8 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         SequenceClip model,
         CropRegion sourceWindow,
         ClipCanvasTransform? canvasTransform = null,
-        IEnumerable<int>? excludedAudioLaneIndices = null)
+        IEnumerable<int>? excludedAudioLaneIndices = null,
+        IReadOnlyDictionary<int, double>? audioLaneGainDb = null)
     {
         Source = source ?? throw new ArgumentNullException(nameof(source));
         if (model.SourceId != source.Id)
@@ -41,6 +43,9 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
         _excludedAudioLaneIndices = (excludedAudioLaneIndices ?? [])
             .Where(index => index >= 0)
             .ToHashSet();
+        _audioLaneGainDb = (audioLaneGainDb ?? new Dictionary<int, double>())
+            .Where(pair => pair.Key >= 0 && double.IsFinite(pair.Value))
+            .ToDictionary(pair => pair.Key, pair => Math.Clamp(pair.Value, -60, 12));
     }
 
     public MediaItemViewModel Source { get; }
@@ -208,6 +213,38 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
 
     public string AudioGainText =>
         AudioGainDb <= -59.95 ? "−∞ dB" : $"{AudioGainDb:+0.0;-0.0;0.0} dB";
+
+    public IReadOnlyDictionary<int, double> AudioLaneGainDb => _audioLaneGainDb;
+
+    public double GetAudioLaneGainDb(int laneIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(laneIndex);
+        return _audioLaneGainDb.GetValueOrDefault(laneIndex, AudioGainDb);
+    }
+
+    public string GetAudioLaneGainText(int laneIndex) => FormatAudioGain(GetAudioLaneGainDb(laneIndex));
+
+    public bool SetAudioLaneGainDb(int laneIndex, double gainDb)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(laneIndex);
+        var bounded = Math.Clamp(double.IsFinite(gainDb) ? gainDb : 0, -60, 12);
+        if (GetAudioLaneGainDb(laneIndex).Equals(bounded))
+        {
+            return false;
+        }
+
+        if (bounded.Equals(AudioGainDb))
+        {
+            _audioLaneGainDb.Remove(laneIndex);
+        }
+        else
+        {
+            _audioLaneGainDb[laneIndex] = bounded;
+        }
+
+        OnPropertyChanged(nameof(AudioLaneGainDb));
+        return true;
+    }
 
     public int PlaybackSpeedPercent
     {
@@ -380,7 +417,7 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
     }
 
     public VideoClipViewModel CreateSibling(SequenceClip model) =>
-        new(Source, model, SourceWindow, CanvasTransform, ExcludedAudioLaneIndices);
+        new(Source, model, SourceWindow, CanvasTransform, ExcludedAudioLaneIndices, AudioLaneGainDb);
 
     public void SetTimelineThumbnails(IReadOnlyList<TimelineThumbnailFrame> thumbnails) =>
         TimelineThumbnails = thumbnails ?? throw new ArgumentNullException(nameof(thumbnails));
@@ -472,4 +509,7 @@ public sealed class VideoClipViewModel : ViewModelBase, IDisposable
             ? $"{hours}:{minutes:00}:{seconds:00}.{milliseconds:000}"
             : $"{minutes:00}:{seconds:00}.{milliseconds:000}";
     }
+
+    private static string FormatAudioGain(double gainDb) =>
+        gainDb <= -59.95 ? "−∞ dB" : $"{gainDb:+0.0;-0.0;0.0} dB";
 }
