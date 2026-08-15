@@ -518,11 +518,6 @@
                           <TextBlock
                               VerticalAlignment="Center"
                               FontWeight="SemiBold"
-                              IsVisible="{Binding !IsGifExport}"
-                              Text="Quality level" />
-                          <TextBlock
-                              VerticalAlignment="Center"
-                              FontWeight="SemiBold"
                               IsVisible="{Binding IsGifExport}"
                               Text="GIF quality" />
                           <NumericUpDown
