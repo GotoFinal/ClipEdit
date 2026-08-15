@@ -76,8 +76,38 @@ function Get-DotNetDistributionRoot {
     throw "Could not locate the .NET distribution notices. Checked: $formattedRoots"
 }
 
+function Get-NuGetGlobalPackagesFolder([string]$WorkingDirectory) {
+    Push-Location -LiteralPath $WorkingDirectory
+    try {
+        $output = @(& dotnet nuget locals global-packages --list --force-english-output 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+    }
+
+    if ($exitCode -ne 0) {
+        throw "Could not resolve NuGet's effective global packages folder.`n$($output -join [Environment]::NewLine)"
+    }
+    $pathLine = [string]($output | Where-Object {
+        [string]$_ -match '^global-packages:\s*(.+)\s*$'
+    } | Select-Object -Last 1)
+    if ($pathLine -notmatch '^global-packages:\s*(.+)\s*$') {
+        throw "Could not parse NuGet's effective global packages folder from: $($output -join [Environment]::NewLine)"
+    }
+
+    $packageRoot = [System.IO.Path]::GetFullPath($Matches[1].Trim())
+    if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) {
+        throw "NuGet's effective global packages folder does not exist: $packageRoot. Run dotnet restore first."
+    }
+    return $packageRoot
+}
+
 function Get-PackageMetadata([string]$Id, [string]$VersionValue, [string]$PackageRoot) {
     $packageDirectory = Join-Path (Join-Path $PackageRoot $Id.ToLowerInvariant()) $VersionValue
+    if (-not (Test-Path -LiteralPath $packageDirectory -PathType Container)) {
+        throw "NuGet package $Id $VersionValue is missing from the effective global packages folder: $PackageRoot"
+    }
     $nuspec = Get-ChildItem -LiteralPath $packageDirectory -Filter '*.nuspec' -File |
         Select-Object -First 1
     if ($null -eq $nuspec) {
@@ -280,7 +310,7 @@ try {
     else {
         $runtimeLibraryName.Split('/')[1]
     }
-    $packageRoot = Join-Path $workspaceRoot 'packages'
+    $packageRoot = Get-NuGetGlobalPackagesFolder $workspaceRoot
     $managedPackages = @()
     foreach ($libraryName in $libraryNames) {
         $parts = $libraryName.Split('/')
