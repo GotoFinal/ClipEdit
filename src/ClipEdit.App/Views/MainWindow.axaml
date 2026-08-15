@@ -1491,7 +1491,7 @@
                             <Grid RowDefinitions="22,44" RowSpacing="2">
                               <Grid ColumnDefinitions="*,Auto,64,Auto,Auto,96,52,Auto,Auto" ColumnSpacing="4">
                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="6">
-                                  <TextBlock MaxWidth="190" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock MaxWidth="190" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayName}" />
                                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding OutputDurationText}" />
                                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="9" IsVisible="{Binding IsWaveformLoading}" Text="Generating…" />
                                   <TextBlock VerticalAlignment="Center" Foreground="#E88E8E" FontSize="9" IsVisible="{Binding HasWaveformError}" Text="Waveform unavailable" ToolTip.Tip="{Binding WaveformErrorText}" />
