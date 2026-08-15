@@ -128,12 +128,6 @@ internal sealed record ExportPreferences(
 internal sealed class ExportPreferencesStore
 {
     private const long MaximumSettingsBytes = 128 * 1024;
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = false,
-        WriteIndented = true,
-    };
 
     private readonly string _settingsPath;
 
@@ -152,9 +146,10 @@ internal sealed class ExportPreferencesStore
                 return ExportPreferences.Default;
             }
 
-            return (JsonSerializer.Deserialize<ExportPreferences>(
+            return (JsonSerializer.Deserialize(
                         File.ReadAllText(_settingsPath),
-                        SerializerOptions) ?? ExportPreferences.Default)
+                        AppSettingsJsonContext.Default.ExportPreferences) ??
+                    ExportPreferences.Default)
                 .Normalize();
         }
         catch (Exception exception) when (
@@ -181,7 +176,9 @@ internal sealed class ExportPreferencesStore
             Directory.CreateDirectory(directory);
             File.WriteAllText(
                 temporaryPath,
-                JsonSerializer.Serialize(settings.Normalize(), SerializerOptions));
+                JsonSerializer.Serialize(
+                    settings.Normalize(),
+                    AppSettingsJsonContext.Default.ExportPreferences));
             File.Move(temporaryPath, _settingsPath, overwrite: true);
             return true;
         }

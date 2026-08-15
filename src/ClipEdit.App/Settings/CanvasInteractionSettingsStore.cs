@@ -65,12 +65,6 @@ internal sealed record CanvasInteractionSettings(
 internal sealed class CanvasInteractionSettingsStore
 {
     private const long MaximumSettingsBytes = 16 * 1024;
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = false,
-        WriteIndented = true,
-    };
 
     private readonly string _settingsPath;
 
@@ -89,9 +83,10 @@ internal sealed class CanvasInteractionSettingsStore
                 return CanvasInteractionSettings.Default;
             }
 
-            return (JsonSerializer.Deserialize<CanvasInteractionSettings>(
+            return (JsonSerializer.Deserialize(
                         File.ReadAllText(_settingsPath),
-                        SerializerOptions) ?? CanvasInteractionSettings.Default)
+                        AppSettingsJsonContext.Default.CanvasInteractionSettings) ??
+                    CanvasInteractionSettings.Default)
                 .Normalize();
         }
         catch (Exception exception) when (
@@ -118,7 +113,9 @@ internal sealed class CanvasInteractionSettingsStore
             Directory.CreateDirectory(directory);
             File.WriteAllText(
                 temporaryPath,
-                JsonSerializer.Serialize(settings.Normalize(), SerializerOptions));
+                JsonSerializer.Serialize(
+                    settings.Normalize(),
+                    AppSettingsJsonContext.Default.CanvasInteractionSettings));
             File.Move(temporaryPath, _settingsPath, overwrite: true);
             return true;
         }

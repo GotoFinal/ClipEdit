@@ -33,12 +33,6 @@ internal sealed record MediaRuntimeSettings(
 internal sealed class MediaRuntimeSettingsStore
 {
     private const long MaximumSettingsBytes = 32 * 1024;
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = false,
-        WriteIndented = true,
-    };
 
     private readonly string _settingsPath;
 
@@ -57,9 +51,10 @@ internal sealed class MediaRuntimeSettingsStore
                 return MediaRuntimeSettings.Default;
             }
 
-            return (JsonSerializer.Deserialize<MediaRuntimeSettings>(
+            return (JsonSerializer.Deserialize(
                         File.ReadAllText(_settingsPath),
-                        SerializerOptions) ?? MediaRuntimeSettings.Default)
+                        AppSettingsJsonContext.Default.MediaRuntimeSettings) ??
+                    MediaRuntimeSettings.Default)
                 .Normalize();
         }
         catch (Exception exception) when (
@@ -86,7 +81,9 @@ internal sealed class MediaRuntimeSettingsStore
             Directory.CreateDirectory(directory);
             File.WriteAllText(
                 temporaryPath,
-                JsonSerializer.Serialize(settings.Normalize(), SerializerOptions));
+                JsonSerializer.Serialize(
+                    settings.Normalize(),
+                    AppSettingsJsonContext.Default.MediaRuntimeSettings));
             File.Move(temporaryPath, _settingsPath, overwrite: true);
             return true;
         }

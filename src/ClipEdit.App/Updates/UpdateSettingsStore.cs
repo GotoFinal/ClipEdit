@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ClipEdit.App.Settings;
 
 namespace ClipEdit.App.Updates;
 
@@ -28,12 +29,6 @@ internal sealed record UpdateSettings(
 internal sealed class UpdateSettingsStore
 {
     private const long MaximumSettingsBytes = 32 * 1024;
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = false,
-        WriteIndented = true,
-    };
 
     private readonly string _settingsPath;
 
@@ -52,9 +47,9 @@ internal sealed class UpdateSettingsStore
                 return UpdateSettings.Default;
             }
 
-            return JsonSerializer.Deserialize<UpdateSettings>(
+            return JsonSerializer.Deserialize(
                        File.ReadAllText(_settingsPath),
-                       SerializerOptions) ?? UpdateSettings.Default;
+                       AppSettingsJsonContext.Default.UpdateSettings) ?? UpdateSettings.Default;
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or JsonException)
@@ -80,7 +75,9 @@ internal sealed class UpdateSettingsStore
             Directory.CreateDirectory(directory);
             File.WriteAllText(
                 temporaryPath,
-                JsonSerializer.Serialize(settings, SerializerOptions));
+                JsonSerializer.Serialize(
+                    settings,
+                    AppSettingsJsonContext.Default.UpdateSettings));
             File.Move(temporaryPath, _settingsPath, overwrite: true);
             return true;
         }
