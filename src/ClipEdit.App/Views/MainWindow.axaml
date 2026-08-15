@@ -664,13 +664,20 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:MissingMediaReferenceViewModel">
                 <Border Margin="0,3" Padding="10,7" Background="#181B22" CornerRadius="6">
-                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                     <StackPanel Spacing="2">
                       <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
                       <TextBlock Classes="muted" FontSize="10" Text="{Binding DetailText}" TextWrapping="Wrap" />
                     </StackPanel>
                     <Button
                         Grid.Column="1"
+                        Classes="primary"
+                        Click="UseSuggestedMissingMedia_Click"
+                        Content="Use suggestion"
+                        IsVisible="{Binding HasSuggestion}"
+                        AutomationProperties.Name="{Binding DisplayName}" />
+                    <Button
+                        Grid.Column="2"
                         Classes="secondary"
                         Click="RelinkMissingMedia_Click"
                         Content="Relink…"

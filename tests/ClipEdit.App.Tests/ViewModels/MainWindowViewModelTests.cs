@@ -1407,9 +1407,17 @@ public sealed class MainWindowViewModelTests
     {
         var directory = Directory.CreateTempSubdirectory("clipedit-relink-");
         var originalPath = Path.Combine(directory.FullName, "moved-video.mkv");
-        var replacementPath = Path.Combine(directory.FullName, "found-video.mkv");
+        var replacementDirectory = Directory.CreateDirectory(Path.Combine(directory.FullName, "media"));
+        var replacementPath = Path.Combine(replacementDirectory.FullName, "moved-video.mkv");
         var projectPath = Path.Combine(directory.FullName, "project.clipedit");
         var store = new JsonProjectStore();
+        var expectedTransform = new ClipCanvasTransform(
+            123.5,
+            -47.25,
+            1.4,
+            0.75,
+            73,
+            isHorizontallyMirrored: true);
 
         try
         {
@@ -1418,7 +1426,9 @@ public sealed class MainWindowViewModelTests
             using (var source = new MainWindowViewModel(new StubProbe(), projectStore: store))
             {
                 await source.ImportFilesAsync([originalPath]);
-                expectedClipId = Assert.Single(source.VideoClips).Id;
+                var clip = Assert.Single(source.VideoClips);
+                expectedClipId = clip.Id;
+                clip.CanvasTransform = expectedTransform;
                 Assert.True(await source.SaveProjectAsync(projectPath));
             }
 
@@ -1430,12 +1440,21 @@ public sealed class MainWindowViewModelTests
             Assert.Empty(restored.MediaItems);
             var missing = Assert.Single(restored.MissingMediaReferences);
             Assert.Equal("moved-video.mkv", missing.DisplayName);
+            Assert.True(missing.HasSuggestion);
+            Assert.Equal(Path.GetFullPath(replacementPath), missing.SuggestedPath);
 
-            Assert.True(await restored.RelinkMissingMediaAsync(missing, replacementPath));
+            Assert.True(await restored.RelinkMissingMediaAsync(missing, missing.SuggestedPath!));
 
             Assert.False(restored.HasPendingMissingMedia);
             Assert.Equal(Path.GetFullPath(replacementPath), Assert.Single(restored.MediaItems).SourcePath);
-            Assert.Equal(expectedClipId, Assert.Single(restored.VideoClips).Id);
+            var restoredClip = Assert.Single(restored.VideoClips);
+            Assert.Equal(expectedClipId, restoredClip.Id);
+            Assert.Equal(expectedTransform, restoredClip.CanvasTransform);
+            Assert.Same(restoredClip, restored.SelectedVideoClip);
+            Assert.Same(restoredClip.Source, restored.SelectedMedia);
+            Assert.True(restoredClip.Source.IsReady);
+            restored.SequencePlayheadSeconds = 1;
+            Assert.NotNull(restored.PrepareSequencePlayback());
             Assert.Equal(Path.GetFullPath(projectPath), restored.ProjectPath);
             Assert.True(restored.IsProjectDirty);
         }
@@ -1443,6 +1462,61 @@ public sealed class MainWindowViewModelTests
         {
             directory.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task Relink_suggestion_prefers_a_matching_relative_suffix_over_filename_only()
+    {
+        var directory = Directory.CreateTempSubdirectory("clipedit-relink-relative-");
+        var originalDirectory = Directory.CreateDirectory(
+            Path.Combine(directory.FullName, "old", "assets"));
+        var originalPath = Path.Combine(originalDirectory.FullName, "camera.mp4");
+        var projectPath = Path.Combine(directory.FullName, "project.clipedit");
+        var matchingDirectory = Directory.CreateDirectory(
+            Path.Combine(directory.FullName, "assets"));
+        var matchingPath = Path.Combine(matchingDirectory.FullName, "camera.mp4");
+        var filenameOnlyPath = Path.Combine(directory.FullName, "camera.mp4");
+        var store = new JsonProjectStore();
+
+        try
+        {
+            await File.WriteAllBytesAsync(originalPath, new byte[1_024]);
+            using (var source = new MainWindowViewModel(new StubProbe(), projectStore: store))
+            {
+                await source.ImportFilesAsync([originalPath]);
+                Assert.True(await source.SaveProjectAsync(projectPath));
+            }
+
+            File.Copy(originalPath, matchingPath);
+            File.Copy(originalPath, filenameOnlyPath);
+            File.Delete(originalPath);
+
+            using var restored = new MainWindowViewModel(new StubProbe(), projectStore: store);
+            Assert.False(await restored.OpenProjectWithRelinkingAsync(projectPath));
+
+            var missing = Assert.Single(restored.MissingMediaReferences);
+            Assert.Equal(Path.GetFullPath(matchingPath), missing.SuggestedPath);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(@"C:\old\assets\camera.mp4", "assets/camera.mp4", 2)]
+    [InlineData("/old/assets/camera.mp4", @"assets\camera.mp4", 2)]
+    [InlineData(@"C:\old\one\camera.mp4", "two/camera.mp4", 1)]
+    public void Relink_suffix_matching_is_platform_separator_independent(
+        string originalPath,
+        string relativeCandidate,
+        int expectedSegments)
+    {
+        Assert.Equal(
+            expectedSegments,
+            MissingMediaSuggestionFinder.CountMatchingPathSuffix(
+                originalPath,
+                relativeCandidate));
     }
 
     [Fact]

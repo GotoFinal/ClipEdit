@@ -172,7 +172,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         : "Relink media before opening";
 
     public string PendingProjectOpenDescription =>
-        "ClipEdit has not replaced the current workspace. Choose the original file at its new location; replacements must match the saved media fingerprint.";
+        "ClipEdit has not replaced the current workspace. Use a nearby suggestion or choose the original file at its new location; every replacement must match the saved media fingerprint.";
 
     public string? ProjectPath
     {
@@ -1104,11 +1104,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
             await item.ProbeAsync(_importMedia, cancellationToken);
             AddAudioTracks(item);
-            if (item is { IsReady: true, HasVideo: true })
+            if (!_isLoadingProject && item is { IsReady: true, HasVideo: true })
             {
                 AddInitialVideoClip(item);
             }
-            if (item.IsReady && SelectedMedia is null)
+            if (!_isLoadingProject && item.IsReady && SelectedMedia is null)
             {
                 SelectedMedia = item;
             }
@@ -2309,12 +2309,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return false;
         }
 
-        var missing = document.Media
+        var unavailableMedia = document.Media
             .Select(media => (media, reason: GetUnavailableMediaReason(media)))
             .Where(entry => entry.reason is not null)
-            .Select(entry => new MissingMediaReferenceViewModel(entry.media, entry.reason!))
             .ToArray();
-        if (missing.Length == 0)
+        if (unavailableMedia.Length == 0)
         {
             var opened = isRecovery
                 ? await RecoverProjectAsync(projectPath, cancellationToken)
@@ -2333,9 +2332,35 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return opened;
         }
 
+        var fullProjectPath = Path.GetFullPath(projectPath);
+        var missing = await Task.Run(() =>
+        {
+            var suggestedPaths = new HashSet<string>(PathComparer);
+            return unavailableMedia
+                .Select(entry =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var suggestion = MissingMediaSuggestionFinder.FindSuggestion(
+                        fullProjectPath,
+                        entry.media,
+                        suggestedPaths,
+                        cancellationToken);
+                    if (suggestion is not null)
+                    {
+                        suggestedPaths.Add(suggestion);
+                    }
+
+                    return new MissingMediaReferenceViewModel(
+                        entry.media,
+                        entry.reason!,
+                        suggestion);
+                })
+                .ToArray();
+        }, cancellationToken);
+
         ClearPendingProjectOpen();
         _pendingProjectDocument = document;
-        _pendingProjectPath = Path.GetFullPath(projectPath);
+        _pendingProjectPath = fullProjectPath;
         _pendingProjectIsRecovery = isRecovery;
         _pendingProjectDiscardUnsavedChanges = discardUnsavedChanges;
         foreach (var reference in missing)
@@ -2343,7 +2368,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             MissingMediaReferences.Add(reference);
         }
 
-        StatusText = $"{missing.Length} media file{(missing.Length == 1 ? " needs" : "s need")} relinking before the project can open";
+        var suggestionCount = missing.Count(reference => reference.HasSuggestion);
+        StatusText = suggestionCount == 0
+            ? $"{missing.Length} media file{(missing.Length == 1 ? " needs" : "s need")} relinking before the project can open"
+            : $"Found {suggestionCount} nearby relink suggestion{(suggestionCount == 1 ? string.Empty : "s")}";
         RaiseRecoveryStateChanged();
         return false;
     }
@@ -2601,6 +2629,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             RestoreVideoSequence(document, warnings);
+            SelectedMedia ??= MediaItems.FirstOrDefault(item => item.IsReady);
 
             ProjectPath = Path.GetFullPath(projectPath);
             IsProjectDirty = false;

@@ -6,11 +6,17 @@ public sealed class MissingMediaReferenceViewModel : ViewModelBase
 {
     private string? _replacementPath;
 
-    public MissingMediaReferenceViewModel(ProjectMediaDocument savedMedia, string reason)
+    public MissingMediaReferenceViewModel(
+        ProjectMediaDocument savedMedia,
+        string reason,
+        string? suggestedPath = null)
     {
         SavedMedia = savedMedia ?? throw new ArgumentNullException(nameof(savedMedia));
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         Reason = reason;
+        SuggestedPath = string.IsNullOrWhiteSpace(suggestedPath)
+            ? null
+            : Path.GetFullPath(suggestedPath);
     }
 
     internal ProjectMediaDocument SavedMedia { get; }
@@ -30,6 +36,10 @@ public sealed class MissingMediaReferenceViewModel : ViewModelBase
 
     public string Reason { get; }
 
+    public string? SuggestedPath { get; }
+
+    public bool HasSuggestion => SuggestedPath is not null;
+
     public string? ReplacementPath
     {
         get => _replacementPath;
@@ -47,7 +57,9 @@ public sealed class MissingMediaReferenceViewModel : ViewModelBase
 
     public string DetailText => IsResolved
         ? $"Relinked to {ReplacementPath}"
-        : $"{Reason} · {OriginalPath}";
+        : SuggestedPath is null
+            ? $"{Reason} · {OriginalPath}"
+            : $"{Reason} · Suggested: {SuggestedPath}";
 
     internal void Resolve(string replacementPath)
     {

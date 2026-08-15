@@ -675,6 +675,27 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void UseSuggestedMissingMedia_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is not Button
+            {
+                DataContext: MissingMediaReferenceViewModel
+                {
+                    SuggestedPath: { } suggestedPath,
+                } reference,
+            } ||
+            ViewModel is not { } viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RelinkMissingMediaAsync(
+            reference,
+            suggestedPath,
+            _lifetimeCancellation.Token);
+    }
+
     private void UseAutoTool_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
