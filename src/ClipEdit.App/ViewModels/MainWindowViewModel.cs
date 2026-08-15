@@ -1402,7 +1402,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     isCompleteSource: slice.SourceRange.Start == MediaTime.Zero &&
                                       slice.SourceRange.End ==
                                       (slice.Clip.Source.Edit?.SourceDuration ??
-                                       slice.Clip.Source.Media!.Probe.Duration));
+                                       slice.Clip.Source.Media!.Probe.Duration),
+                    sourceSize: video.OrientedSize);
             }).ToImmutableArray();
             var externalAudio = AudioTracks
                 .Where(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty)

@@ -374,7 +374,8 @@ public sealed record ExportVideoSegmentPlan
             crop,
             ClipCanvasTransform.Identity,
             audioTracks,
-            videoColorInfo: videoColorInfo)
+            videoColorInfo: videoColorInfo,
+            sourceSize: crop.SourceSize)
     {
         UsesCanvasTransform = false;
     }
@@ -390,7 +391,8 @@ public sealed record ExportVideoSegmentPlan
         MediaTime? timelineStart = null,
         int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent,
         ExportVideoColorInfo? videoColorInfo = null,
-        bool isCompleteSource = false)
+        bool isCompleteSource = false,
+        PixelSize? sourceSize = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
@@ -421,6 +423,7 @@ public sealed record ExportVideoSegmentPlan
         SourcePath = Path.GetFullPath(sourcePath);
         VideoStreamIndex = videoStreamIndex;
         SourceRange = sourceRange;
+        SourceSize = sourceSize;
         CanvasSize = canvasSize;
         if (timelineStart < MediaTime.Zero)
         {
@@ -442,6 +445,13 @@ public sealed record ExportVideoSegmentPlan
     public int VideoStreamIndex { get; }
 
     public MediaRange SourceRange { get; }
+
+    /// <summary>
+    /// Rotation-corrected source raster presented to the FFmpeg filter graph,
+    /// when known. This allows export lowering to prove when an axis-aligned
+    /// transform can bypass canvas compositing without changing its result.
+    /// </summary>
+    public PixelSize? SourceSize { get; }
 
     public PixelSize CanvasSize { get; }
 

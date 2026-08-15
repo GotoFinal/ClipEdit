@@ -218,8 +218,194 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Contains("[0:0]trim=start=2:end=5,setpts=PTS-STARTPTS,crop=1080:1080:420:0,scale=1080:1080", graph);
         Assert.Contains("[1:2]trim=start=0:end=4,setpts=PTS-STARTPTS,crop=1680:2160:1080:0,scale=1080:1080", graph);
         Assert.Contains("[vseg0][aseg0][vseg1][aseg1]concat=n=2:v=1:a=1[vbase][abase]", graph);
-        Assert.Contains("[vbase]scale=1080:1080:flags=lanczos,format=yuv420p,setsar=1[vout]", graph);
+        Assert.Contains("[vbase]format=yuv420p,setsar=1[vout]", graph);
+        Assert.DoesNotContain("[vbase]scale=1080:1080", graph);
         Assert.Contains("[abase]anull[aout]", graph);
+    }
+
+    [Fact]
+    public void Exact_right_angle_full_cover_uses_direct_transpose_crop_and_single_scale()
+    {
+        var sourceSize = new PixelSize(3_840, 2_160);
+        var canvasSize = new PixelSize(2_160, 3_840);
+        var canvasCrop = new CropRegion(canvasSize, 0, 228, 2_160, 2_880);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\recording.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(6, 1)),
+                    canvasSize,
+                    canvasCrop,
+                    new ClipCanvasTransform(0, 0, 1, 1, 270),
+                    sourceSize: sourceSize),
+            ],
+            canvasCrop.ExportSize,
+            TestPath("C:\\recording.mp4"),
+            Mp4Compatible,
+            encodingSettings: new ExportEncodingSettings(scalePercent: 50));
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.Equal(new PixelSize(1_080, 1_440), plan.OutputSize);
+        Assert.Contains(
+            "setpts=PTS-STARTPTS,transpose=dir=cclock," +
+            "crop=2160:2880:0:228,scale=1080:1440:flags=lanczos," +
+            "format=yuv420p,setsar=1[vseg0]",
+            graph);
+        Assert.Contains("[vbase]format=yuv420p,setsar=1[vout]", graph);
+        Assert.DoesNotContain("rotate=", graph);
+        Assert.DoesNotContain("overlay=", graph);
+        Assert.DoesNotContain("drawbox=", graph);
+        Assert.DoesNotContain("[vbase]scale=", graph);
+    }
+
+    [Theory]
+    [InlineData(90, "transpose=dir=clock,")]
+    [InlineData(180, "hflip,vflip,")]
+    [InlineData(270, "transpose=dir=cclock,")]
+    public void Exact_quarter_turns_use_axis_aligned_filters(int rotationDegrees, string expectedFilter)
+    {
+        var sourceSize = new PixelSize(1_920, 1_080);
+        var canvasSize = rotationDegrees is 90 or 270
+            ? new PixelSize(1_080, 1_920)
+            : sourceSize;
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\quarter-turn.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvasSize,
+                    CropRegion.FullFrame(canvasSize),
+                    new ClipCanvasTransform(0, 0, 1, 1, rotationDegrees),
+                    sourceSize: sourceSize),
+            ],
+            canvasSize,
+            TestPath("C:\\quarter-turn.mp4"),
+            Mp4Compatible);
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.Contains(expectedFilter, graph);
+        Assert.DoesNotContain("rotate=", graph);
+        Assert.DoesNotContain("overlay=", graph);
+    }
+
+    [Fact]
+    public void Hdr_quarter_turn_stays_ten_bit_without_rgba_rotation()
+    {
+        var sourceSize = new PixelSize(1_920, 1_080);
+        var canvasSize = new PixelSize(1_080, 1_920);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\hdr-quarter-turn.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvasSize,
+                    CropRegion.FullFrame(canvasSize),
+                    new ClipCanvasTransform(0, 0, 1, 1, 90),
+                    videoColorInfo: Hdr10,
+                    sourceSize: sourceSize),
+            ],
+            canvasSize,
+            TestPath("C:\\hdr-quarter-turn.mp4"),
+            Mp4Compatible);
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.True(plan.PreservesHdr);
+        Assert.Contains("transpose=dir=clock,format=yuv420p10le,setsar=1[vseg0]", graph);
+        Assert.Contains("setparams=range=tv:color_primaries=bt2020", graph);
+        Assert.DoesNotContain("format=rgba64le", graph);
+        Assert.DoesNotContain("overlay=", graph);
+    }
+
+    [Fact]
+    public void Axis_aligned_clip_smaller_than_crop_uses_black_padding_without_overlay()
+    {
+        var sourceSize = new PixelSize(640, 360);
+        var canvasSize = new PixelSize(1_280, 720);
+        var canvasCrop = CropRegion.FullFrame(canvasSize);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\small.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvasSize,
+                    canvasCrop,
+                    ClipCanvasTransform.Identity,
+                    sourceSize: sourceSize),
+            ],
+            canvasSize,
+            TestPath("C:\\padded.mp4"),
+            Mp4Compatible);
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.Contains("pad=1280:720:320:180:color=black,format=yuv420p,setsar=1[vseg0]", graph);
+        Assert.DoesNotContain("split=2[vseg0basein]", graph);
+        Assert.DoesNotContain("overlay=", graph);
+    }
+
+    [Fact]
+    public void Fractional_right_angle_placement_keeps_overlay_fallback_but_uses_transpose()
+    {
+        var sourceSize = new PixelSize(640, 360);
+        var canvasSize = new PixelSize(1_280, 720);
+        var canvasCrop = CropRegion.FullFrame(canvasSize);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\fractional.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvasSize,
+                    canvasCrop,
+                    new ClipCanvasTransform(0.5, 0, 1, 1, 90),
+                    sourceSize: sourceSize),
+            ],
+            canvasSize,
+            TestPath("C:\\fractional.mp4"),
+            Mp4Compatible);
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.Contains("split=2[vseg0basein][vseg0contentin]", graph);
+        Assert.Contains(
+            "scale=2:2:flags=fast_bilinear,drawbox=c=black:t=fill," +
+            "pad=1280:720:0:0:color=black[vseg0base]",
+            graph);
+        Assert.Contains("[vseg0contentin]transpose=dir=clock,scale=round(iw*1):round(ih*1)", graph);
+        Assert.Contains("overlay=x=(W-w)/2+0.5", graph);
+        Assert.DoesNotContain("format=rgba,rotate=90", graph);
+    }
+
+    [Fact]
+    public void Canvas_transform_without_known_source_size_keeps_safe_overlay_fallback()
+    {
+        var canvasSize = new PixelSize(1_280, 720);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\unknown-size.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvasSize,
+                    CropRegion.FullFrame(canvasSize),
+                    ClipCanvasTransform.Identity),
+            ],
+            canvasSize,
+            TestPath("C:\\unknown-size.mp4"),
+            Mp4Compatible);
+
+        var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
+
+        Assert.Null(Assert.Single(plan.VideoSegments).SourceSize);
+        Assert.Contains("split=2[vseg0basein][vseg0contentin]", graph);
+        Assert.Contains("overlay=x=(W-w)/2+0:y=(H-h)/2+0", graph);
     }
 
     [Fact]
@@ -252,6 +438,10 @@ public sealed class FfmpegExportArgumentsTests
 
         Assert.Contains(
             "setpts=PTS-STARTPTS,split=2[vseg0basein][vseg0contentin]",
+            graph);
+        Assert.Contains(
+            "scale=2:2:flags=fast_bilinear,drawbox=c=black:t=fill," +
+            "pad=1920:1080:0:0:color=black[vseg0base]",
             graph);
         Assert.Contains(
             "hflip,vflip,format=rgba,rotate=15*PI/180:" +
@@ -435,7 +625,8 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Equal(new MediaTime(1, 1), plan.ExpectedDuration);
         Assert.Contains("trim=start=0:end=8,setpts=(PTS-STARTPTS)/2", graph);
         Assert.Contains("asetpts=PTS-STARTPTS,atempo=2,aresample=48000", graph);
-        Assert.Contains("[vbase]setpts=(PTS-STARTPTS)/4,scale=1280:720", graph);
+        Assert.Contains("[vbase]setpts=(PTS-STARTPTS)/4,format=yuv420p,setsar=1[vout]", graph);
+        Assert.DoesNotContain("[vbase]setpts=(PTS-STARTPTS)/4,scale=1280:720", graph);
         Assert.Contains("[abase]atempo=2,atempo=2[aout]", graph);
     }
 

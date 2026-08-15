@@ -1,4 +1,5 @@
 using System.Globalization;
+using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Export;
 
@@ -149,40 +150,14 @@ internal static class FfmpegExportArguments
             var inputColorConversion = CreateInputColorConversion(segment.VideoColorInfo, plan);
             if (segment.UsesCanvasTransform)
             {
-                var transform = segment.CanvasTransform;
-                var rotationRadians = $"{transform.RotationDegrees}*PI/180";
-                var mirroring =
-                    (transform.IsHorizontallyMirrored ? "hflip," : string.Empty) +
-                    (transform.IsVerticallyMirrored ? "vflip," : string.Empty);
-                var rotation = transform.RotationDegrees == 0
-                    ? string.Empty
-                    : $"format={(plan.PreservesHdr ? "rgba64le" : "rgba")},rotate={rotationRadians}:" +
-                      $"ow=rotw({rotationRadians}):oh=roth({rotationRadians}):c=black@0,";
-                filters.Add(
-                    $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
-                    $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
-                    $"{CreateVideoSpeedFilter(segment.PlaybackSpeed)}," +
-                    inputColorConversion +
-                    $"split=2[vseg{segmentIndex}basein][vseg{segmentIndex}contentin]");
-                filters.Add(
-                    $"[vseg{segmentIndex}basein]" +
-                    $"scale={segment.CanvasSize.Width}:{segment.CanvasSize.Height}:flags=fast_bilinear," +
-                    $"drawbox=c=black:t=fill[vseg{segmentIndex}base]");
-                filters.Add(
-                    $"[vseg{segmentIndex}contentin]" +
-                    mirroring +
-                    rotation +
-                    $"scale=round(iw*{FormatScalar(transform.ScaleX)}):" +
-                    $"round(ih*{FormatScalar(transform.ScaleY)}):flags=lanczos[vseg{segmentIndex}content]");
-                filters.Add(
-                    $"[vseg{segmentIndex}base][vseg{segmentIndex}content]" +
-                    $"overlay=x=(W-w)/2{FormatSignedScalar(transform.OffsetX)}:" +
-                    $"y=(H-h)/2{FormatSignedScalar(transform.OffsetY)}:shortest=1:" +
-                    $"format={overlayPixelFormat}," +
-                    $"crop={segment.CanvasCrop.Width}:{segment.CanvasCrop.Height}:" +
-                    $"{segment.CanvasCrop.X}:{segment.CanvasCrop.Y}," +
-                    $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format={videoPixelFormat}," +
-                    $"setsar=1[vseg{segmentIndex}]");
+                AddCanvasSegmentVideoFilters(
+                    filters,
+                    plan,
+                    segment,
+                    segmentIndex,
+                    inputColorConversion,
+                    videoPixelFormat,
+                    overlayPixelFormat);
             }
             else
             {
@@ -313,7 +288,7 @@ internal static class FfmpegExportArguments
             mixInputs.Add(output);
         }
 
-        AddVideoOutputFilters(filters, "vbase", plan);
+        AddSequenceVideoOutputFilters(filters, "vbase", plan);
         if (mixInputs.Count == 1)
         {
             if (plan.EncodingSettings.PlaybackSpeedPercent == 100)
@@ -340,6 +315,238 @@ internal static class FfmpegExportArguments
 
         return string.Join(';', filters);
     }
+
+    private static void AddCanvasSegmentVideoFilters(
+        ICollection<string> filters,
+        ExportPlan plan,
+        ExportVideoSegmentPlan segment,
+        int segmentIndex,
+        string inputColorConversion,
+        string videoPixelFormat,
+        string overlayPixelFormat)
+    {
+        var range = segment.SourceRange;
+        var transform = segment.CanvasTransform;
+        var inputPreparation =
+            $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
+            $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+            $"{CreateVideoSpeedFilter(segment.PlaybackSpeed)}," +
+            inputColorConversion;
+        var mirroring =
+            (transform.IsHorizontallyMirrored ? "hflip," : string.Empty) +
+            (transform.IsVerticallyMirrored ? "vflip," : string.Empty);
+        var rotation = CreateCanvasRotationFilter(transform.RotationDegrees, plan.PreservesHdr);
+
+        if (TryCreateAxisAlignedCanvasComposition(segment, out var composition))
+        {
+            var direct = inputPreparation + mirroring + rotation;
+            if (transform.ScaleX != 1 || transform.ScaleY != 1)
+            {
+                direct += CreateCanvasScaleFilter(transform.ScaleX, transform.ScaleY);
+            }
+            if (!composition.UsesCompleteContent)
+            {
+                direct +=
+                    $"crop={composition.CropWidth}:{composition.CropHeight}:" +
+                    $"{composition.CropX}:{composition.CropY},";
+            }
+            if (composition.RequiresPadding)
+            {
+                direct +=
+                    $"pad={segment.CanvasCrop.Width}:{segment.CanvasCrop.Height}:" +
+                    $"{composition.PadX}:{composition.PadY}:color=black,";
+            }
+
+            filters.Add(
+                direct +
+                CreateSegmentOutputConformance(plan, segment.CanvasCrop, videoPixelFormat) +
+                $"[vseg{segmentIndex}]");
+            return;
+        }
+
+        filters.Add(
+            inputPreparation +
+            $"split=2[vseg{segmentIndex}basein][vseg{segmentIndex}contentin]");
+        var seedWidth = Math.Min(2, segment.CanvasSize.Width);
+        var seedHeight = Math.Min(2, segment.CanvasSize.Height);
+        filters.Add(
+            $"[vseg{segmentIndex}basein]" +
+            $"scale={seedWidth}:{seedHeight}:flags=fast_bilinear," +
+            "drawbox=c=black:t=fill," +
+            $"pad={segment.CanvasSize.Width}:{segment.CanvasSize.Height}:0:0:color=black" +
+            $"[vseg{segmentIndex}base]");
+        filters.Add(
+            $"[vseg{segmentIndex}contentin]" +
+            mirroring +
+            rotation +
+            CreateCanvasScaleFilter(transform.ScaleX, transform.ScaleY) +
+            $"[vseg{segmentIndex}content]");
+        filters.Add(
+            $"[vseg{segmentIndex}base][vseg{segmentIndex}content]" +
+            $"overlay=x=(W-w)/2{FormatSignedScalar(transform.OffsetX)}:" +
+            $"y=(H-h)/2{FormatSignedScalar(transform.OffsetY)}:shortest=1:" +
+            $"format={overlayPixelFormat}," +
+            $"crop={segment.CanvasCrop.Width}:{segment.CanvasCrop.Height}:" +
+            $"{segment.CanvasCrop.X}:{segment.CanvasCrop.Y}," +
+            CreateSegmentOutputConformance(plan, segment.CanvasCrop, videoPixelFormat) +
+            $"[vseg{segmentIndex}]");
+    }
+
+    private static string CreateCanvasRotationFilter(int rotationDegrees, bool preservesHdr)
+    {
+        return rotationDegrees switch
+        {
+            0 => string.Empty,
+            90 => "transpose=dir=clock,",
+            180 => "hflip,vflip,",
+            270 => "transpose=dir=cclock,",
+            _ => CreateArbitraryCanvasRotationFilter(rotationDegrees, preservesHdr),
+        };
+    }
+
+    private static string CreateArbitraryCanvasRotationFilter(int rotationDegrees, bool preservesHdr)
+    {
+        var rotationRadians = $"{rotationDegrees}*PI/180";
+        return $"format={(preservesHdr ? "rgba64le" : "rgba")},rotate={rotationRadians}:" +
+               $"ow=rotw({rotationRadians}):oh=roth({rotationRadians}):c=black@0,";
+    }
+
+    private static string CreateCanvasScaleFilter(double scaleX, double scaleY) =>
+        $"scale=round(iw*{FormatScalar(scaleX)}):" +
+        $"round(ih*{FormatScalar(scaleY)}):flags=lanczos,";
+
+    private static string CreateSegmentOutputConformance(
+        ExportPlan plan,
+        CropRegion canvasCrop,
+        string videoPixelFormat)
+    {
+        var scale = canvasCrop.ExportSize == plan.OutputSize
+            ? string.Empty
+            : $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,";
+        return scale + $"format={videoPixelFormat},setsar=1";
+    }
+
+    private static bool TryCreateAxisAlignedCanvasComposition(
+        ExportVideoSegmentPlan segment,
+        out AxisAlignedCanvasComposition composition)
+    {
+        composition = default;
+        var transform = segment.CanvasTransform;
+        if (transform.RotationDegrees % 90 != 0 || segment.SourceSize is not { } sourceSize)
+        {
+            return false;
+        }
+
+        var swapsAxes = transform.RotationDegrees is 90 or 270;
+        var rotatedWidth = swapsAxes ? sourceSize.Height : sourceSize.Width;
+        var rotatedHeight = swapsAxes ? sourceSize.Width : sourceSize.Height;
+        if (!TryRoundPositiveDimension(rotatedWidth * transform.ScaleX, out var contentWidth) ||
+            !TryRoundPositiveDimension(rotatedHeight * transform.ScaleY, out var contentHeight) ||
+            !TryRoundCoordinate(
+                (segment.CanvasSize.Width - contentWidth) / 2d + transform.OffsetX,
+                out var contentCanvasX) ||
+            !TryRoundCoordinate(
+                (segment.CanvasSize.Height - contentHeight) / 2d + transform.OffsetY,
+                out var contentCanvasY))
+        {
+            return false;
+        }
+
+        var crop = segment.CanvasCrop;
+        var intersectionLeft = Math.Max((long)crop.X, contentCanvasX);
+        var intersectionTop = Math.Max((long)crop.Y, contentCanvasY);
+        var intersectionRight = Math.Min(
+            (long)crop.X + crop.Width,
+            (long)contentCanvasX + contentWidth);
+        var intersectionBottom = Math.Min(
+            (long)crop.Y + crop.Height,
+            (long)contentCanvasY + contentHeight);
+        if (intersectionRight <= intersectionLeft || intersectionBottom <= intersectionTop)
+        {
+            return false;
+        }
+
+        var sourceX = checked((int)(intersectionLeft - contentCanvasX));
+        var sourceY = checked((int)(intersectionTop - contentCanvasY));
+        var width = checked((int)(intersectionRight - intersectionLeft));
+        var height = checked((int)(intersectionBottom - intersectionTop));
+        var padX = checked((int)(intersectionLeft - crop.X));
+        var padY = checked((int)(intersectionTop - crop.Y));
+        if (!AreChromaAligned(
+                contentWidth,
+                contentHeight,
+                sourceX,
+                sourceY,
+                width,
+                height,
+                padX,
+                padY,
+                crop.Width,
+                crop.Height))
+        {
+            return false;
+        }
+
+        composition = new AxisAlignedCanvasComposition(
+            sourceX,
+            sourceY,
+            width,
+            height,
+            padX,
+            padY,
+            sourceX == 0 && sourceY == 0 && width == contentWidth && height == contentHeight,
+            padX != 0 || padY != 0 || width != crop.Width || height != crop.Height);
+        return true;
+    }
+
+    private static bool TryRoundPositiveDimension(double value, out int result)
+    {
+        result = 0;
+        if (!double.IsFinite(value) || value < 1 || value > int.MaxValue)
+        {
+            return false;
+        }
+
+        var rounded = Math.Round(value, MidpointRounding.AwayFromZero);
+        if (rounded < 1 || rounded > int.MaxValue)
+        {
+            return false;
+        }
+
+        result = (int)rounded;
+        return true;
+    }
+
+    private static bool TryRoundCoordinate(double value, out int result)
+    {
+        result = 0;
+        if (!double.IsFinite(value) || value < int.MinValue || value > int.MaxValue)
+        {
+            return false;
+        }
+
+        var rounded = Math.Round(value, MidpointRounding.AwayFromZero);
+        if (Math.Abs(value - rounded) > 0.000_001)
+        {
+            return false;
+        }
+
+        result = (int)rounded;
+        return true;
+    }
+
+    private static bool AreChromaAligned(params int[] values) =>
+        values.All(value => value % 2 == 0);
+
+    private readonly record struct AxisAlignedCanvasComposition(
+        int CropX,
+        int CropY,
+        int CropWidth,
+        int CropHeight,
+        int PadX,
+        int PadY,
+        bool UsesCompleteContent,
+        bool RequiresPadding);
 
     internal static string CreateFilterGraph(ExportPlan plan)
     {
@@ -669,6 +876,34 @@ internal static class FfmpegExportArguments
             audioEdit.KeptRanges.Select(range =>
                 $"gte(t,{FormatTime(range.Start)})*lt(t,{FormatTime(range.End)})"));
         return $"aeval='if(gt({keptExpression},0),val(ch),0)':c=same,";
+    }
+
+    private static void AddSequenceVideoOutputFilters(
+        ICollection<string> filters,
+        string input,
+        ExportPlan plan)
+    {
+        var speed = plan.EncodingSettings.PlaybackSpeedPercent == 100
+            ? string.Empty
+            : $"setpts=(PTS-STARTPTS)/{FormatScalar(plan.EncodingSettings.PlaybackSpeed)},";
+        if (plan.Preset.VideoCodec == VideoCodecFamily.Gif)
+        {
+            var maximumColors = MapQuality(plan.EncodingSettings.Quality, 32, 256);
+            filters.Add(
+                $"[{input}]{speed}fps={plan.EncodingSettings.GifFrameRate}," +
+                "split=2[gifsource][gifpaletteinput]");
+            filters.Add(
+                $"[gifpaletteinput]palettegen=max_colors={maximumColors}:stats_mode=diff[gifpalette]");
+            filters.Add(
+                "[gifsource][gifpalette]paletteuse=dither=sierra2_4a:diff_mode=rectangle[vout]");
+            return;
+        }
+
+        var colorProperties = plan.PreservesHdr
+            ? $",{CreateHdrSetParameters(plan.OutputVideoColorInfo!)}"
+            : string.Empty;
+        filters.Add(
+            $"[{input}]{speed}format={GetOutputPixelFormat(plan)}{colorProperties},setsar=1[vout]");
     }
 
     private static void AddVideoOutputFilters(

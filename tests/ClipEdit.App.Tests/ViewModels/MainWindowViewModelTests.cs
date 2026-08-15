@@ -1022,6 +1022,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(new PixelSize(902, 506), renderer.Plan.OutputSize);
         var segment = Assert.Single(renderer.Plan!.VideoSegments);
         Assert.Equal(new MediaRange(new MediaTime(5, 1), new MediaTime(10, 1)), segment.SourceRange);
+        Assert.Equal(new PixelSize(1_920, 1_080), segment.SourceSize);
         Assert.Equal(viewModel.CanvasSize, segment.CanvasSize);
         Assert.Equal(viewModel.CanvasCrop, segment.CanvasCrop);
         Assert.Equal(viewModel.SelectedVideoClip!.CanvasTransform, segment.CanvasTransform);
