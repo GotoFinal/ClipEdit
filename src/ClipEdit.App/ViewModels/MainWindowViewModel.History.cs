@@ -138,10 +138,6 @@ public sealed partial class MainWindowViewModel
                     exportSettings.CustomAudioCodec,
                     exportSettings.CustomUseSourceFrameRate,
                     exportSettings.CustomFrameRate);
-                ExportQuality = exportSettings.Quality;
-                ExportScalePercent = exportSettings.ScalePercent;
-                GifFrameRate = exportSettings.GifFrameRate;
-                ExportPlaybackSpeedPercent = exportSettings.PlaybackSpeedPercent;
             }
 
             var warnings = new List<string>();

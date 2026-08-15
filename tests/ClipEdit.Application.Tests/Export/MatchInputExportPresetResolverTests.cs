@@ -65,6 +65,25 @@ public sealed class MatchInputExportPresetResolverTests
         Assert.Equal(".mkv", resolution.Preset.FileExtension);
     }
 
+    [Fact]
+    public void Source_quality_adds_input_bitrates_to_a_fixed_output_format()
+    {
+        var probe = CreateProbe(
+            "source.mkv",
+            "h264",
+            "aac",
+            videoBitRate: 6_400_000,
+            audioBitRate: 192_000);
+
+        var preset = MatchInputExportPresetResolver.ApplySourceQuality(
+            BuiltInExportPresets.Mp4Compatible,
+            probe);
+
+        Assert.Equal(BuiltInExportPresets.Mp4Compatible.Id, preset.Id);
+        Assert.Equal(6_400_000, preset.VideoBitRateBitsPerSecond);
+        Assert.Equal(192_000, preset.AudioBitRateBitsPerSecond);
+    }
+
     private static MediaProbeResult CreateProbe(
         string fileName,
         string videoCodec,

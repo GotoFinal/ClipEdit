@@ -99,6 +99,41 @@ public static class MatchInputExportPresetResolver
         return new MatchInputExportResolution(preset, usedFallback, explanation);
     }
 
+    public static ExportPreset ApplySourceQuality(
+        ExportPreset preset,
+        MediaProbeResult probe)
+    {
+        ArgumentNullException.ThrowIfNull(preset);
+        ArgumentNullException.ThrowIfNull(probe);
+        if (preset.VideoCodec == VideoCodecFamily.Gif)
+        {
+            return preset;
+        }
+
+        var video = probe.VideoStreams.FirstOrDefault() ??
+                    throw new ExportPlanException("Matching input quality requires a source video stream.");
+        var audio = probe.AudioStreams.FirstOrDefault();
+        var videoBitRate = preset.VideoBitRateBitsPerSecond ?? NormalizeBitRate(
+            video.BitRateBitsPerSecond ?? EstimateVideoBitRate(probe, audio),
+            MaximumVideoBitRate);
+        var audioBitRate = preset.AudioBitRateBitsPerSecond ?? NormalizeBitRate(
+            audio?.BitRateBitsPerSecond,
+            MaximumAudioBitRate);
+
+        return new ExportPreset(
+            preset.Id,
+            preset.DisplayName,
+            preset.FileExtension,
+            preset.Container,
+            preset.VideoCodec,
+            preset.AudioCodec,
+            preset.RequiresEvenDimensions,
+            preset.ParameterMode,
+            preset.FrameRate,
+            videoBitRate,
+            audioBitRate);
+    }
+
     private static bool TryMapVideoCodec(string codecName, out VideoCodecFamily codec)
     {
         if (string.Equals(codecName, "h264", StringComparison.OrdinalIgnoreCase))

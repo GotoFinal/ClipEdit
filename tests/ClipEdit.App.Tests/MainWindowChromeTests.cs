@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Layout;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using ClipEdit.Application.Export;
 using ClipEdit.App.Views;
 using ClipEdit.App.Platform;
 using ClipEdit.App.ViewModels;
@@ -142,9 +143,13 @@ public sealed class MainWindowChromeTests
         var window = new MainWindow();
         var export = window.FindControl<Button>("ExportButton");
         var settings = window.FindControl<Button>("ExportSettingsButton");
+        var qualityMode = window.FindControl<ComboBox>("ExportQualityModeInput");
+        var remember = window.FindControl<CheckBox>("RememberExportAdjustmentsCheckBox");
 
         Assert.NotNull(export);
         Assert.NotNull(settings);
+        Assert.NotNull(qualityMode);
+        Assert.NotNull(remember);
         Assert.Equal(30, export.Height);
         Assert.Equal(30, settings.Height);
         Assert.Equal(24, settings.Width);
@@ -321,7 +326,7 @@ public sealed class MainWindowChromeTests
         var keyTarget = window.FindControl<Button>("ExportButton");
         Assert.NotNull(keyTarget);
         window.Show();
-        viewModel.ExportScalePercent = 75;
+        viewModel.SelectedExportPreset = BuiltInExportPresets.WebM;
         Assert.True(viewModel.CanUndo);
 
         var undo = new KeyEventArgs
@@ -333,7 +338,7 @@ public sealed class MainWindowChromeTests
         keyTarget.RaiseEvent(undo);
 
         Assert.True(undo.Handled);
-        Assert.Equal(100, viewModel.ExportScalePercent);
+        Assert.Equal(BuiltInExportPresets.Mp4Compatible, viewModel.SelectedExportPreset);
         Assert.True(viewModel.CanRedo);
 
         var redo = new KeyEventArgs
@@ -345,7 +350,7 @@ public sealed class MainWindowChromeTests
         keyTarget.RaiseEvent(redo);
 
         Assert.True(redo.Handled);
-        Assert.Equal(75, viewModel.ExportScalePercent);
+        Assert.Equal(BuiltInExportPresets.WebM, viewModel.SelectedExportPreset);
         window.Close();
     }
 

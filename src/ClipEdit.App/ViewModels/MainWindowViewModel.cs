@@ -69,6 +69,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private int _exportQuality = ExportEncodingSettings.DefaultQuality;
     private int _gifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
     private int _exportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;
+    private ExportQualityChoice _selectedExportQuality = ExportQualityChoice.MatchSource;
+    private bool _rememberExportAdjustments;
     private ExportDestinationChoice _selectedExportDestination = ExportDestinationChoice.File;
     private bool _isExporting;
     private double _exportProgress;
@@ -324,12 +326,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private ExportPreset ResolveSelectedExportPreset(IReadOnlyList<SequenceExportSlice> slices)
     {
-        if (ResolveMatchInput(slices) is { } match)
+        var preset = ResolveMatchInput(slices) is { } match
+            ? match.Preset
+            : IsCustomExport
+                ? CreateCustomExportPreset()
+                : SelectedExportPreset;
+        if (ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.MatchSource &&
+            slices.Count > 0 &&
+            preset.VideoCodec != VideoCodecFamily.Gif)
         {
-            return match.Preset;
+            preset = MatchInputExportPresetResolver.ApplySourceQuality(
+                preset,
+                slices[0].Clip.Source.Media!.Probe);
         }
 
-        return IsCustomExport ? CreateCustomExportPreset() : SelectedExportPreset;
+        return preset;
     }
 
     public ExportPreset SelectedExportPreset
@@ -343,6 +354,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(CropSizeStep));
                 OnPropertyChanged(nameof(IsCustomExport));
                 OnPropertyChanged(nameof(IsGifExport));
+                OnPropertyChanged(nameof(UsesCustomExportQuality));
+                OnPropertyChanged(nameof(UsesMatchedInputQuality));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
                 if (ResolveMatchInput(GetSequenceExportSlices()) is { } resolution)
@@ -874,8 +887,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var gifDetails = preset.VideoCodec == VideoCodecFamily.Gif
                 ? $" · {GifFrameRate} fps"
                 : string.Empty;
+            var quality = IsGifExport ||
+                          ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.Custom
+                ? $"quality {ExportQuality}%"
+                : "match input quality";
             return $"{preset.DisplayName} · exact sequence re-encode · " +
-                   $"{outputSize.Width} × {outputSize.Height} · quality {ExportQuality}%{gifDetails} · " +
+                   $"{outputSize.Width} × {outputSize.Height} · {quality}{gifDetails} · " +
                    FormatSequenceTimestamp(duration);
         }
     }
@@ -2012,6 +2029,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             _selectedCropAspectPreset = BuiltInCropAspectPresets.Custom;
             _isCropAspectLocked = false;
             ResetProjectCanvasState();
+            if (!RememberExportAdjustments)
+            {
+                ResetTransientExportAdjustments();
+            }
             OnPropertyChanged(nameof(SelectedCropAspectPreset));
             OnPropertyChanged(nameof(IsCropAspectLocked));
             IsProjectDirty = false;
@@ -2580,19 +2601,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         exportSettings.CustomUseSourceFrameRate,
                         exportSettings.CustomFrameRate);
                 }
-                ExportQuality = exportSettings.Quality;
-                ExportScalePercent = exportSettings.ScalePercent;
-                GifFrameRate = exportSettings.GifFrameRate;
-                ExportPlaybackSpeedPercent = document.SchemaVersion >= 10
-                    ? exportSettings.PlaybackSpeedPercent
-                    : ExportEncodingSettings.DefaultPlaybackSpeedPercent;
             }
-            else
+            if (!RememberExportAdjustments)
             {
-                ExportQuality = ExportEncodingSettings.DefaultQuality;
-                ExportScalePercent = ExportEncodingSettings.DefaultScalePercent;
-                GifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
-                ExportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;
+                ResetTransientExportAdjustments();
             }
 
             foreach (var savedMedia in document.Media)
@@ -2711,15 +2723,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 CanvasCrop.Width,
                 CanvasCrop.Height),
             new ProjectExportSettingsDocument(
-                ExportQuality,
-                ExportScalePercent,
-                GifFrameRate,
+                ExportEncodingSettings.DefaultQuality,
+                ExportEncodingSettings.DefaultScalePercent,
+                ExportEncodingSettings.DefaultGifFrameRate,
                 CustomExportContainer.Value,
                 CustomVideoCodec.Value,
                 CustomAudioCodec.Value,
                 CustomUseSourceFrameRate,
                 CustomFrameRate,
-                ExportPlaybackSpeedPercent));
+                ExportEncodingSettings.DefaultPlaybackSpeedPercent));
     }
 
     public void Dispose()

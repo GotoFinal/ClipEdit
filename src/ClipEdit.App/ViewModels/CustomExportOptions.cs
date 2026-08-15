@@ -62,7 +62,8 @@ public sealed record SavedExportPresetViewModel(
     int ScalePercent,
     int Quality,
     int GifFrameRate,
-    int PlaybackSpeedPercent = 100);
+    int PlaybackSpeedPercent = 100,
+    ExportQualityMode QualityMode = ExportQualityMode.Custom);
 
 public sealed partial class MainWindowViewModel
 {
@@ -279,16 +280,25 @@ public sealed partial class MainWindowViewModel
         _isLoadingProject = true;
         try
         {
+            RememberExportAdjustments = normalized.RememberAdjustments;
             ApplyCustomExportSettings(
                 normalized.CustomContainer,
                 normalized.CustomVideoCodec,
                 normalized.CustomAudioCodec,
                 normalized.CustomUseSourceFrameRate,
                 normalized.CustomFrameRate);
-            ExportScalePercent = normalized.ScalePercent;
-            ExportQuality = normalized.Quality;
-            GifFrameRate = normalized.GifFrameRate;
-            ExportPlaybackSpeedPercent = normalized.PlaybackSpeedPercent;
+            if (RememberExportAdjustments)
+            {
+                ExportScalePercent = normalized.ScalePercent;
+                ExportQuality = normalized.Quality;
+                GifFrameRate = normalized.GifFrameRate;
+                ExportPlaybackSpeedPercent = normalized.PlaybackSpeedPercent;
+                SelectedExportQuality = ExportQualityChoice.FromValue(normalized.QualityMode);
+            }
+            else
+            {
+                ResetTransientExportAdjustments();
+            }
             SelectedExportDestination = ExportDestinationChoice.FromValue(normalized.ExportDestination);
             ReplaceSavedExportPresets(normalized.SavedPresets);
             SelectedExportPreset = ExportPresets.FirstOrDefault(preset =>
@@ -303,9 +313,9 @@ public sealed partial class MainWindowViewModel
 
     internal ExportPreferences CreateExportPreferences() => new(
         SelectedExportPreset.Id,
-        ExportScalePercent,
-        ExportQuality,
-        GifFrameRate,
+        RememberExportAdjustments ? ExportScalePercent : ExportEncodingSettings.DefaultScalePercent,
+        RememberExportAdjustments ? ExportQuality : ExportEncodingSettings.DefaultQuality,
+        RememberExportAdjustments ? GifFrameRate : ExportEncodingSettings.DefaultGifFrameRate,
         CustomExportContainer.Value,
         CustomVideoCodec.Value,
         CustomAudioCodec.Value,
@@ -313,7 +323,13 @@ public sealed partial class MainWindowViewModel
         CustomFrameRate,
         ExportDestination,
         SavedExportPresets.ToArray(),
-        ExportPlaybackSpeedPercent);
+        RememberExportAdjustments
+            ? ExportPlaybackSpeedPercent
+            : ExportEncodingSettings.DefaultPlaybackSpeedPercent,
+        RememberExportAdjustments,
+        RememberExportAdjustments
+            ? ExportQualityMode
+            : ExportEncodingSettings.DefaultQualityMode);
 
     internal void ApplyCustomExportSettings(
         ExportContainer container,
@@ -367,7 +383,8 @@ public sealed partial class MainWindowViewModel
         ExportScalePercent,
         ExportQuality,
         GifFrameRate,
-        ExportPlaybackSpeedPercent);
+        ExportPlaybackSpeedPercent,
+        ExportQualityMode);
 
     private void ApplySavedExportPreset(SavedExportPresetViewModel saved)
     {
@@ -381,6 +398,7 @@ public sealed partial class MainWindowViewModel
         ExportQuality = saved.Quality;
         GifFrameRate = saved.GifFrameRate;
         ExportPlaybackSpeedPercent = saved.PlaybackSpeedPercent;
+        SelectedExportQuality = ExportQualityChoice.FromValue(saved.QualityMode);
         SelectedExportPreset = BuiltInExportPresets.Custom;
         CustomPresetName = saved.Name;
     }
@@ -456,6 +474,7 @@ public sealed partial class MainWindowViewModel
         preset.ScalePercent is >= 10 and <= 100 &&
         preset.Quality is >= 1 and <= 100 &&
         preset.GifFrameRate is >= 1 and <= 60 &&
+        Enum.IsDefined(preset.QualityMode) &&
         preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
             <= ExportEncodingSettings.MaximumPlaybackSpeedPercent;
 }

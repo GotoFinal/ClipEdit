@@ -17,7 +17,9 @@ internal sealed record ExportPreferences(
     int CustomFrameRate,
     ExportDestinationMode ExportDestination,
     IReadOnlyList<SavedExportPresetViewModel> SavedPresets,
-    int PlaybackSpeedPercent = 100)
+    int PlaybackSpeedPercent = 100,
+    bool RememberAdjustments = false,
+    ExportQualityMode QualityMode = ExportQualityMode.MatchSource)
 {
     public static ExportPreferences Default { get; } = new(
         BuiltInExportPresets.Mp4Compatible.Id,
@@ -31,7 +33,9 @@ internal sealed record ExportPreferences(
         30,
         ExportDestinationMode.File,
         [],
-        100);
+        100,
+        false,
+        ExportQualityMode.MatchSource);
 
     public ExportPreferences Normalize()
     {
@@ -52,6 +56,7 @@ internal sealed record ExportPreferences(
                 preset.GifFrameRate is >= 1 and <= 60 &&
                 preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
                     <= ExportEncodingSettings.MaximumPlaybackSpeedPercent &&
+                Enum.IsDefined(preset.QualityMode) &&
                 Enum.IsDefined(preset.Container) &&
                 Enum.IsDefined(preset.VideoCodec) &&
                 Enum.IsDefined(preset.AudioCodec))
@@ -83,6 +88,9 @@ internal sealed record ExportPreferences(
                 <= ExportEncodingSettings.MaximumPlaybackSpeedPercent
                 ? PlaybackSpeedPercent
                 : Default.PlaybackSpeedPercent,
+            QualityMode = Enum.IsDefined(QualityMode)
+                ? QualityMode
+                : Default.QualityMode,
             CustomContainer = custom.Container,
             CustomVideoCodec = custom.Video,
             CustomAudioCodec = custom.Audio,

@@ -37,6 +37,28 @@ public sealed record ExportDestinationChoice(
     };
 }
 
+public sealed record ExportQualityChoice(
+    ExportQualityMode Value,
+    string DisplayName)
+{
+    public static ExportQualityChoice MatchSource { get; } = new(
+        ExportQualityMode.MatchSource,
+        "Match input");
+
+    public static ExportQualityChoice Custom { get; } = new(
+        ExportQualityMode.Custom,
+        "Custom");
+
+    public static IReadOnlyList<ExportQualityChoice> All { get; } =
+        [MatchSource, Custom];
+
+    public static ExportQualityChoice FromValue(ExportQualityMode value) => value switch
+    {
+        ExportQualityMode.Custom => Custom,
+        _ => MatchSource,
+    };
+}
+
 public sealed partial class MainWindowViewModel
 {
     private static readonly double[] ExportPlaybackSpeedSnapValues =
@@ -50,6 +72,9 @@ public sealed partial class MainWindowViewModel
 
     public IReadOnlyList<ExportDestinationChoice> ExportDestinationChoices =>
         ExportDestinationChoice.All;
+
+    public IReadOnlyList<ExportQualityChoice> ExportQualityChoices =>
+        ExportQualityChoice.All;
 
     public IReadOnlyList<double> ExportPlaybackSpeedSliderSnapValues =>
         ExportPlaybackSpeedSnapValues;
@@ -71,6 +96,36 @@ public sealed partial class MainWindowViewModel
 
     public ExportDestinationMode ExportDestination => SelectedExportDestination.Value;
 
+    public ExportQualityChoice SelectedExportQuality
+    {
+        get => _selectedExportQuality;
+        set
+        {
+            var next = value ?? ExportQualityChoice.MatchSource;
+            if (SetProperty(ref _selectedExportQuality, next))
+            {
+                OnPropertyChanged(nameof(ExportQualityMode));
+                OnPropertyChanged(nameof(UsesCustomExportQuality));
+                OnPropertyChanged(nameof(UsesMatchedInputQuality));
+                RaiseExportStateChanged();
+            }
+        }
+    }
+
+    public ExportQualityMode ExportQualityMode => SelectedExportQuality.Value;
+
+    public bool UsesCustomExportQuality =>
+        IsGifExport || ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.Custom;
+
+    public bool UsesMatchedInputQuality =>
+        !IsGifExport && ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.MatchSource;
+
+    public bool RememberExportAdjustments
+    {
+        get => _rememberExportAdjustments;
+        set => SetProperty(ref _rememberExportAdjustments, value);
+    }
+
     public string ExportActionText => ExportDestination == ExportDestinationMode.Clipboard
         ? "Copy"
         : "Export";
@@ -85,7 +140,6 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ExportScaleSliderValue));
                 RaiseExportStateChanged();
-                MarkProjectDirty("export-scale");
             }
         }
     }
@@ -106,7 +160,6 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ExportQualitySliderValue));
                 RaiseExportStateChanged();
-                MarkProjectDirty("export-quality");
             }
         }
     }
@@ -127,7 +180,6 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(GifFrameRateSliderValue));
                 RaiseExportStateChanged();
-                MarkProjectDirty("export-gif-frame-rate");
             }
         }
     }
@@ -151,7 +203,6 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ExportPlaybackSpeedSliderValue));
                 RaiseExportStateChanged();
-                MarkProjectDirty("export-playback-speed");
             }
         }
     }
@@ -199,9 +250,12 @@ public sealed partial class MainWindowViewModel
             var speed = ExportPlaybackSpeedPercent == 100
                 ? string.Empty
                 : $" · {ExportPlaybackSpeedPercent}% speed";
+            var quality = IsGifExport || ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.Custom
+                ? $"quality {ExportQuality}%"
+                : "match input quality";
             return IsGifExport
-                ? $"{destination}{ExportOutputSizeText} · quality {ExportQuality}% · {GifFrameRate} fps{speed}"
-                : $"{destination}{ExportOutputSizeText} · quality {ExportQuality}%{speed}";
+                ? $"{destination}{ExportOutputSizeText} · {quality} · {GifFrameRate} fps{speed}"
+                : $"{destination}{ExportOutputSizeText} · {quality}{speed}";
         }
     }
 
@@ -209,7 +263,17 @@ public sealed partial class MainWindowViewModel
         ExportQuality,
         ExportScalePercent,
         GifFrameRate,
-        ExportPlaybackSpeedPercent);
+        ExportPlaybackSpeedPercent,
+        ExportQualityMode);
+
+    private void ResetTransientExportAdjustments()
+    {
+        SelectedExportQuality = ExportQualityChoice.FromValue(ExportEncodingSettings.DefaultQualityMode);
+        ExportQuality = ExportEncodingSettings.DefaultQuality;
+        ExportScalePercent = ExportEncodingSettings.DefaultScalePercent;
+        GifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
+        ExportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;
+    }
 
     public bool HasExportBlockingIssue => !IsExporting && ExportAvailabilityText != "Ready to export";
 

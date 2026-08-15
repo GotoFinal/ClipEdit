@@ -470,7 +470,10 @@ internal static class FfmpegExportArguments
             RemoveOption(arguments, "-crf");
             RemoveOption(arguments, "-b:v");
             arguments.Add("-b:v");
-            arguments.Add(ScaleBitRate(videoBitRate, quality).ToString(CultureInfo.InvariantCulture));
+            arguments.Add((plan.EncodingSettings.QualityMode == ExportQualityMode.MatchSource
+                    ? videoBitRate
+                    : ScaleBitRate(videoBitRate, quality))
+                .ToString(CultureInfo.InvariantCulture));
         }
         if (plan.Preset.FrameRate is { } frameRate)
         {
@@ -478,10 +481,11 @@ internal static class FfmpegExportArguments
             arguments.Add($"{frameRate.Numerator}/{frameRate.Denominator}");
         }
 
-        var audioBitRate = ScaleBitRate(
-                plan.Preset.AudioBitRateBitsPerSecond ??
-                (plan.Preset.AudioCodec == AudioCodecFamily.Aac ? 192_000 : 160_000),
-                quality)
+        var baseAudioBitRate = plan.Preset.AudioBitRateBitsPerSecond ??
+                               (plan.Preset.AudioCodec == AudioCodecFamily.Aac ? 192_000 : 160_000);
+        var audioBitRate = (plan.EncodingSettings.QualityMode == ExportQualityMode.MatchSource
+                ? baseAudioBitRate
+                : ScaleBitRate(baseAudioBitRate, quality))
             .ToString(CultureInfo.InvariantCulture);
 
         if (HasAnyAudio(plan))

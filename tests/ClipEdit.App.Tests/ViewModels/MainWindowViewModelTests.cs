@@ -140,6 +140,9 @@ public sealed class MainWindowViewModelTests
             Path.Combine(Path.GetTempPath(), "new-project.mkv"),
             Path.Combine(Path.GetTempPath(), "new-project.flac"),
         ]);
+        viewModel.ExportScalePercent = 40;
+        viewModel.ExportPlaybackSpeedPercent = 200;
+        viewModel.SelectedExportQuality = ExportQualityChoice.Custom;
         var previousProjectId = viewModel.CreateProjectDocument().ProjectId;
 
         Assert.False(await viewModel.NewProjectAsync());
@@ -152,6 +155,9 @@ public sealed class MainWindowViewModelTests
         Assert.Null(viewModel.ProjectPath);
         Assert.False(viewModel.IsProjectDirty);
         Assert.False(viewModel.ShowQuickWorkspace);
+        Assert.Equal(100, viewModel.ExportScalePercent);
+        Assert.Equal(100, viewModel.ExportPlaybackSpeedPercent);
+        Assert.Equal(ExportQualityMode.MatchSource, viewModel.ExportQualityMode);
         Assert.NotEqual(previousProjectId, viewModel.CreateProjectDocument().ProjectId);
         Assert.EndsWith($"{previousProjectId:N}.recovery.clipedit", store.DeletedPath);
     }
@@ -888,7 +894,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(new MediaTime(180, 1), renderer.Plan.ExpectedDuration);
         var document = viewModel.CreateProjectDocument();
         Assert.Equal(200, document.VideoClips![0].PlaybackSpeedPercent);
-        Assert.Equal(50, document.ExportSettings!.PlaybackSpeedPercent);
+        Assert.Equal(100, document.ExportSettings!.PlaybackSpeedPercent);
     }
 
     [Theory]
@@ -998,6 +1004,7 @@ public sealed class MainWindowViewModelTests
         viewModel.SequenceSelectionEndSeconds = 10;
         Assert.Single(viewModel.AudioTracks).GainDb = -3;
         viewModel.SelectedExportPreset = BuiltInExportPresets.WebM;
+        viewModel.SelectedExportQuality = ExportQualityChoice.Custom;
         viewModel.ExportScalePercent = 47;
         viewModel.ExportQuality = 62;
         viewModel.SelectedVideoClip!.AudioGainDb = -2;
@@ -1007,7 +1014,9 @@ public sealed class MainWindowViewModelTests
 
         Assert.NotNull(result);
         Assert.Equal(BuiltInExportPresets.WebM, renderer.Plan!.Preset);
-        Assert.Equal(new ExportEncodingSettings(62, 47, 15), renderer.Plan.EncodingSettings);
+        Assert.Equal(
+            new ExportEncodingSettings(62, 47, 15, qualityMode: ExportQualityMode.Custom),
+            renderer.Plan.EncodingSettings);
         Assert.Equal(new PixelSize(902, 506), renderer.Plan.OutputSize);
         var segment = Assert.Single(renderer.Plan!.VideoSegments);
         Assert.Equal(new MediaRange(new MediaTime(5, 1), new MediaTime(10, 1)), segment.SourceRange);
@@ -1057,6 +1066,7 @@ public sealed class MainWindowViewModelTests
         viewModel.ExportScalePercent = 55;
         viewModel.ExportQuality = 64;
         viewModel.ExportPlaybackSpeedPercent = 150;
+        viewModel.SelectedExportQuality = ExportQualityChoice.Custom;
         viewModel.CustomPresetName = "Small silent VP9";
 
         Assert.True(viewModel.SaveCustomExportPreset());
@@ -1075,6 +1085,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(55, viewModel.ExportScalePercent);
         Assert.Equal(64, viewModel.ExportQuality);
         Assert.Equal(150, viewModel.ExportPlaybackSpeedPercent);
+        Assert.Equal(ExportQualityMode.Custom, viewModel.ExportQualityMode);
         Assert.True(viewModel.DeleteSelectedCustomExportPreset());
         Assert.Empty(viewModel.SavedExportPresets);
     }
@@ -1103,6 +1114,25 @@ public sealed class MainWindowViewModelTests
 
         Assert.NotNull(result);
         Assert.Equal(effective, renderer.Plan!.Preset);
+    }
+
+    [Fact]
+    public async Task Default_quality_matches_the_first_source_bitrate_until_custom_is_selected()
+    {
+        using var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "quality-source.mkv")]);
+
+        var matched = viewModel.GetEffectiveExportPreset();
+
+        Assert.Equal(ExportQualityMode.MatchSource, viewModel.ExportQualityMode);
+        Assert.Equal(8_000, matched.VideoBitRateBitsPerSecond);
+        Assert.Contains("match input quality", viewModel.ExportPlanSummary, StringComparison.OrdinalIgnoreCase);
+
+        viewModel.SelectedExportQuality = ExportQualityChoice.Custom;
+        var custom = viewModel.GetEffectiveExportPreset();
+
+        Assert.Null(custom.VideoBitRateBitsPerSecond);
+        Assert.Contains("quality 75%", viewModel.ExportPlanSummary, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1306,9 +1336,10 @@ public sealed class MainWindowViewModelTests
             Assert.Same(AudioCodecChoice.Opus, restored.CustomAudioCodec);
             Assert.False(restored.CustomUseSourceFrameRate);
             Assert.Equal(48, restored.CustomFrameRate);
-            Assert.Equal(43, restored.ExportScalePercent);
-            Assert.Equal(58, restored.ExportQuality);
-            Assert.Equal(21, restored.GifFrameRate);
+            Assert.Equal(100, restored.ExportScalePercent);
+            Assert.Equal(75, restored.ExportQuality);
+            Assert.Equal(15, restored.GifFrameRate);
+            Assert.Equal(ExportQualityMode.MatchSource, restored.ExportQualityMode);
             Assert.Equal(media.Crop, restored.SelectedMedia!.Crop);
             Assert.Equal(media.Edit!.SourceDuration, restored.SelectedMedia.Edit!.SourceDuration);
             Assert.Equal<MediaRange>(media.KeptRanges, restored.SelectedMedia.KeptRanges);

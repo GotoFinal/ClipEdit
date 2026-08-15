@@ -37,9 +37,12 @@ public sealed class ExportPreferencesStoreTests
                         43,
                         62,
                         18,
-                        7_500),
+                        7_500,
+                        ExportQualityMode.Custom),
                 ],
-                10_000);
+                10_000,
+                true,
+                ExportQualityMode.Custom);
 
             Assert.True(store.Save(settings));
             var restored = store.Load();
@@ -84,6 +87,8 @@ public sealed class ExportPreferencesStoreTests
             CustomFrameRate = 50,
             ExportDestination = ExportDestinationMode.Clipboard,
             PlaybackSpeedPercent = 175,
+            RememberAdjustments = true,
+            QualityMode = ExportQualityMode.Custom,
         };
 
         viewModel.ApplyExportPreferences(preferences);
@@ -91,6 +96,8 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(BuiltInExportPresets.Custom, viewModel.SelectedExportPreset);
         Assert.Equal(52, viewModel.ExportScalePercent);
         Assert.Equal(61, viewModel.ExportQuality);
+        Assert.Equal(ExportQualityMode.Custom, viewModel.ExportQualityMode);
+        Assert.True(viewModel.RememberExportAdjustments);
         Assert.Same(ExportContainerChoice.Matroska, viewModel.CustomExportContainer);
         Assert.Same(VideoCodecChoice.Vp9, viewModel.CustomVideoCodec);
         Assert.Same(AudioCodecChoice.None, viewModel.CustomAudioCodec);
@@ -100,6 +107,48 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(175, viewModel.ExportPlaybackSpeedPercent);
         Assert.Equal("Copy", viewModel.ExportActionText);
         Assert.False(viewModel.IsProjectDirty);
+    }
+
+    [Fact]
+    public void Export_adjustments_reset_when_remembering_is_disabled()
+    {
+        using var viewModel = new MainWindowViewModel(new StubMediaProbe());
+        var preferences = ExportPreferences.Default with
+        {
+            ScalePercent = 52,
+            Quality = 61,
+            PlaybackSpeedPercent = 175,
+            QualityMode = ExportQualityMode.Custom,
+            RememberAdjustments = false,
+        };
+
+        viewModel.ApplyExportPreferences(preferences);
+
+        Assert.False(viewModel.RememberExportAdjustments);
+        Assert.Equal(100, viewModel.ExportScalePercent);
+        Assert.Equal(75, viewModel.ExportQuality);
+        Assert.Equal(100, viewModel.ExportPlaybackSpeedPercent);
+        Assert.Equal(ExportQualityMode.MatchSource, viewModel.ExportQualityMode);
+    }
+
+    [Fact]
+    public void Unremembered_preferences_do_not_write_transient_adjustments()
+    {
+        using var viewModel = new MainWindowViewModel(new StubMediaProbe())
+        {
+            ExportScalePercent = 40,
+            ExportQuality = 25,
+            ExportPlaybackSpeedPercent = 250,
+            SelectedExportQuality = ExportQualityChoice.Custom,
+        };
+
+        var preferences = viewModel.CreateExportPreferences();
+
+        Assert.False(preferences.RememberAdjustments);
+        Assert.Equal(100, preferences.ScalePercent);
+        Assert.Equal(75, preferences.Quality);
+        Assert.Equal(100, preferences.PlaybackSpeedPercent);
+        Assert.Equal(ExportQualityMode.MatchSource, preferences.QualityMode);
     }
 
     [Fact]

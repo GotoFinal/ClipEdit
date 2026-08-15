@@ -3,6 +3,12 @@ using ClipEdit.Domain.Timeline;
 
 namespace ClipEdit.Media.Export;
 
+public enum ExportQualityMode
+{
+    Custom,
+    MatchSource,
+}
+
 /// <summary>
 /// User-controlled encoding choices that apply independently of the selected
 /// container/codec preset.
@@ -15,6 +21,7 @@ public sealed record ExportEncodingSettings
     public const int MinimumPlaybackSpeedPercent = 1;
     public const int MaximumPlaybackSpeedPercent = 10_000;
     public const int DefaultPlaybackSpeedPercent = 100;
+    public const ExportQualityMode DefaultQualityMode = ExportQualityMode.MatchSource;
 
     public static ExportEncodingSettings Default { get; } = new();
 
@@ -22,7 +29,8 @@ public sealed record ExportEncodingSettings
         int quality = DefaultQuality,
         int scalePercent = DefaultScalePercent,
         int gifFrameRate = DefaultGifFrameRate,
-        int playbackSpeedPercent = DefaultPlaybackSpeedPercent)
+        int playbackSpeedPercent = DefaultPlaybackSpeedPercent,
+        ExportQualityMode qualityMode = DefaultQualityMode)
     {
         if (quality is < 1 or > 100)
         {
@@ -40,11 +48,16 @@ public sealed record ExportEncodingSettings
         {
             throw new ArgumentOutOfRangeException(nameof(playbackSpeedPercent));
         }
+        if (!Enum.IsDefined(qualityMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(qualityMode));
+        }
 
         Quality = quality;
         ScalePercent = scalePercent;
         GifFrameRate = gifFrameRate;
         PlaybackSpeedPercent = playbackSpeedPercent;
+        QualityMode = qualityMode;
     }
 
     public int Quality { get; }
@@ -54,6 +67,8 @@ public sealed record ExportEncodingSettings
     public int GifFrameRate { get; }
 
     public int PlaybackSpeedPercent { get; }
+
+    public ExportQualityMode QualityMode { get; }
 
     public double PlaybackSpeed => PlaybackSpeedPercent / 100d;
 
