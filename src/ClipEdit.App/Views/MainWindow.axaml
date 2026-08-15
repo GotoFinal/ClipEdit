@@ -103,6 +103,33 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="CornerRadius" Value="5" />
     </Style>
+    <Style Selector="Button.audio-compact">
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="CheckBox.audio-compact">
+      <Setter Property="Height" Value="20" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Slider.audio-compact">
+      <Setter Property="Height" Value="18" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBox.audio-compact">
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
     <Style Selector="Border.panel">
       <Setter Property="Background" Value="#181B22" />
       <Setter Property="BorderBrush" Value="#303543" />
@@ -1343,24 +1370,24 @@
                   <ItemsControl Grid.Row="1" ItemsSource="{Binding AudioTracks}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:AudioTrackViewModel">
-                          <Border Margin="0,0,0,4" Padding="6,4" Background="#20242D" CornerRadius="6">
-                            <Grid RowDefinitions="Auto,48" RowSpacing="4">
-                              <Grid ColumnDefinitions="*,Auto,64,Auto,Auto,96,52,Auto,Auto" ColumnSpacing="5">
-                                <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="7">
+                          <Border Margin="0,0,0,3" Padding="5,2" Background="#20242D" CornerRadius="6">
+                            <Grid RowDefinitions="22,44" RowSpacing="2">
+                              <Grid ColumnDefinitions="*,Auto,64,Auto,Auto,96,52,Auto,Auto" ColumnSpacing="4">
+                                <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="6">
                                   <TextBlock MaxWidth="190" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                                  <TextBlock Classes="muted" FontSize="9" Text="{Binding OutputDurationText}" />
-                                  <TextBlock Classes="muted" FontSize="9" IsVisible="{Binding IsWaveformLoading}" Text="Generating…" />
-                                  <TextBlock Foreground="#E88E8E" FontSize="9" IsVisible="{Binding HasWaveformError}" Text="Waveform unavailable" ToolTip.Tip="{Binding WaveformErrorText}" />
-                                  <TextBlock Classes="muted" FontSize="9" IsVisible="{Binding IsWaveformDecimated}" Text="Sampled" ToolTip.Tip="The waveform is sampled at this timeline zoom" />
+                                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding OutputDurationText}" />
+                                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="9" IsVisible="{Binding IsWaveformLoading}" Text="Generating…" />
+                                  <TextBlock VerticalAlignment="Center" Foreground="#E88E8E" FontSize="9" IsVisible="{Binding HasWaveformError}" Text="Waveform unavailable" ToolTip.Tip="{Binding WaveformErrorText}" />
+                                  <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="9" IsVisible="{Binding IsWaveformDecimated}" Text="Sampled" ToolTip.Tip="The waveform is sampled at this timeline zoom" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="9" IsVisible="{Binding IsExternal}" Text="Start (s)" />
-                                <TextBox Grid.Column="2" Height="24" Padding="4,0" VerticalContentAlignment="Center" IsVisible="{Binding IsExternal}" Text="{Binding TimelineOffsetSeconds, Mode=TwoWay}" />
-                                <CheckBox Grid.Column="3" VerticalAlignment="Center" Content="Mute" IsChecked="{Binding IsMuted, Mode=TwoWay}" />
+                                <TextBox Grid.Column="2" Classes="audio-compact" IsVisible="{Binding IsExternal}" Text="{Binding TimelineOffsetSeconds, Mode=TwoWay}" />
+                                <CheckBox Grid.Column="3" Classes="audio-compact" Content="Mute" IsChecked="{Binding IsMuted, Mode=TwoWay}" />
                                 <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding ContextualGainLabel}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
-                                <Slider Grid.Column="5" AutomationProperties.Name="{Binding ContextualGainLabel}" Minimum="-60" Maximum="12" Value="{Binding ContextualGainDb, Mode=TwoWay}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
+                                <Slider Grid.Column="5" Classes="audio-compact" AutomationProperties.Name="{Binding ContextualGainLabel}" Minimum="-60" Maximum="12" Value="{Binding ContextualGainDb, Mode=TwoWay}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
                                 <TextBlock Grid.Column="6" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="9" Text="{Binding ContextualGainText}" />
-                                <Button Grid.Column="7" Height="22" Padding="6,1" Classes="secondary" Click="ToggleAudioClipMembership_Click" Content="{Binding ContextualClipActionText}" IsVisible="{Binding CanToggleContextualClip}" ToolTip.Tip="{Binding ContextualClipActionToolTip}" />
-                                <Button Grid.Column="8" Width="22" Height="22" Padding="2,0" Classes="secondary" AutomationProperties.Name="Remove audio track" Click="RemoveAudioTrack_Click" Content="×" FontSize="13" ToolTip.Tip="Remove this complete audio lane from the project mix" />
+                                <Button Grid.Column="7" Classes="secondary audio-compact" Click="ToggleAudioClipMembership_Click" Content="{Binding ContextualClipActionText}" IsVisible="{Binding CanToggleContextualClip}" ToolTip.Tip="{Binding ContextualClipActionToolTip}" />
+                                <Button Grid.Column="8" Width="22" Padding="2,0" Classes="secondary audio-compact" AutomationProperties.Name="Remove audio track" Click="RemoveAudioTrack_Click" Content="×" FontSize="13" ToolTip.Tip="Remove this complete audio lane from the project mix" />
                               </Grid>
                               <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="5">
                                 <controls:SourceRangeCanvas
