@@ -8,6 +8,7 @@ namespace ClipEdit.Media.Export;
 public enum ExportStrategy
 {
     ExactTranscode,
+    StreamCopy,
 }
 
 /// <summary>
@@ -31,7 +32,8 @@ public sealed record ExportPlan
         bool replaceExistingDestination = false,
         ImmutableArray<ExportAudioTrackPlan> audioTracks = default,
         ExportEncodingSettings? encodingSettings = null,
-        ExportVideoColorInfo? sourceVideoColorInfo = null)
+        ExportVideoColorInfo? sourceVideoColorInfo = null,
+        ExportStrategy strategy = ExportStrategy.ExactTranscode)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
@@ -98,6 +100,11 @@ public sealed record ExportPlan
         _timelineDuration = SourceRanges.Aggregate(MediaTime.Zero, static (total, range) => total + range.Duration);
         _expectedDuration = EncodingSettings.ApplyPlaybackSpeed(_timelineDuration);
         _videoSegmentTimelineStarts = [];
+        if (strategy != ExportStrategy.ExactTranscode)
+        {
+            throw new ExportPlanException("Packet-copy export is only supported for a validated sequence clip.");
+        }
+        Strategy = strategy;
     }
 
     public ExportPlan(
@@ -109,7 +116,8 @@ public sealed record ExportPlan
         ImmutableArray<ExportAudioTrackPlan> externalAudioTracks = default,
         MediaTime sequenceTimelineStart = default,
         MediaTime? sequenceDuration = null,
-        ExportEncodingSettings? encodingSettings = null)
+        ExportEncodingSettings? encodingSettings = null,
+        ExportStrategy strategy = ExportStrategy.ExactTranscode)
     {
         if (videoSegments.IsDefaultOrEmpty || videoSegments.Any(segment => segment is null))
         {
@@ -192,6 +200,8 @@ public sealed record ExportPlan
         Crop = videoSegments[0].Crop;
         SourceRanges = videoSegments.Select(segment => segment.SourceRange).ToImmutableArray();
         SequenceTimelineStart = sequenceTimelineStart;
+        ValidateSequenceStrategy(strategy, videoSegments, externalTracks, resolvedDuration);
+        Strategy = strategy;
     }
 
     public string SourcePath { get; }
@@ -234,7 +244,7 @@ public sealed record ExportPlan
 
     public bool ReplaceExistingDestination { get; }
 
-    public ExportStrategy Strategy => ExportStrategy.ExactTranscode;
+    public ExportStrategy Strategy { get; }
 
     public PixelSize OutputSize => _outputSize;
 
@@ -283,6 +293,46 @@ public sealed record ExportPlan
         }
 
         return false;
+    }
+
+    private void ValidateSequenceStrategy(
+        ExportStrategy strategy,
+        ImmutableArray<ExportVideoSegmentPlan> segments,
+        ImmutableArray<ExportAudioTrackPlan> externalTracks,
+        MediaTime resolvedDuration)
+    {
+        if (!Enum.IsDefined(strategy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(strategy));
+        }
+        if (strategy != ExportStrategy.StreamCopy)
+        {
+            return;
+        }
+
+        var segment = segments.Length == 1 ? segments[0] : null;
+        var hasUnchangedAudio = segment?.AudioTracks.Length switch
+        {
+            0 => true,
+            1 => Math.Abs(segment.AudioTracks[0].GainDb) < 0.000_001 &&
+                 segment.AudioTracks[0].AudioEdit is { IsUnedited: true },
+            _ => false,
+        };
+        if (segment is null ||
+            !externalTracks.IsEmpty ||
+            !segment.IsCompleteSource ||
+            segment.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent ||
+            segment.TimelineStart != SequenceTimelineStart ||
+            segment.TimelineDuration != resolvedDuration ||
+            segment.CanvasTransform != ClipCanvasTransform.Identity ||
+            segment.CanvasCrop != CropRegion.FullFrame(segment.CanvasSize) ||
+            EncodingSettings.ScalePercent != ExportEncodingSettings.DefaultScalePercent ||
+            EncodingSettings.PlaybackSpeedPercent != ExportEncodingSettings.DefaultPlaybackSpeedPercent ||
+            !hasUnchangedAudio)
+        {
+            throw new ExportPlanException(
+                "Packet-copy export requires one complete, untransformed, untrimmed source clip with unchanged audio.");
+        }
     }
 
     private static ExportVideoColorInfo? ResolveSingleSourceOutputColorInfo(
@@ -339,7 +389,8 @@ public sealed record ExportVideoSegmentPlan
         ImmutableArray<ExportAudioTrackPlan> audioTracks = default,
         MediaTime? timelineStart = null,
         int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent,
-        ExportVideoColorInfo? videoColorInfo = null)
+        ExportVideoColorInfo? videoColorInfo = null,
+        bool isCompleteSource = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
@@ -382,6 +433,7 @@ public sealed record ExportVideoSegmentPlan
         TimelineStart = timelineStart;
         PlaybackSpeedPercent = playbackSpeedPercent;
         VideoColorInfo = videoColorInfo;
+        IsCompleteSource = isCompleteSource;
         UsesCanvasTransform = true;
     }
 
@@ -408,6 +460,8 @@ public sealed record ExportVideoSegmentPlan
     public ExportVideoColorInfo? VideoColorInfo { get; }
 
     public bool UsesCanvasTransform { get; private init; }
+
+    public bool IsCompleteSource { get; }
 
     public CropRegion Crop => CanvasCrop;
 

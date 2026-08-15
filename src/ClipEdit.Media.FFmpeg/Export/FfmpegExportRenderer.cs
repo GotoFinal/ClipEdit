@@ -40,9 +40,10 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         try
         {
             StartProcess(process);
-            progress?.Report(new ExportProgress(0, "Encoding", TimeSpan.Zero));
+            var activePhase = plan.Strategy == ExportStrategy.StreamCopy ? "Copying" : "Encoding";
+            progress?.Report(new ExportProgress(0, activePhase, TimeSpan.Zero));
 
-            var progressTask = ReadProgressAsync(process.StandardOutput, plan, progress);
+            var progressTask = ReadProgressAsync(process.StandardOutput, plan, progress, activePhase);
             var diagnosticTask = ReadDiagnosticTailAsync(process.StandardError);
             try
             {
@@ -232,7 +233,8 @@ public sealed class FfmpegExportRenderer : IExportRenderer
     private static async Task ReadProgressAsync(
         StreamReader reader,
         ExportPlan plan,
-        IProgress<ExportProgress>? progress)
+        IProgress<ExportProgress>? progress,
+        string activePhase)
     {
         var parser = new FfmpegProgressParser();
         while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
@@ -246,7 +248,7 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             var fraction = expectedSeconds <= 0
                 ? 0
                 : Math.Min(0.98, parser.EncodedDuration.TotalSeconds / expectedSeconds);
-            progress?.Report(new ExportProgress(fraction, "Encoding", parser.EncodedDuration));
+            progress?.Report(new ExportProgress(fraction, activePhase, parser.EncodedDuration));
         }
     }
 

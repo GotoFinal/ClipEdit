@@ -343,6 +343,88 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         return preset;
     }
 
+    private ExportStrategy ResolveExportStrategy(
+        IReadOnlyList<SequenceExportSlice> slices,
+        ExportPreset preset)
+    {
+        if (ExportQualityMode != ClipEdit.Media.Export.ExportQualityMode.MatchSource ||
+            ExportScalePercent != ExportEncodingSettings.DefaultScalePercent ||
+            ExportPlaybackSpeedPercent != ExportEncodingSettings.DefaultPlaybackSpeedPercent ||
+            preset.VideoCodec == VideoCodecFamily.Gif ||
+            slices.Count != 1)
+        {
+            return ExportStrategy.ExactTranscode;
+        }
+
+        var slice = slices[0];
+        var clip = slice.Clip;
+        var probe = clip.Source.Media?.Probe;
+        var video = probe?.VideoStreams.FirstOrDefault();
+        var sourceDuration = clip.Source.Edit?.SourceDuration ?? probe?.Duration;
+        var exportRange = HasSequenceSelection
+            ? NormalizedSequenceSelection()
+            : new MediaRange(MediaTime.Zero, NonNegativeTimelineTime(SequenceDurationSeconds));
+        if (probe is null || video is null || sourceDuration is not { } duration ||
+            slice.SourceRange != new MediaRange(MediaTime.Zero, duration) ||
+            exportRange.Start != clip.TimelineStart ||
+            exportRange.Duration != clip.Duration ||
+            clip.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent ||
+            video.RotationDegrees != 0 ||
+            clip.CanvasTransform != ClipCanvasTransform.Identity ||
+            CanvasSize != video.EncodedSize ||
+            CanvasCrop != CropRegion.FullFrame(CanvasSize) ||
+            !SourceVideoCodecMatches(video.CodecName, preset.VideoCodec) ||
+            preset.FrameRate is not null ||
+            AudioTracks.Any(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty))
+        {
+            return ExportStrategy.ExactTranscode;
+        }
+
+        if (!preset.SupportsAudio)
+        {
+            return ExportStrategy.StreamCopy;
+        }
+
+        var embedded = AudioTracks
+            .Where(track =>
+                !track.IsExternal &&
+                !track.IsMuted &&
+                track.EmbeddedLaneIndex is { } laneIndex &&
+                clip.IncludesAudioLane(laneIndex) &&
+                track.TryGetEmbeddedStreamIndex(clip.SourcePath, out _))
+            .ToArray();
+        if (embedded.Length == 0)
+        {
+            return ExportStrategy.StreamCopy;
+        }
+        if (embedded.Length != 1 ||
+            Math.Abs(CombineAudioGain(embedded[0].GainDb, clip.AudioGainDb)) >= 0.000_001 ||
+            !embedded[0].CreateEditForClip(clip).IsUnedited ||
+            !embedded[0].TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex))
+        {
+            return ExportStrategy.ExactTranscode;
+        }
+
+        var audio = probe.AudioStreams.FirstOrDefault(stream => stream.Index == streamIndex);
+        return audio is not null && SourceAudioCodecMatches(audio.CodecName, preset.AudioCodec)
+            ? ExportStrategy.StreamCopy
+            : ExportStrategy.ExactTranscode;
+    }
+
+    private static bool SourceVideoCodecMatches(string codecName, VideoCodecFamily codec) => codec switch
+    {
+        VideoCodecFamily.H264 => string.Equals(codecName, "h264", StringComparison.OrdinalIgnoreCase),
+        VideoCodecFamily.Vp9 => string.Equals(codecName, "vp9", StringComparison.OrdinalIgnoreCase),
+        _ => false,
+    };
+
+    private static bool SourceAudioCodecMatches(string codecName, AudioCodecFamily codec) => codec switch
+    {
+        AudioCodecFamily.Aac => string.Equals(codecName, "aac", StringComparison.OrdinalIgnoreCase),
+        AudioCodecFamily.Opus => string.Equals(codecName, "opus", StringComparison.OrdinalIgnoreCase),
+        _ => false,
+    };
+
     public ExportPreset SelectedExportPreset
     {
         get => _selectedExportPreset;
@@ -891,7 +973,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                           ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.Custom
                 ? $"quality {ExportQuality}%"
                 : "match input quality";
-            return $"{preset.DisplayName} · exact sequence re-encode · " +
+            var strategy = ResolveExportStrategy(slices, preset) == ExportStrategy.StreamCopy
+                ? "packet copy · no re-encode"
+                : "exact sequence re-encode";
+            return $"{preset.DisplayName} · {strategy} · " +
                    $"{outputSize.Width} × {outputSize.Height} · {quality}{gifDetails} · " +
                    FormatSequenceTimestamp(duration);
         }
@@ -1261,6 +1346,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         var exportPreset = ResolveSelectedExportPreset(slices);
+        var exportStrategy = ResolveExportStrategy(slices, exportPreset);
         _exportCancellation?.Cancel();
         _exportCancellation?.Dispose();
         _exportCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1273,6 +1359,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 var video = slice.Clip.Source.Media!.Probe.VideoStreams.First();
                 var embeddedAudio = AudioTracks
                     .Where(track =>
+                        exportPreset.SupportsAudio &&
                         !track.IsExternal &&
                         !track.IsMuted &&
                         track.EmbeddedLaneIndex is { } laneIndex &&
@@ -1304,7 +1391,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         video.ColorRange,
                         video.ColorSpace,
                         video.ColorTransfer,
-                        video.ColorPrimaries));
+                        video.ColorPrimaries),
+                    isCompleteSource: slice.SourceRange.Start == MediaTime.Zero &&
+                                      slice.SourceRange.End ==
+                                      (slice.Clip.Source.Edit?.SourceDuration ??
+                                       slice.Clip.Source.Media!.Probe.Duration));
             }).ToImmutableArray();
             var externalAudio = AudioTracks
                 .Where(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty)
@@ -1328,7 +1419,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 externalAudio,
                 selectionStart,
                 exportRange.Duration,
-                CurrentExportEncodingSettings);
+                CurrentExportEncodingSettings,
+                exportStrategy);
             IsExporting = true;
             ExportProgress = 0;
             ExportPhaseText = "Preparing";

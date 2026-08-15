@@ -10,6 +10,64 @@ namespace ClipEdit.Media.FFmpeg.Tests.Export;
 public sealed class FfmpegExportArgumentsTests
 {
     [Fact]
+    public void Complete_unchanged_clip_uses_packet_copy_without_a_filter_graph()
+    {
+        var duration = new MediaTime(10, 1);
+        var canvas = new PixelSize(1_920, 1_080);
+        var segment = new ExportVideoSegmentPlan(
+            TestPath("C:\\source.mp4"),
+            0,
+            new MediaRange(MediaTime.Zero, duration),
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity,
+            [new ExportAudioTrackPlan(1, 0, new SourceEdit(duration))],
+            MediaTime.Zero,
+            videoColorInfo: null,
+            isCompleteSource: true);
+        var plan = new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\copied.mp4"),
+            Mp4Compatible,
+            sequenceDuration: duration,
+            strategy: ExportStrategy.StreamCopy);
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.copied.partial"));
+
+        Assert.Equal("copy", ValueAfter(arguments, "-c"));
+        Assert.Equal("0:0", ValueAfter(arguments, "-map"));
+        Assert.Contains("0:1", arguments);
+        Assert.DoesNotContain("-filter_complex", arguments);
+        Assert.DoesNotContain("-c:v", arguments);
+        Assert.Equal("mp4", ValueAfter(arguments, "-f"));
+    }
+
+    [Fact]
+    public void Packet_copy_rejects_a_transformed_clip()
+    {
+        var duration = new MediaTime(10, 1);
+        var canvas = new PixelSize(1_920, 1_080);
+        var segment = new ExportVideoSegmentPlan(
+            TestPath("C:\\source.mp4"),
+            0,
+            new MediaRange(MediaTime.Zero, duration),
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity.MoveTo(1, 0),
+            timelineStart: MediaTime.Zero,
+            isCompleteSource: true);
+
+        Assert.Throws<ExportPlanException>(() => new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\copied.mp4"),
+            Mp4Compatible,
+            sequenceDuration: duration,
+            strategy: ExportStrategy.StreamCopy));
+    }
+
+    [Fact]
     public void Multiple_kept_ranges_lower_to_split_trim_crop_and_av_concat()
     {
         var plan = CreatePlan(

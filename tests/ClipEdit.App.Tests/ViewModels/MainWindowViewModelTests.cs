@@ -1136,6 +1136,32 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Complete_compatible_source_uses_packet_copy_and_edits_fall_back_to_transcode()
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(
+            new CompatibleCopyProbe(),
+            exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "copy-source.mp4")]);
+
+        Assert.Contains("no re-encode", viewModel.ExportPlanSummary, StringComparison.OrdinalIgnoreCase);
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "copy-output.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(ExportStrategy.StreamCopy, renderer.Plan!.Strategy);
+
+        viewModel.SelectedExportQuality = ExportQualityChoice.Custom;
+        Assert.Contains("exact sequence re-encode", viewModel.ExportPlanSummary, StringComparison.OrdinalIgnoreCase);
+
+        viewModel.SelectedExportQuality = ExportQualityChoice.MatchSource;
+        viewModel.SelectedVideoClip!.CanvasOffsetX = 1;
+
+        Assert.Contains("exact sequence re-encode", viewModel.ExportPlanSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Export_automatically_uses_the_active_timeline_selection()
     {
         var renderer = new RecordingExportRenderer();
@@ -1787,6 +1813,17 @@ public sealed class MainWindowViewModelTests
         }
     }
 
+    private sealed class CompatibleCopyProbe : IMediaProbe
+    {
+        public Task<MediaProbeResult> ProbeAsync(
+            string sourcePath,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(CreateCompatibleCopyProbe(sourcePath));
+        }
+    }
+
     private sealed class RecordingExportRenderer : IExportRenderer
     {
         public ExportPlan? Plan { get; private set; }
@@ -2012,6 +2049,62 @@ public sealed class MainWindowViewModelTests
     private static MediaProbeResult CreateAudioProbe(string sourcePath)
     {
         return CreateProbe(sourcePath, CreateAudioStream());
+    }
+
+    private static MediaProbeResult CreateCompatibleCopyProbe(string sourcePath)
+    {
+        var duration = new MediaTime(60, 1);
+        return new MediaProbeResult(
+            sourcePath,
+            "mov,mp4,m4a,3gp,3g2,mj2",
+            "MP4",
+            MediaTime.Zero,
+            duration,
+            48_000_000,
+            6_400_000,
+            ImmutableArray.Create<MediaStreamInfo>(
+                new VideoStreamInfo(
+                    0,
+                    "h264",
+                    null,
+                    "High",
+                    null,
+                    null,
+                    true,
+                    false,
+                    new MediaTime(1, 1_000),
+                    MediaTime.Zero,
+                    duration,
+                    new PixelSize(1_920, 1_080),
+                    0,
+                    new FrameRate(30, 1),
+                    new FrameRate(30, 1),
+                    "yuv420p",
+                    "1:1",
+                    "16:9",
+                    "tv",
+                    "bt709",
+                    "bt709",
+                    "bt709",
+                    "progressive",
+                    6_208_000),
+                new AudioStreamInfo(
+                    1,
+                    "aac",
+                    null,
+                    null,
+                    null,
+                    null,
+                    true,
+                    false,
+                    new MediaTime(1, 48_000),
+                    MediaTime.Zero,
+                    duration,
+                    48_000,
+                    2,
+                    "stereo",
+                    "fltp",
+                    192_000)));
     }
 
     private static AudioStreamInfo CreateAudioStream()

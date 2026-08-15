@@ -11,6 +11,11 @@ internal static class FfmpegExportArguments
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentException.ThrowIfNullOrWhiteSpace(temporaryOutputPath);
 
+        if (plan.Strategy == ExportStrategy.StreamCopy)
+        {
+            return CreateStreamCopy(plan, temporaryOutputPath);
+        }
+
         var arguments = new List<string>
         {
             "-hide_banner",
@@ -71,6 +76,53 @@ internal static class FfmpegExportArguments
         arguments.Add("-1");
         arguments.Add("-metadata:s:v:0");
         arguments.Add("rotate=0");
+        arguments.Add("-f");
+        arguments.Add(GetMuxer(plan.Preset.Container));
+        arguments.Add(temporaryOutputPath);
+        return arguments;
+    }
+
+    private static IReadOnlyList<string> CreateStreamCopy(
+        ExportPlan plan,
+        string temporaryOutputPath)
+    {
+        var segment = plan.VideoSegments.Single();
+        var arguments = new List<string>
+        {
+            "-hide_banner",
+            "-nostdin",
+            "-n",
+            "-loglevel",
+            "warning",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+            "-i",
+            segment.SourcePath,
+            "-map",
+            $"0:{segment.VideoStreamIndex}",
+        };
+        if (plan.Preset.SupportsAudio && segment.AudioTracks.Length == 1)
+        {
+            arguments.Add("-map");
+            arguments.Add($"0:{segment.AudioTracks[0].StreamIndex}");
+        }
+        else
+        {
+            arguments.Add("-an");
+        }
+
+        arguments.Add("-c");
+        arguments.Add("copy");
+        arguments.Add("-map_metadata");
+        arguments.Add("-1");
+        arguments.Add("-map_chapters");
+        arguments.Add("-1");
+        if (plan.Preset.Container == ExportContainer.Mp4)
+        {
+            arguments.Add("-movflags");
+            arguments.Add("+faststart");
+        }
         arguments.Add("-f");
         arguments.Add(GetMuxer(plan.Preset.Container));
         arguments.Add(temporaryOutputPath);
