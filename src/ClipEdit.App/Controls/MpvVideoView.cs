@@ -116,7 +116,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private OpenGlVideoCompositor? _videoCompositor;
     private bool _isPlaybackAvailable;
     private bool _isSeekPending;
-    private string _playbackStatus = "Initializing the local preview engine…";
+    private string _playbackStatus = "Select a video to start live preview";
     private string _playButtonText = "▶";
     private string _decoderStatus = "Decoder pending";
     private string? _lastHardwareDecoder;
@@ -134,7 +134,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     static MpvVideoView()
     {
         SourcePathProperty.Changed.AddClassHandler<MpvVideoView>(
-            static (view, _) => view.StartLoad());
+            static (view, _) => view.OnSourcePathChanged());
         LibraryPathProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.OnLibraryPathChanged());
         PositionProperty.Changed.AddClassHandler<MpvVideoView>(
@@ -420,8 +420,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         SubscribeToTopLevelScaling();
         if (!_shutdownStarted)
         {
-            _engineTask ??= InitializeEngineAsync();
-            StartLoad();
+            OnSourcePathChanged();
         }
     }
 
@@ -443,7 +442,46 @@ public sealed class MpvVideoView : OpenGlControlBase
             _shutdownStarted ||
             _engine is not null ||
             string.IsNullOrWhiteSpace(LibraryPath) ||
+            string.IsNullOrWhiteSpace(SourcePath) ||
             _engineTask is not { IsCompleted: true })
+        {
+            return;
+        }
+
+        EnsureEngineInitialization();
+        StartLoad();
+    }
+
+    private void OnSourcePathChanged()
+    {
+        if (!_isAttachedToVisualTree || _shutdownStarted)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SourcePath))
+        {
+            PlaybackStatus = "Select a video to start live preview";
+            DecoderStatus = "Decoder pending";
+            IsPlaybackAvailable = false;
+            if (_engine is not null)
+            {
+                StartLoad();
+            }
+
+            return;
+        }
+
+        EnsureEngineInitialization();
+        StartLoad();
+    }
+
+    private void EnsureEngineInitialization()
+    {
+        if (_shutdownStarted ||
+            _engine is not null ||
+            string.IsNullOrWhiteSpace(SourcePath) ||
+            _engineTask is { IsCompleted: false })
         {
             return;
         }
@@ -451,7 +489,6 @@ public sealed class MpvVideoView : OpenGlControlBase
         PlaybackStatus = "Initializing the local preview engine…";
         DecoderStatus = "Decoder pending";
         _engineTask = InitializeEngineAsync();
-        StartLoad();
     }
 
     protected override void OnOpenGlInit(GlInterface gl)

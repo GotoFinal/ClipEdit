@@ -302,6 +302,34 @@ public sealed class MpvVideoViewTests
     }
 
     [AvaloniaFact]
+    public async Task Attached_view_without_media_does_not_initialize_preview_engine()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            $"ClipEdit.MpvVideoView.Tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var library = Path.Combine(directory, "unused-libmpv.dll");
+        File.WriteAllBytes(library, []);
+        var view = new MpvVideoView { LibraryPath = library };
+        var window = new Window { Content = view };
+
+        try
+        {
+            window.Show();
+            await Task.Delay(100);
+
+            Assert.Equal("Select a video to start live preview", view.PlaybackStatus);
+            Assert.DoesNotContain(library, view.PlaybackStatus, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await view.ShutdownAsync();
+            window.Close();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task Failed_engine_initialization_retries_when_library_path_changes()
     {
         var directory = Path.Combine(
@@ -312,7 +340,11 @@ public sealed class MpvVideoViewTests
         var secondLibrary = Path.Combine(directory, "second-libmpv.dll");
         File.WriteAllBytes(firstLibrary, []);
         File.WriteAllBytes(secondLibrary, []);
-        var view = new MpvVideoView { LibraryPath = firstLibrary };
+        var view = new MpvVideoView
+        {
+            LibraryPath = firstLibrary,
+            SourcePath = Path.Combine(directory, "video.mp4"),
+        };
         var window = new Window { Content = view };
 
         try
