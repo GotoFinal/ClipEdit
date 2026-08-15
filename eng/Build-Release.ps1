@@ -279,6 +279,7 @@ try {
     $selfContained = $ManagedDeployment -eq 'SelfContained'
     $compressionEnabled = $singleFile -and $selfContained -and -not $DisableCompression
     $readyToRunEnabled = $singleFile
+    $compositeReadyToRunEnabled = $readyToRunEnabled -and $selfContained
     $singleFileValue = $singleFile.ToString().ToLowerInvariant()
     $selfContainedValue = $selfContained.ToString().ToLowerInvariant()
     $publishArguments = @(
@@ -298,7 +299,7 @@ try {
         '-p:IncludeAllContentForSelfExtract=false',
         "-p:EnableCompressionInSingleFile=$($compressionEnabled.ToString().ToLowerInvariant())",
         "-p:PublishReadyToRun=$($readyToRunEnabled.ToString().ToLowerInvariant())",
-        '-p:PublishReadyToRunComposite=false',
+        "-p:PublishReadyToRunComposite=$($compositeReadyToRunEnabled.ToString().ToLowerInvariant())",
         '-p:PublishTrimmed=false',
         '-p:DebugSymbols=false',
         '-p:DebugType=None'
@@ -481,6 +482,7 @@ try {
         requiredManagedFrameworkVersion = if ($selfContained) { $null } else { '10.0.0' }
         compressionEnabled = $compressionEnabled
         readyToRunEnabled = $readyToRunEnabled
+        compositeReadyToRunEnabled = $compositeReadyToRunEnabled
         mediaDependencyMode = $MediaDependencyMode
         nativeMediaProfile = if ($includesNativeMedia) {
             [string]$nativeDependencies.releaseProfiles.$RuntimeId
