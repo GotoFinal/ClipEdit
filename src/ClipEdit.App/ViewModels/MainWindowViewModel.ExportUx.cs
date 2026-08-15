@@ -264,7 +264,7 @@ public sealed partial class MainWindowViewModel
         ExportScalePercent,
         GifFrameRate,
         ExportPlaybackSpeedPercent,
-        ExportQualityMode);
+        IsGifExport ? ClipEdit.Media.Export.ExportQualityMode.Custom : ExportQualityMode);
 
     private void ResetTransientExportAdjustments()
     {

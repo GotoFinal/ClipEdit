@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -1220,6 +1221,36 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         ViewModel?.DeleteSelectedCustomExportPreset();
+    }
+
+    private void MatchInputQuality_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (ViewModel is not { IsGifExport: false } viewModel)
+        {
+            return;
+        }
+
+        viewModel.SelectedExportQuality = ExportQualityChoice.MatchSource;
+        if (sender is ToggleButton toggle)
+        {
+            toggle.IsChecked = true;
+        }
+    }
+
+    private void CustomQuality_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (ViewModel is not { IsGifExport: false } viewModel)
+        {
+            return;
+        }
+
+        viewModel.SelectedExportQuality = ExportQualityChoice.Custom;
+        if (sender is ToggleButton toggle)
+        {
+            toggle.IsChecked = true;
+        }
     }
 
     private async void Export_Click(object? sender, RoutedEventArgs eventArgs)

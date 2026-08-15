@@ -140,15 +140,26 @@ public sealed class MainWindowChromeTests
     [AvaloniaFact]
     public void Export_settings_are_a_narrow_joined_sub_button()
     {
-        var window = new MainWindow();
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+        };
+        viewModel.SelectedExportQuality = ExportQualityChoice.MatchSource;
         var export = window.FindControl<Button>("ExportButton");
         var settings = window.FindControl<Button>("ExportSettingsButton");
-        var qualityMode = window.FindControl<ComboBox>("ExportQualityModeInput");
+        var qualityMode = window.FindControl<Grid>("VideoQualityModePanel");
+        var matchQuality = window.FindControl<ToggleButton>("MatchInputQualityButton");
+        var customQuality = window.FindControl<ToggleButton>("CustomQualityButton");
+        var customQualityPanel = window.FindControl<Grid>("CustomQualityPanel");
         var remember = window.FindControl<CheckBox>("RememberExportAdjustmentsCheckBox");
 
         Assert.NotNull(export);
         Assert.NotNull(settings);
         Assert.NotNull(qualityMode);
+        Assert.NotNull(matchQuality);
+        Assert.NotNull(customQuality);
+        Assert.NotNull(customQualityPanel);
         Assert.NotNull(remember);
         Assert.Equal(30, export.Height);
         Assert.Equal(30, settings.Height);
@@ -156,6 +167,13 @@ public sealed class MainWindowChromeTests
         Assert.True(settings.IsEnabled);
         var flyout = Assert.IsType<Flyout>(settings.Flyout);
         Assert.True(flyout.OverlayDismissEventPassThrough);
+        Assert.True(viewModel.UsesMatchedInputQuality);
+        Assert.False(viewModel.UsesCustomExportQuality);
+
+        viewModel.SelectedExportPreset = BuiltInExportPresets.Gif;
+
+        Assert.True(viewModel.UsesCustomExportQuality);
+        Assert.False(viewModel.UsesMatchedInputQuality);
 
         window.Close();
     }
