@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
 using ClipEdit.App.Controls;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
@@ -297,6 +299,49 @@ public sealed class MpvVideoViewTests
         var view = new MpvVideoView();
 
         Assert.False(view.IsInteractiveTransformActive);
+    }
+
+    [AvaloniaFact]
+    public async Task Failed_engine_initialization_retries_when_library_path_changes()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            $"ClipEdit.MpvVideoView.Tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var firstLibrary = Path.Combine(directory, "first-libmpv.dll");
+        var secondLibrary = Path.Combine(directory, "second-libmpv.dll");
+        File.WriteAllBytes(firstLibrary, []);
+        File.WriteAllBytes(secondLibrary, []);
+        var view = new MpvVideoView { LibraryPath = firstLibrary };
+        var window = new Window { Content = view };
+
+        try
+        {
+            window.Show();
+            await WaitForPlaybackStatusAsync(view, firstLibrary);
+
+            view.LibraryPath = secondLibrary;
+
+            await WaitForPlaybackStatusAsync(view, secondLibrary);
+        }
+        finally
+        {
+            await view.ShutdownAsync();
+            window.Close();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static async Task WaitForPlaybackStatusAsync(MpvVideoView view, string expected)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!view.PlaybackStatus.Contains(expected, StringComparison.Ordinal) &&
+               DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.Contains(expected, view.PlaybackStatus, StringComparison.Ordinal);
     }
 
 }

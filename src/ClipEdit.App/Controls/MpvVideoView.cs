@@ -128,12 +128,15 @@ public sealed class MpvVideoView : OpenGlControlBase
     private int _videoTransformRevision;
     private int _appliedVideoTransformRevision;
     private bool _videoTransformLoopRunning;
+    private bool _isAttachedToVisualTree;
     private TopLevel? _subscribedTopLevel;
 
     static MpvVideoView()
     {
         SourcePathProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartLoad());
+        LibraryPathProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.OnLibraryPathChanged());
         PositionProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartSeek());
         IsPausedProperty.Changed.AddClassHandler<MpvVideoView>(
@@ -413,6 +416,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs eventArgs)
     {
         base.OnAttachedToVisualTree(eventArgs);
+        _isAttachedToVisualTree = true;
         SubscribeToTopLevelScaling();
         if (!_shutdownStarted)
         {
@@ -423,6 +427,7 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs eventArgs)
     {
+        _isAttachedToVisualTree = false;
         if (_subscribedTopLevel is not null)
         {
             _subscribedTopLevel.ScalingChanged -= OnTopLevelScalingChanged;
@@ -430,6 +435,23 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
 
         base.OnDetachedFromVisualTree(eventArgs);
+    }
+
+    private void OnLibraryPathChanged()
+    {
+        if (!_isAttachedToVisualTree ||
+            _shutdownStarted ||
+            _engine is not null ||
+            string.IsNullOrWhiteSpace(LibraryPath) ||
+            _engineTask is not { IsCompleted: true })
+        {
+            return;
+        }
+
+        PlaybackStatus = "Initializing the local preview engine…";
+        DecoderStatus = "Decoder pending";
+        _engineTask = InitializeEngineAsync();
+        StartLoad();
     }
 
     protected override void OnOpenGlInit(GlInterface gl)

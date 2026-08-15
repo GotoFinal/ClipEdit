@@ -34,8 +34,63 @@ internal static class BundledRuntimeBootstrapper
             OperatingSystem.IsWindows(),
             OperatingSystem.IsLinux());
 
+    internal static BundledRuntimeLayout? PrepareCachedEmbeddedMediaRuntime(
+        string applicationDataDirectory) =>
+        PrepareCachedEmbeddedMediaRuntime(
+            applicationDataDirectory,
+            typeof(BundledRuntimeBootstrapper).Assembly,
+            OperatingSystem.IsWindows(),
+            OperatingSystem.IsLinux());
+
     public static bool HasEmbeddedMediaRuntime =>
         HasResource(typeof(BundledRuntimeBootstrapper).Assembly, MediaArchiveResourceName);
+
+    internal static BundledRuntimeLayout? PrepareCachedEmbeddedMediaRuntime(
+        string applicationDataDirectory,
+        Assembly assembly,
+        bool isWindows,
+        bool isLinux)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationDataDirectory);
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        var mediaId = GetMetadata(assembly, MediaArchiveIdMetadataName);
+        var hasMediaArchive = HasResource(assembly, MediaArchiveResourceName);
+        ValidateDescriptor(MediaArchiveResourceName, mediaId, hasMediaArchive);
+        if (!hasMediaArchive)
+        {
+            return null;
+        }
+
+        return PrepareCachedMediaRuntime(
+            applicationDataDirectory,
+            mediaId!,
+            isWindows,
+            isLinux);
+    }
+
+    internal static BundledRuntimeLayout? PrepareCachedMediaRuntime(
+        string applicationDataDirectory,
+        string mediaId,
+        bool isWindows,
+        bool isLinux)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationDataDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(mediaId);
+
+        var runtimeDirectory = Path.Combine(
+            applicationDataDirectory,
+            "Runtime",
+            NormalizeCacheKey(mediaId));
+        if (!IsCompleteRuntime(runtimeDirectory, mediaId, isWindows))
+        {
+            return null;
+        }
+
+        var layout = Discover(runtimeDirectory, isWindows);
+        Advertise(layout, isLinux);
+        return layout;
+    }
 
     internal static BundledRuntimePreparation PrepareEmbeddedPayloads(
         string applicationDataDirectory,

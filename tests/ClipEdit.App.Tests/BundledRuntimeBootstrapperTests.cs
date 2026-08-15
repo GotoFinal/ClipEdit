@@ -180,6 +180,59 @@ public sealed class BundledRuntimeBootstrapperTests
     }
 
     [Fact]
+    public void Complete_cached_runtime_is_advertised_before_window_startup()
+    {
+        const string mediaId = "cached-runtime-test";
+        var root = CreateTemporaryDirectory();
+        var runtime = Path.Combine(root, "Runtime", mediaId);
+        var variables = new[]
+        {
+            BundledRuntimeBootstrapper.BundledFfmpegEnvironmentVariable,
+            BundledRuntimeBootstrapper.BundledFfprobeEnvironmentVariable,
+            BundledRuntimeBootstrapper.BundledLibMpvEnvironmentVariable,
+        };
+        var priorValues = variables.ToDictionary(
+            variable => variable,
+            Environment.GetEnvironmentVariable);
+        try
+        {
+            var toolDirectory = Directory.CreateDirectory(Path.Combine(runtime, "tools", "ffmpeg"));
+            var ffmpegPath = WriteEmptyFile(toolDirectory.FullName, "ffmpeg.exe");
+            var ffprobePath = WriteEmptyFile(toolDirectory.FullName, "ffprobe.exe");
+            var libMpvPath = WriteEmptyFile(toolDirectory.FullName, "libmpv-2.dll");
+            File.WriteAllText(Path.Combine(runtime, ".complete"), mediaId);
+            foreach (var variable in variables)
+            {
+                Environment.SetEnvironmentVariable(variable, null);
+            }
+
+            var layout = BundledRuntimeBootstrapper.PrepareCachedMediaRuntime(
+                root,
+                mediaId,
+                isWindows: true,
+                isLinux: false);
+
+            Assert.NotNull(layout);
+            Assert.Equal(ffmpegPath, layout.FfmpegPath);
+            Assert.Equal(ffprobePath, layout.FfprobePath);
+            Assert.Equal(libMpvPath, layout.LibMpvPath);
+            Assert.Equal(
+                libMpvPath,
+                Environment.GetEnvironmentVariable(
+                    BundledRuntimeBootstrapper.BundledLibMpvEnvironmentVariable));
+        }
+        finally
+        {
+            foreach (var variable in variables)
+            {
+                Environment.SetEnvironmentVariable(variable, priorValues[variable]);
+            }
+
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Embedded_archive_rejects_paths_outside_its_cache_directory()
     {
         var root = CreateTemporaryDirectory();

@@ -33,6 +33,17 @@ public sealed partial class App : Avalonia.Application
         {
             var applicationDataDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipEdit");
+            try
+            {
+                BundledRuntimeBootstrapper.PrepareCachedEmbeddedMediaRuntime(
+                    applicationDataDirectory);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                // The opened-window preparation path can repair or report an invalid cache.
+            }
+
             var mediaRuntimeSettingsStore = new MediaRuntimeSettingsStore(
                 Path.Combine(applicationDataDirectory, "media-tools.json"));
             var mediaRuntimeSettings = mediaRuntimeSettingsStore.Load();
