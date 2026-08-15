@@ -14,9 +14,9 @@ public sealed class CanvasInteractionSettingsStoreTests
             var store = new CanvasInteractionSettingsStore(path);
 
             Assert.Equal(CanvasInteractionSettings.Default, store.Load());
-            Assert.True(store.Save(new CanvasInteractionSettings(500, 0, 10_000, true)));
+            Assert.True(store.Save(new CanvasInteractionSettings(500, 0, 10_000, true, 999, 999)));
 
-            Assert.Equal(new CanvasInteractionSettings(50, 1, 4_096, true), store.Load());
+            Assert.Equal(new CanvasInteractionSettings(50, 1, 4_096, true, 365, 200), store.Load());
         }
         finally
         {
@@ -75,5 +75,14 @@ public sealed class CanvasInteractionSettingsStoreTests
 
         viewModel.ClipboardExportMaximumMegabytes = 10_000;
         Assert.Equal(4_096, viewModel.ClipboardExportMaximumMegabytes);
+
+        viewModel.RecoveryRetentionDays = 10_000;
+        viewModel.MaximumRecoveryFiles = 10_000;
+        Assert.Equal(365, viewModel.RecoveryRetentionDays);
+        Assert.Equal(200, viewModel.MaximumRecoveryFiles);
+
+        viewModel.ResetRecoveryRetentionSettings();
+        Assert.Equal(7, viewModel.RecoveryRetentionDays);
+        Assert.Equal(20, viewModel.MaximumRecoveryFiles);
     }
 }

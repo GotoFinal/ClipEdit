@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Immutable;
 using System.ComponentModel;
 using Avalonia.Media.Imaging;
+using ClipEdit.App.Recovery;
 using ClipEdit.App.Updates;
 using ClipEdit.Application.Export;
 using ClipEdit.Application.Media;
@@ -2318,6 +2319,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        var pruneResult = await PruneRecoveryFilesAsync(cancellationToken);
+
         string[] recoveryPaths;
         try
         {
@@ -2370,6 +2373,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (RecoveryCandidates.Count > 0)
         {
             StatusText = $"{RecoveryCandidates.Count} recovery autosave{(RecoveryCandidates.Count == 1 ? string.Empty : "s")} available";
+        }
+        else if (pruneResult.DeletedFiles > 0)
+        {
+            StatusText = $"Removed {pruneResult.DeletedFiles} expired recovery file{(pruneResult.DeletedFiles == 1 ? string.Empty : "s")}";
+        }
+
+        if (pruneResult.FailedFiles > 0)
+        {
+            StatusText = $"{StatusText} · {pruneResult.FailedFiles} recovery file{(pruneResult.FailedFiles == 1 ? string.Empty : "s")} could not be cleaned up";
         }
 
         RaiseRecoveryStateChanged();
@@ -4342,6 +4354,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 GetRecoveryPath(),
                 CreateProjectDocument(),
                 request.Token);
+            var pruneResult = await PruneRecoveryFilesAsync(request.Token);
+            if (pruneResult.FailedFiles > 0)
+            {
+                StatusText = $"Autosave warning: {pruneResult.FailedFiles} stale recovery file{(pruneResult.FailedFiles == 1 ? string.Empty : "s")} could not be cleaned up";
+            }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
@@ -4384,6 +4401,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private string GetRecoveryPath()
     {
         return Path.Combine(_recoveryDirectory!, $"{_projectId:N}.recovery.clipedit");
+    }
+
+    private Task<RecoveryPruneResult> PruneRecoveryFilesAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_recoveryDirectory))
+        {
+            return Task.FromResult(default(RecoveryPruneResult));
+        }
+
+        var recoveryDirectory = _recoveryDirectory;
+        var retentionDays = RecoveryRetentionDays;
+        var maximumRecoveryFiles = MaximumRecoveryFiles;
+        return Task.Run(
+            () => RecoveryRetentionPruner.Prune(
+                recoveryDirectory,
+                retentionDays,
+                maximumRecoveryFiles,
+                DateTimeOffset.UtcNow,
+                cancellationToken),
+            cancellationToken);
     }
 
     private static string? GetUnavailableMediaReason(ProjectMediaDocument media)

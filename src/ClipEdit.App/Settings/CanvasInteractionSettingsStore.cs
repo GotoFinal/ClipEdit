@@ -6,17 +6,27 @@ internal sealed record CanvasInteractionSettings(
     double WheelZoomPercent,
     int WheelRotationDegrees,
     int ClipboardExportMaximumMegabytes,
-    bool HasShownProjectFileAssociationPrompt = false)
+    bool HasShownProjectFileAssociationPrompt = false,
+    int RecoveryRetentionDays = 7,
+    int MaximumRecoveryFiles = 20)
 {
     public const int MinimumClipboardExportMegabytes = 1;
     public const int MaximumClipboardExportMegabytes = 4_096;
     public const int DefaultClipboardExportMegabytes = 100;
+    public const int MinimumRecoveryRetentionDays = 1;
+    public const int MaximumRecoveryRetentionDays = 365;
+    public const int DefaultRecoveryRetentionDays = 7;
+    public const int MinimumRecoveryFiles = 1;
+    public const int MaximumRecoveryFilesLimit = 200;
+    public const int DefaultMaximumRecoveryFiles = 20;
 
     public static CanvasInteractionSettings Default { get; } = new(
         10,
         1,
         DefaultClipboardExportMegabytes,
-        false);
+        false,
+        DefaultRecoveryRetentionDays,
+        DefaultMaximumRecoveryFiles);
 
     public CanvasInteractionSettings Normalize()
     {
@@ -30,11 +40,25 @@ internal sealed record CanvasInteractionSettings(
                 ClipboardExportMaximumMegabytes,
                 MinimumClipboardExportMegabytes,
                 MaximumClipboardExportMegabytes);
+        var recoveryRetentionDays = RecoveryRetentionDays <= 0
+            ? DefaultRecoveryRetentionDays
+            : Math.Clamp(
+                RecoveryRetentionDays,
+                MinimumRecoveryRetentionDays,
+                MaximumRecoveryRetentionDays);
+        var maximumRecoveryFiles = MaximumRecoveryFiles <= 0
+            ? DefaultMaximumRecoveryFiles
+            : Math.Clamp(
+                MaximumRecoveryFiles,
+                MinimumRecoveryFiles,
+                MaximumRecoveryFilesLimit);
         return new CanvasInteractionSettings(
             zoom,
             rotation,
             clipboardMaximum,
-            HasShownProjectFileAssociationPrompt);
+            HasShownProjectFileAssociationPrompt,
+            recoveryRetentionDays,
+            maximumRecoveryFiles);
     }
 }
 

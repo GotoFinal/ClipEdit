@@ -637,6 +637,13 @@ public sealed partial class MainWindow : Window
         ViewModel?.ResetCanvasInteractionSettings();
     }
 
+    private void ResetRecoveryRetention_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.ResetRecoveryRetentionSettings();
+    }
+
     private void RegisterProjectFileAssociation_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

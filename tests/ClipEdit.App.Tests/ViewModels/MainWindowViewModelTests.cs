@@ -1433,6 +1433,39 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Recovery_discovery_prunes_files_outside_the_configured_age_limit()
+    {
+        var directory = Directory.CreateTempSubdirectory("clipedit-recovery-expired-");
+        var recoveryPath = Path.Combine(
+            directory.FullName,
+            $"{Guid.NewGuid():N}.recovery.clipedit");
+        await File.WriteAllTextAsync(recoveryPath, "expired recovery");
+        File.SetLastWriteTimeUtc(recoveryPath, DateTime.UtcNow.AddDays(-8));
+
+        try
+        {
+            using var viewModel = new MainWindowViewModel(
+                new StubProbe(),
+                projectStore: new JsonProjectStore(),
+                recoveryDirectory: directory.FullName)
+            {
+                RecoveryRetentionDays = 7,
+                MaximumRecoveryFiles = 20,
+            };
+
+            await viewModel.DiscoverRecoveryCandidatesAsync();
+
+            Assert.False(File.Exists(recoveryPath));
+            Assert.Empty(viewModel.RecoveryCandidates);
+            Assert.Contains("Removed 1 expired recovery file", viewModel.StatusText);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Unreadable_recovery_can_be_discarded_without_touching_media()
     {
         var directory = Directory.CreateTempSubdirectory("clipedit-recovery-corrupt-");

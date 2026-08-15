@@ -109,6 +109,40 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Settings_are_grouped_and_recovery_limits_are_editable()
+    {
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+        };
+
+        var interaction = window.FindControl<Expander>("InteractionSettingsExpander");
+        var recovery = window.FindControl<Expander>("RecoverySettingsExpander");
+        var mediaRuntime = window.FindControl<Expander>("MediaRuntimeSettingsExpander");
+        var updates = window.FindControl<Expander>("UpdateSettingsExpander");
+        var retentionDays = window.FindControl<NumericUpDown>("RecoveryRetentionDaysInput");
+        var maximumFiles = window.FindControl<NumericUpDown>("MaximumRecoveryFilesInput");
+
+        Assert.NotNull(interaction);
+        Assert.NotNull(recovery);
+        Assert.NotNull(mediaRuntime);
+        Assert.NotNull(updates);
+        Assert.NotNull(retentionDays);
+        Assert.NotNull(maximumFiles);
+        Assert.True(interaction.IsExpanded);
+        Assert.False(recovery.IsExpanded);
+        Assert.False(mediaRuntime.IsExpanded);
+        Assert.False(updates.IsExpanded);
+        Assert.Equal(365, retentionDays.Maximum);
+        Assert.Equal(200, maximumFiles.Maximum);
+        Assert.Equal(7, viewModel.RecoveryRetentionDays);
+        Assert.Equal(20, viewModel.MaximumRecoveryFiles);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Media_runtime_controls_expose_system_preference_and_manual_paths()
     {
         var viewModel = new MainWindowViewModel(mediaProbe: null);

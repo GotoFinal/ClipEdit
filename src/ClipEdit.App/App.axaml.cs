@@ -92,6 +92,8 @@ public sealed partial class App : Avalonia.Application
             viewModel.ClipWheelRotationDegrees = interactionSettings.WheelRotationDegrees;
             viewModel.ClipboardExportMaximumMegabytes =
                 interactionSettings.ClipboardExportMaximumMegabytes;
+            viewModel.RecoveryRetentionDays = interactionSettings.RecoveryRetentionDays;
+            viewModel.MaximumRecoveryFiles = interactionSettings.MaximumRecoveryFiles;
             var hasShownProjectFileAssociationPrompt =
                 interactionSettings.HasShownProjectFileAssociationPrompt;
             var exportPreferencesStore = new ExportPreferencesStore(
@@ -127,7 +129,9 @@ public sealed partial class App : Avalonia.Application
                     viewModel.ClipWheelZoomPercent,
                     viewModel.ClipWheelRotationDegrees,
                     viewModel.ClipboardExportMaximumMegabytes,
-                    hasShownProjectFileAssociationPrompt));
+                    hasShownProjectFileAssociationPrompt,
+                    viewModel.RecoveryRetentionDays,
+                    viewModel.MaximumRecoveryFiles));
             }
 
             var mainWindow = new MainWindow(

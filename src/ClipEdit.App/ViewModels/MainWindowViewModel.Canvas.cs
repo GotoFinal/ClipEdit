@@ -11,6 +11,10 @@ public sealed partial class MainWindowViewModel
     private int _clipWheelRotationDegrees = 1;
     private int _clipboardExportMaximumMegabytes =
         CanvasInteractionSettings.DefaultClipboardExportMegabytes;
+    private int _recoveryRetentionDays =
+        CanvasInteractionSettings.DefaultRecoveryRetentionDays;
+    private int _maximumRecoveryFiles =
+        CanvasInteractionSettings.DefaultMaximumRecoveryFiles;
     private CanvasInteractionTool _canvasTool = CanvasInteractionTool.Crop;
 
     public PixelSize CanvasSize
@@ -113,13 +117,42 @@ public sealed partial class MainWindowViewModel
     public long ClipboardExportMaximumBytes =>
         ClipboardExportMaximumMegabytes * 1_024L * 1_024L;
 
+    public int RecoveryRetentionDays
+    {
+        get => _recoveryRetentionDays;
+        set => SetProperty(
+            ref _recoveryRetentionDays,
+            Math.Clamp(
+                value,
+                CanvasInteractionSettings.MinimumRecoveryRetentionDays,
+                CanvasInteractionSettings.MaximumRecoveryRetentionDays));
+    }
+
+    public int MaximumRecoveryFiles
+    {
+        get => _maximumRecoveryFiles;
+        set => SetProperty(
+            ref _maximumRecoveryFiles,
+            Math.Clamp(
+                value,
+                CanvasInteractionSettings.MinimumRecoveryFiles,
+                CanvasInteractionSettings.MaximumRecoveryFilesLimit));
+    }
+
     public void ResetCanvasInteractionSettings()
     {
         ClipWheelZoomPercent = 10;
         ClipWheelRotationDegrees = 1;
         ClipboardExportMaximumMegabytes =
             CanvasInteractionSettings.DefaultClipboardExportMegabytes;
-        StatusText = "Controls reset: wheel zoom 10%, rotation 1°, clipboard limit 100 MB";
+        StatusText = "Interaction controls reset to defaults";
+    }
+
+    public void ResetRecoveryRetentionSettings()
+    {
+        RecoveryRetentionDays = CanvasInteractionSettings.DefaultRecoveryRetentionDays;
+        MaximumRecoveryFiles = CanvasInteractionSettings.DefaultMaximumRecoveryFiles;
+        StatusText = "Recovery retention reset to 7 days and 20 files";
     }
 
     public void ReportClipboardExportStatus(string message)
