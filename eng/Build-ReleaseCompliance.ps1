@@ -125,7 +125,6 @@ function Get-PackageMetadata([string]$Id, [string]$VersionValue, [string]$Packag
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
 $nativeDependencies = Get-ClipEditNativeDependencies
-Assert-ClipEditNativeSourceLock -Dependencies $nativeDependencies
 $depsFullPath = [System.IO.Path]::GetFullPath($DepsJsonPath)
 if (-not (Test-Path -LiteralPath $depsFullPath -PathType Leaf)) {
     throw "The exact publish dependency manifest is missing: $depsFullPath"
@@ -144,7 +143,7 @@ if ($ReleaseAssetId -notmatch '^[a-z0-9-]+$') {
 
 if ($includesNativeMedia -and [string]::IsNullOrWhiteSpace($NativePayloadPath)) {
     $NativePayloadPath = if ($RuntimeId -eq 'win-x64') {
-        Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v1/payload'
+        Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v2/payload'
     }
     else {
         Join-Path $workspaceRoot "packages/native/release/$RuntimeId/payload"
@@ -475,7 +474,9 @@ try {
         'ClipEdit is distributed under GNU GPL version 3. The complete application license is included as `licenses/ClipEdit-GPL-3.0.txt`. The release source directory contains the exact ClipEdit source archive; the SBOM names the managed components included in this build.'
     }))
     $noticeLines.Add('')
-    $noticeLines.Add($(if ($includesNativeMedia) {
+    $noticeLines.Add($(if ($includesNativeMedia -and $RuntimeId -eq 'win-x64') {
+        'The Windows release redistributes reviewed MSYS2 UCRT64 FFmpeg and mpv packages. mpv/libmpv dynamically links to the same shared libav DLLs used by ffmpeg and ffprobe. Exact package versions, corresponding MSYS2 source packages, available installed license files, capability reports, and the assembly recipe are preserved in the native source and license archives.'
+    } elseif ($includesNativeMedia) {
         'FFmpeg is built with `--enable-gpl --enable-version3` and GPL libraries including x264, so the shipped FFmpeg stack is treated as GPLv3. mpv/libmpv is dynamically linked to that shared stack. Exact configure output, source revisions, license files, and build recipes are preserved in the native source and license archives.'
     } else {
         'This system-dependencies artifact does not distribute FFmpeg, ffprobe, libmpv, or the .NET runtime. They must be installed separately and retain the license terms of the user-selected system packages.'
@@ -501,7 +502,7 @@ try {
     if ($includesNativeMedia) {
         $noticeLines.Add('## Native components')
         $noticeLines.Add('')
-        $noticeLines.Add('| Component | Exact revision | Upstream |')
+        $noticeLines.Add('| Component | Version or revision | Upstream/source |')
         $noticeLines.Add('|---|---|---|')
         foreach ($component in $nativeComponents) {
             $noticeLines.Add("| $(Escape-MarkdownCell $component.Id) | $(Escape-MarkdownCell $component.Version) | $(Escape-MarkdownCell $component.RepositoryUrl) |")

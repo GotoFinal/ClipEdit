@@ -13,10 +13,9 @@ $ErrorActionPreference = 'Stop'
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
 $nativeDependencies = Get-ClipEditNativeDependencies
-Assert-ClipEditNativeSourceLock -Dependencies $nativeDependencies
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = if ($RuntimeId -eq 'win-x64') {
-        Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v1/payload'
+        Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v2/payload'
     }
     else {
         Join-Path $workspaceRoot "packages/native/release/$RuntimeId/payload"
@@ -89,15 +88,21 @@ try {
     [System.IO.Directory]::CreateDirectory($toolPath) | Out-Null
     [System.IO.Directory]::CreateDirectory($licensePath) | Out-Null
 
-    foreach ($nativePath in $nativePaths) {
-        Copy-Item -LiteralPath $nativePath -Destination (Join-Path $toolPath (Split-Path -Leaf $nativePath))
-    }
+    Copy-Item -Path (Join-Path $nativeBinPath '*') -Destination $toolPath
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'LICENSE') -Destination (Join-Path $stagingPath 'LICENSE.txt')
     Copy-Item -LiteralPath (Join-Path $workspaceRoot 'THIRD_PARTY_NOTICES.md') -Destination $licensePath
-    Copy-Item -Path (Join-Path $nativeStackRoot 'licenses/*') -Destination $licensePath
-    Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'SOURCE-LOCK.tsv') -Destination $licensePath
-    Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'BUILDER-PACKAGES.txt') -Destination $licensePath
-    Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'NATIVE-STACK.txt') -Destination $licensePath
+    Copy-Item -Path (Join-Path $nativeStackRoot 'licenses/*') -Destination $licensePath -Recurse
+    foreach ($metadataName in @(
+        'LICENSE-MANIFEST.tsv',
+        'PACKAGES-WITHOUT-INSTALLED-LICENSE.tsv',
+        'MSYS2-PACKAGES.tsv',
+        'NATIVE-STACK.txt',
+        'PE-IMPORTS.tsv')) {
+        Copy-Item -LiteralPath (Join-Path $nativeStackRoot $metadataName) -Destination $licensePath
+    }
+    Copy-Item -LiteralPath (Join-Path $nativeStackRoot 'capabilities') `
+        -Destination (Join-Path $licensePath 'capabilities') `
+        -Recurse
 
     $checksums = Get-ChildItem -LiteralPath $stagingPath -Recurse -File |
         Sort-Object FullName |

@@ -77,24 +77,47 @@ function Get-RemoteHead([string]$Repository) {
     return $parts[0]
 }
 
-function Set-SourceLockRevision([string]$Name, [string]$Revision) {
-    $sourceLockPath = Join-Path $PSScriptRoot 'native/windows-shared-media/source-lock.tsv'
-    $lines = @(Get-Content -LiteralPath $sourceLockPath)
-    $found = $false
-    for ($index = 0; $index -lt $lines.Count; $index++) {
-        if ($lines[$index] -match "^$([regex]::Escape($Name))`t") {
-            $lines[$index] = "$Name`t$Revision"
-            $found = $true
-            break
+function Get-LatestMsys2PackageVersion([string]$PackageName) {
+    $msys2Root = [string]$env:MSYS2_ROOT
+    if (-not [string]::IsNullOrWhiteSpace($msys2Root)) {
+        $pacmanPath = Join-Path $msys2Root 'usr/bin/pacman.exe'
+        if (Test-Path -LiteralPath $pacmanPath -PathType Leaf) {
+            $packageInfo = @(& $pacmanPath -Si $PackageName 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw "pacman could not inspect $PackageName.`n$($packageInfo -join [Environment]::NewLine)"
+            }
+            $versionLine = [string]($packageInfo | Where-Object { $_ -match '^Version\s*:' } | Select-Object -First 1)
+            if ($versionLine -match '^Version\s*:\s*(\S+)\s*$') {
+                return $Matches[1]
+            }
+            throw "Could not parse the current MSYS2 version of $PackageName from pacman."
         }
     }
-    if (-not $found) {
-        throw "Windows source lock has no $Name row."
+
+    $packagePage = "https://packages.msys2.org/packages/$([Uri]::EscapeDataString($PackageName))"
+    try {
+        $content = (Invoke-WebRequest -Uri $packagePage -UseBasicParsing).Content
     }
-    [IO.File]::WriteAllLines(
-        $sourceLockPath,
-        $lines,
-        (New-Object Text.UTF8Encoding($false)))
+    catch {
+        $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if ($null -eq $curl) {
+            $curl = Get-Command curl -ErrorAction SilentlyContinue
+        }
+        if ($null -eq $curl) {
+            throw
+        }
+        $content = (& $curl.Source --fail --silent --show-error --location --retry 3 $packagePage) -join "`n"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not download $packagePage."
+        }
+    }
+    $prefix = [regex]::Escape("https://mirror.msys2.org/mingw/ucrt64/$PackageName-")
+    $pattern = $prefix + '([^"''<>\s/]+)-(?:any|x86_64)\.pkg\.tar\.zst'
+    $match = [regex]::Match($content, $pattern)
+    if (-not $match.Success) {
+        throw "Could not resolve the current MSYS2 UCRT64 version of $PackageName."
+    }
+    return $match.Groups[1].Value
 }
 
 function Add-Result(
@@ -117,7 +140,6 @@ function Add-Result(
 }
 
 $pins = Get-ClipEditNativeDependencies
-Assert-ClipEditNativeSourceLock -Dependencies $pins
 $results = [Collections.Generic.List[object]]::new()
 
 $tagComponents = @(
@@ -137,9 +159,6 @@ foreach ($definition in $tagComponents) {
         $component.version = $latest.VersionText
         $component.tag = $latest.Tag
         $component.revision = $latest.Revision
-        if ($key -in @('ffmpeg', 'mpv')) {
-            Set-SourceLockRevision $key $latest.Revision
-        }
     }
 }
 
@@ -159,10 +178,14 @@ foreach ($definition in @(
     }
 }
 
-$toolchainRevision = Get-RemoteHead ([string]$pins.windows.toolchainRepository)
-Add-Result $results 'mpv-winbuild-cmake' "git-$(([string]$pins.windows.toolchainRevision).Substring(0, 7))" `
-    "git-$($toolchainRevision.Substring(0, 7))" ([string]$pins.windows.toolchainRevision) `
-    $toolchainRevision $false
+foreach ($package in @($pins.windows.packages)) {
+    $latestVersion = Get-LatestMsys2PackageVersion ([string]$package.name)
+    Add-Result $results "MSYS2 $($package.name)" ([string]$package.version) $latestVersion `
+        ([string]$package.version) $latestVersion $true
+    if ($Apply -and [string]$package.version -ne $latestVersion) {
+        $package.version = $latestVersion
+    }
+}
 
 $latestMesonTag = Get-LatestStableTag ([string]$pins.components.meson.repository) ''
 $latestMeson = $latestMesonTag.VersionText
@@ -174,9 +197,14 @@ if ($Apply -and [string]$pins.components.meson.version -ne $latestMeson) {
 
 if ($Apply) {
     $ffmpegVersion = [string]$pins.components.ffmpeg.version
-    $mpvShortRevision = ([string]$pins.components.mpv.revision).Substring(0, 7)
-    $pins.windows.stackId = "mpv-$mpvShortRevision-ffmpeg-$ffmpegVersion-shared"
-    $pins.releaseProfiles.'win-x64' = "ffmpeg-$ffmpegVersion-shared+libmpv-shared-libav-v1"
+    $windowsFfmpegPackage = @($pins.windows.packages | Where-Object name -eq 'mingw-w64-ucrt-x86_64-ffmpeg') | Select-Object -First 1
+    $windowsMpvPackage = @($pins.windows.packages | Where-Object name -eq 'mingw-w64-ucrt-x86_64-mpv') | Select-Object -First 1
+    if ([string]$windowsFfmpegPackage.version -notmatch '^(.+)-\d+$') {
+        throw "Could not derive the FFmpeg program version from MSYS2 package $($windowsFfmpegPackage.version)."
+    }
+    $pins.windows.ffmpegVersion = $Matches[1]
+    $pins.windows.stackId = "msys2-ucrt64-ffmpeg-$($windowsFfmpegPackage.version)-mpv-$($windowsMpvPackage.version)"
+    $pins.releaseProfiles.'win-x64' = "msys2-ucrt64-ffmpeg-$($windowsFfmpegPackage.version)+mpv-$($windowsMpvPackage.version)-shared-libav-v2"
     $pins.releaseProfiles.'linux-x64' = "ffmpeg-$ffmpegVersion-source-built+libmpv"
     $json = $pins | ConvertTo-Json -Depth 20
     [IO.File]::WriteAllText(
@@ -198,11 +226,6 @@ foreach ($result in $results) {
     $status = if ($result.UpdateAvailable) { 'Update available' } else { 'Current' }
     $automation = if ($result.CanApply) { 'PR pin update' } else { 'Manual recipe review' }
     $report.Add("| $($result.Name) | ``$($result.Current)`` | ``$($result.Latest)`` | $status | $automation |")
-}
-$manualResults = @($results | Where-Object { $_.UpdateAvailable -and -not $_.CanApply })
-if ($manualResults.Count -gt 0) {
-    $report.Add('')
-    $report.Add('The Windows toolchain revision is reported but not changed automatically because it can add or remove transitive source-lock entries and invalidate the reviewed patch.')
 }
 $reportText = $report -join [Environment]::NewLine
 Write-Output $reportText

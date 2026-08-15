@@ -16,7 +16,7 @@ function Get-ClipEditNativeDependencies {
         throw "Native dependency manifest is invalid: $($_.Exception.Message)"
     }
 
-    if ($pins.schemaVersion -ne 1) {
+    if ($pins.schemaVersion -ne 2) {
         throw "Unsupported native dependency manifest schema: $($pins.schemaVersion)"
     }
     foreach ($componentName in @('ffmpeg', 'mpv', 'mpvBuild', 'libplacebo', 'libass', 'meson')) {
@@ -32,8 +32,17 @@ function Get-ClipEditNativeDependencies {
     }
     if ([string]::IsNullOrWhiteSpace([string]$pins.components.ffmpeg.version) -or
         [string]::IsNullOrWhiteSpace([string]$pins.windows.stackId) -or
+        [string]::IsNullOrWhiteSpace([string]$pins.windows.ffmpegVersion) -or
+        @($pins.windows.packages).Count -eq 0 -or
         @($pins.windows.requiredBinaries).Count -eq 0) {
         throw 'Native dependency manifest has incomplete release metadata.'
+    }
+
+    foreach ($package in @($pins.windows.packages)) {
+        if ([string]::IsNullOrWhiteSpace([string]$package.name) -or
+            [string]::IsNullOrWhiteSpace([string]$package.version)) {
+            throw 'The Windows MSYS2 package lock has an incomplete entry.'
+        }
     }
 
     return $pins
@@ -50,37 +59,4 @@ function Get-ClipEditWindowsNativeStackPath {
     )
 
     return Join-Path $WorkspaceRoot "packages/native/media-stack/win-x64/$($Dependencies.windows.stackId)/runtime"
-}
-
-function Assert-ClipEditNativeSourceLock {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        $Dependencies,
-
-        [string]$SourceLockPath = (Join-Path $PSScriptRoot 'native/windows-shared-media/source-lock.tsv')
-    )
-
-    $locked = @{}
-    foreach ($line in Get-Content -LiteralPath $SourceLockPath) {
-        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) {
-            continue
-        }
-        $parts = $line -split "`t"
-        if ($parts.Count -ne 2 -or $locked.ContainsKey($parts[0])) {
-            throw "Invalid or duplicate native source-lock row: $line"
-        }
-        $locked[$parts[0]] = $parts[1]
-    }
-
-    foreach ($mapping in @(
-        @('ffmpeg', 'ffmpeg'),
-        @('mpv', 'mpv'))) {
-        $lockName = $mapping[0]
-        $componentName = $mapping[1]
-        $expected = [string]$Dependencies.components.$componentName.revision
-        if ($locked[$lockName] -ne $expected) {
-            throw "Native source lock '$lockName' is $($locked[$lockName]); expected $expected from native-dependencies.json."
-        }
-    }
 }

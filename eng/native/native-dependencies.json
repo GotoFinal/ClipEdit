@@ -1,14 +1,24 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "releaseProfiles": {
-    "win-x64": "ffmpeg-9.0.1-shared+libmpv-shared-libav-v1",
+    "win-x64": "msys2-ucrt64-ffmpeg-9.0.1-1+mpv-0.41.0-5-shared-libav-v2",
     "linux-x64": "ffmpeg-9.0.1-source-built+libmpv"
   },
   "windows": {
-    "stackId": "mpv-f4d13-ffmpeg-9.0.1-shared",
-    "builderImage": "clipedit-windows-shared-media:2026-08-13",
-    "toolchainRepository": "https://github.com/zhongfly/mpv-winbuild-cmake.git",
-    "toolchainRevision": "cd1edc11dc6887a50f705717619d879f5a93a488",
+    "stackId": "msys2-ucrt64-ffmpeg-9.0.1-1-mpv-0.41.0-5",
+    "distribution": "MSYS2 UCRT64",
+    "ffmpegVersion": "9.0.1",
+    "mpvClientApi": "2.5",
+    "packages": [
+      {
+        "name": "mingw-w64-ucrt-x86_64-ffmpeg",
+        "version": "9.0.1-1"
+      },
+      {
+        "name": "mingw-w64-ucrt-x86_64-mpv",
+        "version": "0.41.0-5"
+      }
+    ],
     "requiredBinaries": [
       "ffmpeg.exe",
       "ffprobe.exe",
@@ -30,7 +40,125 @@
       "avutil-61.dll",
       "swresample-7.dll",
       "swscale-10.dll"
-    ]
+    ],
+    "sharedByFfmpegAndMpv": [
+      "avcodec-63.dll",
+      "avformat-63.dll",
+      "avutil-61.dll",
+      "swresample-7.dll",
+      "swscale-10.dll"
+    ],
+    "requiredCapabilities": {
+      "decoders": [
+        "h264",
+        "hevc",
+        "av1",
+        "libdav1d",
+        "vp8",
+        "vp9",
+        "mpeg1video",
+        "mpeg2video",
+        "mpeg4",
+        "prores",
+        "dnxhd",
+        "theora",
+        "wmv3",
+        "vc1",
+        "ffv1",
+        "rawvideo",
+        "mjpeg",
+        "png",
+        "gif",
+        "aac",
+        "mp3",
+        "opus",
+        "vorbis",
+        "flac",
+        "alac",
+        "ac3",
+        "eac3",
+        "dca",
+        "pcm_s16le"
+      ],
+      "encoders": [
+        "libx264",
+        "libx265",
+        "libvpx-vp9",
+        "libsvtav1",
+        "aac",
+        "libopus",
+        "gif",
+        "prores_ks",
+        "ffv1",
+        "flac",
+        "pcm_s16le"
+      ],
+      "demuxers": [
+        "mov",
+        "matroska",
+        "avi",
+        "mpegts",
+        "ogg",
+        "wav",
+        "flac",
+        "gif",
+        "image2"
+      ],
+      "muxers": [
+        "mp4",
+        "matroska",
+        "webm",
+        "avi",
+        "mpegts",
+        "ogg",
+        "wav",
+        "flac",
+        "gif",
+        "image2"
+      ],
+      "filters": [
+        "crop",
+        "scale",
+        "zscale",
+        "tonemap",
+        "format",
+        "setparams",
+        "rotate",
+        "overlay",
+        "concat",
+        "hflip",
+        "vflip",
+        "palettegen",
+        "paletteuse",
+        "atrim",
+        "asetpts",
+        "aeval",
+        "aresample",
+        "atempo",
+        "volume",
+        "amix",
+        "alimiter",
+        "apad",
+        "showwavespic"
+      ],
+      "protocols": [
+        "file",
+        "pipe",
+        "http",
+        "https",
+        "tcp",
+        "udp"
+      ],
+      "bitstreamFilters": [
+        "h264_mp4toannexb",
+        "hevc_mp4toannexb",
+        "aac_adtstoasc"
+      ],
+      "hardwareAccelerators": [
+        "d3d11va",
+        "dxva2"
+      ]
+    }
   },
   "linux": {
     "mpvClientApi": "2.5",

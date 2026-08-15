@@ -5,17 +5,33 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
 
 $pins = Get-ClipEditNativeDependencies
-Assert-ClipEditNativeSourceLock -Dependencies $pins
+$linuxFfmpegVersion = [string]$pins.components.ffmpeg.version
+$linuxProfile = [string]$pins.releaseProfiles.'linux-x64'
+if ([string]::IsNullOrWhiteSpace($linuxProfile) -or
+    $linuxProfile -notmatch [regex]::Escape($linuxFfmpegVersion)) {
+    throw "Linux release profile '$linuxProfile' does not identify FFmpeg $linuxFfmpegVersion."
+}
 
-$ffmpegVersion = [string]$pins.components.ffmpeg.version
-foreach ($runtimeId in @('win-x64', 'linux-x64')) {
-    $profile = [string]$pins.releaseProfiles.$runtimeId
-    if ([string]::IsNullOrWhiteSpace($profile) -or $profile -notmatch [regex]::Escape($ffmpegVersion)) {
-        throw "Release profile '$runtimeId' does not identify FFmpeg $ffmpegVersion."
+$windowsPackages = @($pins.windows.packages)
+$packageNames = @($windowsPackages | ForEach-Object { [string]$_.name })
+$duplicatePackages = @($packageNames | Group-Object | Where-Object Count -gt 1)
+if ($duplicatePackages.Count -gt 0) {
+    throw "Windows MSYS2 package lock contains duplicates: $($duplicatePackages.Name -join ', ')"
+}
+foreach ($requiredPackage in @(
+    'mingw-w64-ucrt-x86_64-ffmpeg',
+    'mingw-w64-ucrt-x86_64-mpv')) {
+    if ($requiredPackage -notin $packageNames) {
+        throw "Windows MSYS2 package lock is missing $requiredPackage."
     }
 }
-if ([string]$pins.windows.stackId -notmatch [regex]::Escape($ffmpegVersion)) {
-    throw "Windows native stack ID does not identify FFmpeg $ffmpegVersion."
+
+$windowsProfile = [string]$pins.releaseProfiles.'win-x64'
+foreach ($package in $windowsPackages) {
+    if ($windowsProfile -notmatch [regex]::Escape([string]$package.version) -or
+        [string]$pins.windows.stackId -notmatch [regex]::Escape([string]$package.version)) {
+        throw "Windows profile and stack ID must identify $($package.name) $($package.version)."
+    }
 }
 
 $requiredBinaries = @($pins.windows.requiredBinaries)
@@ -33,13 +49,30 @@ foreach ($sharedLibrary in @($pins.windows.sharedLibavImports)) {
         throw "Shared libav import $sharedLibrary is not in the Windows required binary list."
     }
 }
-
-$patchText = Get-Content -LiteralPath (
-    Join-Path $PSScriptRoot 'native/windows-shared-media/mpv-winbuild-cmake.patch') -Raw
-foreach ($placeholder in @('@CLIPEDIT_FFMPEG_REVISION@', '@CLIPEDIT_MPV_REVISION@')) {
-    if (-not $patchText.Contains($placeholder)) {
-        throw "Windows native patch is missing placeholder $placeholder."
+foreach ($sharedLibrary in @($pins.windows.sharedByFfmpegAndMpv)) {
+    if ($sharedLibrary -notin @($pins.windows.sharedLibavImports)) {
+        throw "Shared FFmpeg/mpv import $sharedLibrary is not in the shared libav list."
     }
 }
 
-Write-Host "Native dependency manifest is consistent: FFmpeg $ffmpegVersion; Windows stack $($pins.windows.stackId)."
+$capabilityGroups = @(
+    'decoders',
+    'encoders',
+    'demuxers',
+    'muxers',
+    'filters',
+    'protocols',
+    'bitstreamFilters',
+    'hardwareAccelerators')
+foreach ($group in $capabilityGroups) {
+    $values = @($pins.windows.requiredCapabilities.$group)
+    if ($values.Count -eq 0) {
+        throw "Windows capability baseline '$group' is empty."
+    }
+    $duplicates = @($values | Group-Object | Where-Object Count -gt 1)
+    if ($duplicates.Count -gt 0) {
+        throw "Windows capability baseline '$group' contains duplicates: $($duplicates.Name -join ', ')"
+    }
+}
+
+Write-Host "Native dependency manifest is consistent: Linux FFmpeg $linuxFfmpegVersion; Windows stack $($pins.windows.stackId)."

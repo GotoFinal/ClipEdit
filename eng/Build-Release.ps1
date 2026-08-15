@@ -38,7 +38,6 @@ $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $workspaceRoot 'src/ClipEdit.App/ClipEdit.App.csproj'
 . (Join-Path $PSScriptRoot 'NativeDependencies.ps1')
 $nativeDependencies = Get-ClipEditNativeDependencies
-Assert-ClipEditNativeSourceLock -Dependencies $nativeDependencies
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $safeWorkspace = $workspaceRoot.Replace('\', '/')
@@ -68,7 +67,7 @@ $releaseAssetId = if ($includesNativeMedia) { $RuntimeId } else { "$RuntimeId-sy
 
 if ([string]::IsNullOrWhiteSpace($NativePayloadPath)) {
     $NativePayloadPath = if ($RuntimeId -eq 'win-x64') {
-        Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v1/payload'
+        Join-Path $workspaceRoot 'packages/native/release/win-x64/shared-media-stack-v2/payload'
     }
     else {
         Join-Path $workspaceRoot "packages/native/release/$RuntimeId/payload"

@@ -17,8 +17,10 @@ permissions:
 jobs:
   check:
     name: Review upstream native versions
-    runs-on: ubuntu-22.04
+    runs-on: windows-2025
     steps:
+      - name: Preserve repository line endings
+        run: git config --global core.autocrlf input
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -29,8 +31,15 @@ jobs:
         with:
           path: packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: UCRT64
+          update: true
       - name: Check upstream versions
         shell: pwsh
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           ./eng/Update-NativeDependencies.ps1 -ReportPath artifacts/native-dependency-report.md
           Get-Content artifacts/native-dependency-report.md | Add-Content $env:GITHUB_STEP_SUMMARY
@@ -38,6 +47,8 @@ jobs:
         if: inputs.create_pull_request
         id: update
         shell: pwsh
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           ./eng/Update-NativeDependencies.ps1 -Apply -ReportPath artifacts/native-dependency-report.md
           ./eng/Test-NativeDependencies.ps1
@@ -84,7 +95,7 @@ jobs:
             echo
             cat artifacts/native-dependency-report.md
             echo
-            echo "The Windows toolchain HEAD is report-only. Its transitive source lock and ClipEdit patch must be reviewed and regenerated manually."
+            echo "Windows uses reviewed MSYS2 UCRT64 package versions. Native validation must assemble the complete DLL closure and pass the codec, format, filter, shared-libav, and corresponding-source checks before this PR is merged."
             echo
             echo "The native validation workflow will build both platform payloads for this PR."
           } > "$body_path"

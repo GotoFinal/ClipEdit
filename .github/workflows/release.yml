@@ -120,20 +120,16 @@ jobs:
     name: Windows x64
     needs: prepare
     if: needs.prepare.outputs.windows == 'true'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 350
+    runs-on: windows-2025
+    timeout-minutes: 90
     permissions:
       contents: write
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       TAG: ${{ needs.prepare.outputs.tag }}
-      WINDOWS_NATIVE_CACHE: ${{ github.workspace }}/.native-cache/windows-x64
-      WINEDEBUG: "-all"
     steps:
-      - name: Free runner disk space
-        run: |
-          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/swift
-          df -h /
+      - name: Preserve repository line endings
+        run: git config --global core.autocrlf input
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -144,24 +140,36 @@ jobs:
         with:
           path: packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
-      - uses: actions/cache@v5
+      - uses: msys2/setup-msys2@v2
+        id: msys2
         with:
-          path: .native-cache/windows-x64
-          key: windows-native-v2-${{ hashFiles('eng/native/native-dependencies.json', 'eng/native/windows-shared-media/**') }}
-          restore-keys: windows-native-v2-
-      - name: Install Windows-binary validation tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wine64 zstd
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-mpv
+            tar
+            zstd
       - run: dotnet restore ClipEdit.sln
-      - name: Build and validate native media stack
+      - name: Assemble and validate MSYS2 media stack
         shell: pwsh
-        run: ./eng/Build-WindowsSharedMediaStack.ps1 -CachePath "$env:WINDOWS_NATIVE_CACHE"
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: ./eng/Build-WindowsSharedMediaStack.ps1
+      - name: Restore corresponding-source cache
+        uses: actions/cache@v5
+        with:
+          path: packages/native/source-cache/win-x64
+          key: windows-native-sources-v2-${{ hashFiles('eng/native/native-dependencies.json', 'eng/Export-WindowsCorrespondingSource.ps1') }}
+          restore-keys: windows-native-sources-v2-
       - name: Assemble native payload and corresponding source
         shell: pwsh
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           ./eng/Prepare-ReleasePayload.ps1 -RuntimeId win-x64
-          ./eng/Export-WindowsCorrespondingSource.ps1 -CachePath "$env:WINDOWS_NATIVE_CACHE"
+          ./eng/Export-WindowsCorrespondingSource.ps1
       - name: Build release candidate
         shell: pwsh
         run: |

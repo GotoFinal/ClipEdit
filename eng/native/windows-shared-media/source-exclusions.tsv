@@ -1,3 +1,0 @@
-# Source-lock entries deliberately excluded from the shipped binary/source closure.
-# name<TAB>reason
-mpv-packaging	Legacy optional autobuild packaging assets; the pinned CMake build graph and ClipEdit payload do not consume this repository.
