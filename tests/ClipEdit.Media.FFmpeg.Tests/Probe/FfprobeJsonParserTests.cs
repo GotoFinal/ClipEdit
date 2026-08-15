@@ -124,6 +124,19 @@ public sealed class FfprobeJsonParserTests
     }
 
     [Fact]
+    public void Parse_uses_mp4_handler_name_when_audio_title_is_absent()
+    {
+        var json = RepresentativeJson.Replace(
+            "\"title\": \"Main audio\"",
+            "\"handler_name\": \"Director commentary\"",
+            StringComparison.Ordinal);
+
+        var result = FfprobeJsonParser.Parse("C:\\media\\commentary.mp4", json);
+
+        Assert.Equal("Director commentary", Assert.IsType<AudioStreamInfo>(result.Streams[1]).Title);
+    }
+
+    [Fact]
     public void Parse_preserves_non_playback_stream_kinds()
     {
         var result = FfprobeJsonParser.Parse("C:\\media\\example.mkv", RepresentativeJson);

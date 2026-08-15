@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using ClipEdit.App.ViewModels;
 using ClipEdit.Application.Media;
+using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Probe;
 
@@ -113,6 +114,22 @@ public sealed class AudioTrackViewModelTests
         Assert.Equal("Auto 3×", track.WaveformAmplitudeScaleText);
     }
 
+    [Fact]
+    public void External_track_display_name_includes_container_title_and_language()
+    {
+        var track = CreateTrack();
+
+        Assert.Equal("audio.mkv · Main · ENG", track.DisplayName);
+    }
+
+    [Fact]
+    public void Embedded_track_display_name_includes_lane_title_and_language()
+    {
+        var track = CreateEmbeddedTrack();
+
+        Assert.Equal("A2 · Dialogue · JPN", track.DisplayName);
+    }
+
     private static AudioTrackViewModel CreateTrack()
     {
         var sourcePath = Path.GetFullPath("audio.mkv");
@@ -142,5 +159,61 @@ public sealed class AudioTrackViewModelTests
             8_000,
             ImmutableArray.Create<MediaStreamInfo>(audio));
         return new AudioTrackViewModel(new ImportedMedia("audio.mkv", probe), audio);
+    }
+
+    private static AudioTrackViewModel CreateEmbeddedTrack()
+    {
+        var sourcePath = Path.GetFullPath("video.mkv");
+        var duration = new MediaTime(10, 1);
+        var audio = new AudioStreamInfo(
+            1,
+            "aac",
+            null,
+            null,
+            "jpn",
+            "Dialogue",
+            true,
+            false,
+            new MediaTime(1, 48_000),
+            MediaTime.Zero,
+            duration,
+            48_000,
+            2,
+            "stereo",
+            "fltp");
+        var video = new VideoStreamInfo(
+            0,
+            "h264",
+            null,
+            null,
+            null,
+            null,
+            true,
+            false,
+            new MediaTime(1, 1_000),
+            MediaTime.Zero,
+            duration,
+            new PixelSize(1_920, 1_080),
+            0,
+            new FrameRate(30, 1),
+            new FrameRate(30, 1),
+            "yuv420p",
+            "1:1",
+            "16:9",
+            "tv",
+            "bt709",
+            "bt709",
+            "bt709",
+            "progressive");
+        var probe = new MediaProbeResult(
+            sourcePath,
+            "matroska",
+            null,
+            MediaTime.Zero,
+            duration,
+            1_024,
+            8_000,
+            ImmutableArray.Create<MediaStreamInfo>(video, audio));
+        return new AudioTrackViewModel(new ImportedMedia("video.mkv", probe), audio, embeddedLaneIndex: 1);
     }
 }

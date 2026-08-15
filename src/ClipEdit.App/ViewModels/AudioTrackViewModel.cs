@@ -9,6 +9,12 @@ namespace ClipEdit.App.ViewModels;
 public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 {
     private const double MaximumTimelineOffsetSeconds = 7 * 24 * 60 * 60;
+    private static readonly HashSet<string> GenericAudioHandlerNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SoundHandler",
+        "VideoHandler",
+        "Core Media Audio",
+    };
     private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
         : StringComparer.Ordinal;
@@ -40,6 +46,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private bool _isWaveformLoading;
     private string? _waveformErrorText;
     private double _waveformAmplitudeScale = WaveformAmplitudeMath.Automatic;
+    private string _displayName = string.Empty;
 
     public AudioTrackViewModel(
         ImportedMedia media,
@@ -60,7 +67,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         EmbeddedLaneIndex = IsExternal ? null : embeddedLaneIndex ?? 0;
         DisplayName = IsExternal
             ? BuildDisplayName(media, stream)
-            : $"A{(embeddedLaneIndex ?? 0) + 1} · Embedded audio";
+            : BuildEmbeddedDisplayName(embeddedLaneIndex ?? 0, BuildStreamDetail(stream));
         _timelineQuantum = stream.TimeBase is { } timeBase && timeBase > MediaTime.Zero
             ? timeBase
             : new MediaTime(1, stream.SampleRate ?? 48_000);
@@ -70,7 +77,12 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         {
             _embeddedSources.Add(
                 SourcePath,
-                new EmbeddedAudioSourceBinding(SourcePath, StreamIndex, _timelineQuantum, _edit));
+                new EmbeddedAudioSourceBinding(
+                    SourcePath,
+                    StreamIndex,
+                    _timelineQuantum,
+                    _edit,
+                    BuildStreamDetail(stream)));
         }
     }
 
@@ -82,7 +94,11 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
 
     public int? EmbeddedLaneIndex { get; }
 
-    public string DisplayName { get; }
+    public string DisplayName
+    {
+        get => _displayName;
+        private set => SetProperty(ref _displayName, value);
+    }
 
     public string StableId => $"{SourcePath}|{StreamIndex}";
 
@@ -138,8 +154,10 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
                 media.Probe.SourcePath,
                 stream.Index,
                 quantum,
-                new SourceEdit(duration.Value)));
+                new SourceEdit(duration.Value),
+                BuildStreamDetail(stream)));
         OnPropertyChanged(nameof(EmbeddedSourcePaths));
+        RefreshEmbeddedDisplayName();
     }
 
     internal bool RemoveEmbeddedSource(string sourcePath)
@@ -148,6 +166,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         if (removed)
         {
             OnPropertyChanged(nameof(EmbeddedSourcePaths));
+            RefreshEmbeddedDisplayName();
             RebuildTimelineKeptRanges();
         }
         return removed;
@@ -649,6 +668,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsContextualClipIncluded));
         OnPropertyChanged(nameof(ContextualClipActionText));
         OnPropertyChanged(nameof(ContextualClipActionToolTip));
+        RefreshEmbeddedDisplayName();
     }
 
     internal void SynchronizeTimelineState(
@@ -1080,10 +1100,71 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private static string BuildDisplayName(ImportedMedia media, AudioStreamInfo stream)
     {
         var sourceName = Path.GetFileName(media.Probe.SourcePath);
-        var language = string.IsNullOrWhiteSpace(stream.Language) ? null : stream.Language.ToUpperInvariant();
-        var title = string.IsNullOrWhiteSpace(stream.Title) ? null : stream.Title;
-        var detail = title ?? language ?? $"Track {stream.Index}";
-        return media.IsExternalAudio ? sourceName : $"{sourceName} · {detail}";
+        var detail = BuildStreamDetail(stream, $"Track {stream.Index}");
+        return $"{sourceName} · {detail}";
+    }
+
+    private void RefreshEmbeddedDisplayName()
+    {
+        if (IsExternal || EmbeddedLaneIndex is not { } laneIndex)
+        {
+            return;
+        }
+
+        if (_contextualGainClip is { } clip &&
+            _embeddedSources.TryGetValue(clip.SourcePath, out var selectedBinding))
+        {
+            DisplayName = BuildEmbeddedDisplayName(laneIndex, selectedBinding.DisplayLabel);
+            return;
+        }
+
+        var labels = _embeddedSources.Values
+            .Select(binding => binding.DisplayLabel)
+            .Where(label => !string.Equals(label, "Embedded audio", StringComparison.Ordinal))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToArray();
+        DisplayName = BuildEmbeddedDisplayName(
+            laneIndex,
+            labels.Length switch
+            {
+                0 => "Embedded audio",
+                1 => labels[0],
+                _ => "Multiple tracks",
+            });
+    }
+
+    private static string BuildEmbeddedDisplayName(int laneIndex, string detail) =>
+        $"A{laneIndex + 1} · {detail}";
+
+    private static string BuildStreamDetail(AudioStreamInfo stream, string fallback = "Embedded audio")
+    {
+        var title = NormalizeMetadataLabel(stream.Title);
+        if (title is not null && GenericAudioHandlerNames.Contains(title))
+        {
+            title = null;
+        }
+        var language = NormalizeMetadataLabel(stream.Language)?.ToUpperInvariant();
+        return (title, language) switch
+        {
+            (not null, not null) => $"{title} · {language}",
+            (not null, null) => title,
+            (null, not null) => language,
+            _ => fallback,
+        };
+    }
+
+    private static string? NormalizeMetadataLabel(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = string.Join(
+            ' ',
+            value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return normalized.Length <= 120 ? normalized : $"{normalized[..119]}…";
     }
 
     private static string FormatTimestamp(MediaTime value)
@@ -1108,12 +1189,14 @@ internal sealed class EmbeddedAudioSourceBinding
         string sourcePath,
         int streamIndex,
         MediaTime quantum,
-        SourceEdit edit)
+        SourceEdit edit,
+        string displayLabel)
     {
         SourcePath = sourcePath;
         StreamIndex = streamIndex;
         Quantum = quantum;
         Edit = edit;
+        DisplayLabel = displayLabel;
     }
 
     public string SourcePath { get; }
@@ -1123,4 +1206,6 @@ internal sealed class EmbeddedAudioSourceBinding
     public MediaTime Quantum { get; }
 
     public SourceEdit Edit { get; set; }
+
+    public string DisplayLabel { get; }
 }

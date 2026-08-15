@@ -87,7 +87,8 @@ internal static class FfprobeJsonParser
         var codecLongName = GetOptionalString(stream, "codec_long_name");
         var profile = GetOptionalString(stream, "profile");
         var language = GetNestedOptionalString(stream, "tags", "language");
-        var title = GetNestedOptionalString(stream, "tags", "title");
+        var title = GetNestedOptionalString(stream, "tags", "title") ??
+                    GetNestedOptionalString(stream, "tags", "handler_name");
         var isDefault = GetNestedOptionalInt32(stream, "disposition", "default") == 1;
         var isForced = GetNestedOptionalInt32(stream, "disposition", "forced") == 1;
         var timeBase = ParsePositiveTimeBase(GetOptionalString(stream, "time_base"));
