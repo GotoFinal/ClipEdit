@@ -25,6 +25,7 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     private bool _isTimelineLoading;
     private string? _timelineErrorText;
     private ImmutableArray<MediaTime> _videoKeyframes = [];
+    private ImmutableArray<KeyframePoint> _videoKeyframePoints = [];
     private ImmutableArray<double> _videoKeyframeSeconds = [];
     private bool _isKeyframeIndexLoading;
     private bool _isKeyframeIndexReady;
@@ -257,6 +258,8 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
 
     public ImmutableArray<MediaTime> VideoKeyframes => _videoKeyframes;
 
+    public ImmutableArray<KeyframePoint> VideoKeyframePoints => _videoKeyframePoints;
+
     public IReadOnlyList<double> VideoKeyframeSeconds => _videoKeyframeSeconds;
 
     public bool IsKeyframeIndexLoading
@@ -288,6 +291,7 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(index);
         _videoKeyframes = index.Timestamps;
+        _videoKeyframePoints = index.Points;
         _videoKeyframeSeconds = index.Timestamps
             .Select(static timestamp => timestamp.TotalSeconds)
             .ToImmutableArray();
@@ -295,6 +299,7 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
         IsKeyframeIndexReady = true;
         KeyframeIndexError = null;
         OnPropertyChanged(nameof(VideoKeyframes));
+        OnPropertyChanged(nameof(VideoKeyframePoints));
         OnPropertyChanged(nameof(VideoKeyframeSeconds));
     }
 
@@ -302,11 +307,13 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         _videoKeyframes = [];
+        _videoKeyframePoints = [];
         _videoKeyframeSeconds = [];
         IsKeyframeIndexLoading = false;
         IsKeyframeIndexReady = false;
         KeyframeIndexError = message;
         OnPropertyChanged(nameof(VideoKeyframes));
+        OnPropertyChanged(nameof(VideoKeyframePoints));
         OnPropertyChanged(nameof(VideoKeyframeSeconds));
     }
 

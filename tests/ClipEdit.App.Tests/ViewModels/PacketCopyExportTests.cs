@@ -108,6 +108,36 @@ public sealed class PacketCopyExportTests
     }
 
     [Fact]
+    public async Task Keyframe_aligned_trim_copies_video_and_rebuilds_audio()
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(
+            new CompatibleCopyProbe(includePacketTimestamps: true),
+            exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([TestPath("source.mp4")]);
+        viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 30;
+        Assert.Single(viewModel.AudioTracks).GainDb = -3;
+
+        Assert.False(viewModel.IsPacketCopyExport);
+        Assert.True(viewModel.IsVideoStreamCopyExport);
+        Assert.Equal("Fast video copy", viewModel.ExportMethodTitle);
+
+        var result = await viewModel.ExportAsync(
+            TestPath("keyframe-trim.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(ExportStrategy.VideoStreamCopy, renderer.Plan!.Strategy);
+        var segment = Assert.Single(renderer.Plan.VideoSegments);
+        Assert.Equal(new MediaRange(new MediaTime(5, 1), new MediaTime(30, 1)), segment.SourceRange);
+        Assert.Equal(-3, Assert.Single(segment.AudioTracks).GainDb);
+        Assert.Equal(new MediaTime(49, 10), segment.StreamCopyInfo!.StartDecodeTimestamp);
+        Assert.Equal(new MediaTime(299, 10), segment.StreamCopyInfo.EndDecodeTimestamp);
+    }
+
+    [Fact]
     public async Task Webm_vp9_opus_source_uses_packet_copy()
     {
         using var viewModel = new MainWindowViewModel(
@@ -146,20 +176,23 @@ public sealed class PacketCopyExportTests
 
     private static string TestPath(string fileName) => Path.Combine(Path.GetTempPath(), fileName);
 
-    private sealed class CompatibleCopyProbe : IMediaProbe
+    private sealed class CompatibleCopyProbe : IMediaProbe, IKeyframeProbe
     {
         private readonly string _videoCodec;
         private readonly string _audioCodec;
         private readonly string _formatName;
+        private readonly bool _includePacketTimestamps;
 
         public CompatibleCopyProbe(
             string videoCodec = "h264",
             string audioCodec = "aac",
-            string formatName = "mov,mp4,m4a,3gp,3g2,mj2")
+            string formatName = "mov,mp4,m4a,3gp,3g2,mj2",
+            bool includePacketTimestamps = false)
         {
             _videoCodec = videoCodec;
             _audioCodec = audioCodec;
             _formatName = formatName;
+            _includePacketTimestamps = includePacketTimestamps;
         }
 
         public Task<MediaProbeResult> ProbeAsync(
@@ -224,6 +257,25 @@ public sealed class PacketCopyExportTests
                         192_000,
                         _audioCodec == "aac" ? "mp4a" : "[0][0][0][0]",
                         "SHA256:compatible-audio"))));
+        }
+
+        public Task<KeyframeIndex> ProbeKeyframesAsync(
+            string sourcePath,
+            int videoStreamIndex,
+            MediaTime timestampOrigin,
+            MediaTime? sourceDuration,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(_includePacketTimestamps
+                ? KeyframeIndex.FromPoints(
+                    videoStreamIndex,
+                    [
+                        new KeyframePoint(MediaTime.Zero, new MediaTime(-1, 10)),
+                        new KeyframePoint(new MediaTime(5, 1), new MediaTime(49, 10)),
+                        new KeyframePoint(new MediaTime(30, 1), new MediaTime(299, 10)),
+                    ])
+                : new KeyframeIndex(videoStreamIndex, ImmutableArray<MediaTime>.Empty));
         }
     }
 

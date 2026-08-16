@@ -203,6 +203,8 @@ internal static class FfmpegExportArguments
         string temporaryOutputPath)
     {
         var segment = plan.VideoSegments.Single();
+        var usesKeyframeTrim = !segment.IsCompleteSource;
+        var usesSeparateAudioInput = usesKeyframeTrim && segment.AudioTracks.Length > 0;
         var arguments = new List<string>
         {
             "-hide_banner",
@@ -213,9 +215,24 @@ internal static class FfmpegExportArguments
             "-progress",
             "pipe:1",
             "-nostats",
-            "-i",
-            segment.SourcePath,
         };
+        if (usesKeyframeTrim)
+        {
+            arguments.Add("-ss");
+            arguments.Add(FormatTime(segment.SourceRange.Start));
+            if (segment.StreamCopyInfo?.EndDecodeTimestamp is { } endDecodeTimestamp)
+            {
+                arguments.Add("-t");
+                arguments.Add(FormatTime(endDecodeTimestamp - segment.SourceRange.Start));
+            }
+        }
+        arguments.Add("-i");
+        arguments.Add(segment.SourcePath);
+        if (usesSeparateAudioInput)
+        {
+            arguments.Add("-i");
+            arguments.Add(segment.SourcePath);
+        }
         foreach (var externalSourcePath in GetSequenceExternalAudioSources(plan))
         {
             arguments.Add("-i");
@@ -227,7 +244,7 @@ internal static class FfmpegExportArguments
         if (HasAnyAudio(plan))
         {
             arguments.Add("-filter_complex");
-            arguments.Add(CreateVideoStreamCopyAudioFilterGraph(plan));
+            arguments.Add(CreateVideoStreamCopyAudioFilterGraph(plan, usesSeparateAudioInput));
             arguments.Add("-map");
             arguments.Add("[aout]");
         }
@@ -254,7 +271,9 @@ internal static class FfmpegExportArguments
         return arguments;
     }
 
-    internal static string CreateVideoStreamCopyAudioFilterGraph(ExportPlan plan)
+    internal static string CreateVideoStreamCopyAudioFilterGraph(
+        ExportPlan plan,
+        bool usesSeparateAudioInput = false)
     {
         if (!plan.IsSequence || plan.Strategy != ExportStrategy.VideoStreamCopy)
         {
@@ -265,12 +284,13 @@ internal static class FfmpegExportArguments
         var range = segment.SourceRange;
         var filters = new List<string>();
         var mixInputs = new List<string>();
+        var embeddedInputIndex = usesSeparateAudioInput ? 1 : 0;
         for (var trackIndex = 0; trackIndex < segment.AudioTracks.Length; trackIndex++)
         {
             var track = segment.AudioTracks[trackIndex];
             var output = $"emb{trackIndex}";
             filters.Add(
-                $"[0:{track.StreamIndex}]" +
+                $"[{embeddedInputIndex}:{track.StreamIndex}]" +
                 CreateRangeMask(track) +
                 $"apad,atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
                 "asetpts=PTS-STARTPTS,aresample=48000," +
@@ -283,7 +303,8 @@ internal static class FfmpegExportArguments
         for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
         {
             var track = plan.AudioTracks[trackIndex];
-            var inputIndex = 1 + GetExternalAudioSourceIndex(track, externalSources);
+            var inputIndex = 1 + (usesSeparateAudioInput ? 1 : 0) +
+                             GetExternalAudioSourceIndex(track, externalSources);
             var output = $"ext{trackIndex}";
             filters.Add(
                 $"[{inputIndex}:{track.StreamIndex}]" +

@@ -114,4 +114,6 @@ public sealed record SegmentStreamCopyInfo(
     VideoStreamCopySignature Video,
     AudioStreamCopySignature? Audio,
     bool StartsOnKeyframeOrAtSourceStart,
-    bool EndsOnKeyframeOrAtSourceEnd);
+    bool EndsOnKeyframeOrAtSourceEnd,
+    MediaTime? StartDecodeTimestamp = null,
+    MediaTime? EndDecodeTimestamp = null);

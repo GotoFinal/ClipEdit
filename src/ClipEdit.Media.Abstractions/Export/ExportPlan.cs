@@ -326,9 +326,20 @@ public sealed record ExportPlan
                                          segment.AudioTracks[0].AudioEdit is { IsUnedited: true },
                                     _ => false,
                                 });
+        var isVerifiedVideoTrim = strategy == ExportStrategy.VideoStreamCopy &&
+                                  segment is
+                                  {
+                                      StreamCopyInfo.StartsOnKeyframeOrAtSourceStart: true,
+                                      StreamCopyInfo.EndsOnKeyframeOrAtSourceEnd: true,
+                                  } &&
+                                  (segment.SourceRange.Start == MediaTime.Zero ||
+                                   segment.StreamCopyInfo.StartDecodeTimestamp is not null) &&
+                                  (segment.IsCompleteSource ||
+                                   segment.StreamCopyInfo.EndDecodeTimestamp is { } endDts &&
+                                   endDts > segment.SourceRange.Start);
         if (segment is null ||
             (strategy == ExportStrategy.StreamCopy && !externalTracks.IsEmpty) ||
-            !segment.IsCompleteSource ||
+            (!segment.IsCompleteSource && !isVerifiedVideoTrim) ||
             segment.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent ||
             segment.TimelineStart != SequenceTimelineStart ||
             segment.TimelineDuration != resolvedDuration ||
@@ -341,7 +352,7 @@ public sealed record ExportPlan
             throw new ExportPlanException(
                 strategy == ExportStrategy.StreamCopy
                     ? "Packet-copy export requires one complete, untransformed, untrimmed source clip with unchanged audio."
-                    : "Video-copy export requires one complete, untransformed, untrimmed source clip.");
+                    : "Video-copy export requires one complete clip or a verified keyframe-aligned trim without visual transforms.");
         }
     }
 
@@ -357,6 +368,11 @@ public sealed record ExportPlan
                 "Packet-copy concatenation requires verified encoded stream signatures.");
         }
         var hasAudio = segments[0].AudioTracks.Length == 1;
+        if (hasAudio && firstInfo.Audio is null)
+        {
+            throw new ExportPlanException(
+                "Packet-copy concatenation requires a verified unchanged audio stream signature.");
+        }
         var videoStreamIndex = segments[0].VideoStreamIndex;
         var audioStreamIndex = hasAudio ? segments[0].AudioTracks[0].StreamIndex : (int?)null;
         var compatible = externalTracks.IsEmpty &&

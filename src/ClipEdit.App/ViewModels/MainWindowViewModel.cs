@@ -356,6 +356,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         var blockers = PacketCopyBlocker.None;
         var reasons = new List<string>();
+        var forceVideoStreamCopy = false;
 
         void Block(PacketCopyBlocker blocker, string reason)
         {
@@ -367,7 +368,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (blockers == PacketCopyBlocker.None)
             {
-                return PacketCopyDecision.Copy;
+                return forceVideoStreamCopy
+                    ? PacketCopyDecision.CopyVideo(blockers, reasons)
+                    : PacketCopyDecision.Copy;
             }
 
             const PacketCopyBlocker audioOnlyBlockers =
@@ -434,11 +437,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             Block(PacketCopyBlocker.Media, "Source stream information is incomplete.");
             return PacketCopyDecision.Transcode(blockers, reasons);
         }
-        if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
+        var streamCopyInfo = CreateSegmentStreamCopyInfo(slice, preset);
+        if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration) &&
+            CanCopyTrimmedVideoPackets(slice, preset, streamCopyInfo))
+        {
+            forceVideoStreamCopy = true;
+            reasons.Add("Video boundaries are indexed keyframes; audio is rebuilt for exact timing.");
+        }
+        else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
         {
             Block(PacketCopyBlocker.SourceRange, "Trimmed clips still require encoding; Fast cuts can place keyframe boundaries, but trimmed packet copy remains experimental.");
         }
-        if (exportRange.Start != clip.TimelineStart || exportRange.Duration != clip.Duration)
+        var sliceTimelineStart = clip.Model.SourceTimeToTimeline(slice.SourceRange.Start);
+        var sliceTimelineDuration = clip.Model.SourceDurationToTimeline(slice.SourceRange.Duration);
+        if (exportRange.Start != sliceTimelineStart || exportRange.Duration != sliceTimelineDuration)
         {
             Block(PacketCopyBlocker.TimelineRange, "The export range must match the clip boundaries without surrounding gaps.");
         }

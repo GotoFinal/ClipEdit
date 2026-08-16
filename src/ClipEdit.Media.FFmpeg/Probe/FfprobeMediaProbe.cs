@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text;
 using ClipEdit.Domain.Timeline;
@@ -9,8 +10,9 @@ namespace ClipEdit.Media.FFmpeg.Probe;
 public sealed class FfprobeMediaProbe : IMediaProbe, IKeyframeProbe
 {
     private const int MaximumStandardOutputCharacters = 4 * 1024 * 1024;
-    private const int MaximumKeyframeOutputCharacters = 32 * 1024 * 1024;
     private const int MaximumStandardErrorCharacters = 256 * 1024;
+    private const int MaximumKeyframePacketLineCharacters = 4 * 1024;
+    private const int MaximumIndexedKeyframes = 1_000_000;
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
     private readonly string _executablePath;
@@ -58,18 +60,156 @@ public sealed class FfprobeMediaProbe : IMediaProbe, IKeyframeProbe
     {
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
         var fullSourcePath = ValidateSourcePath(sourcePath);
-        var standardOutput = await ExecuteAsync(
+        return await ExecuteKeyframeProbeAsync(
                 FfprobeKeyframeArguments.Create(fullSourcePath, videoStreamIndex),
-                MaximumKeyframeOutputCharacters,
+                videoStreamIndex,
+                timestampOrigin,
+                sourceDuration,
                 _timeout < TimeSpan.FromMinutes(2) ? TimeSpan.FromMinutes(2) : _timeout,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
 
-        return FfprobeKeyframeJsonParser.Parse(
-            videoStreamIndex,
-            standardOutput,
+    private async Task<KeyframeIndex> ExecuteKeyframeProbeAsync(
+        IReadOnlyList<string> arguments,
+        int videoStreamIndex,
+        MediaTime timestampOrigin,
+        MediaTime? sourceDuration,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var process = new DiagnosticProcess
+        {
+            StartInfo = CreateStartInfo(arguments),
+            EnableRaisingEvents = true,
+        };
+
+        try
+        {
+            if (!process.Start())
+            {
+                throw new MediaProbeException(
+                    MediaProbeFailure.ToolUnavailable,
+                    "ffprobe could not be started.");
+            }
+        }
+        catch (Exception exception) when (exception is not MediaProbeException)
+        {
+            throw new MediaProbeException(
+                MediaProbeFailure.ToolUnavailable,
+                "ffprobe could not be started.",
+                exception);
+        }
+
+        using var timeoutCancellation = new CancellationTokenSource(timeout);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutCancellation.Token);
+        var keyframeTask = ReadKeyframePointsAsync(
+            process.StandardOutput,
             timestampOrigin,
-            sourceDuration);
+            sourceDuration,
+            linkedCancellation.Token);
+        var standardErrorTask = ReadBoundedAsync(
+            process.StandardError,
+            MaximumStandardErrorCharacters,
+            linkedCancellation.Token);
+
+        try
+        {
+            await process.WaitForExitAsync(linkedCancellation.Token).ConfigureAwait(false);
+            await Task.WhenAll(keyframeTask, standardErrorTask).ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                throw new MediaProbeException(
+                    MediaProbeFailure.ToolFailed,
+                    BuildToolFailureMessage(process.ExitCode, standardErrorTask.Result));
+            }
+
+            return FfprobeKeyframePacketParser.CreateIndex(videoStreamIndex, keyframeTask.Result);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            TryKill(process);
+            throw new MediaProbeException(
+                MediaProbeFailure.TimedOut,
+                $"ffprobe did not finish within {timeout.TotalSeconds:0} seconds.");
+        }
+        catch (OutputLimitExceededException exception)
+        {
+            TryKill(process);
+            throw new MediaProbeException(
+                MediaProbeFailure.OutputTooLarge,
+                "ffprobe returned more keyframe metadata than ClipEdit accepts.",
+                exception);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            throw;
+        }
+        catch
+        {
+            TryKill(process);
+            throw;
+        }
+    }
+
+    private static async Task<ImmutableArray<KeyframePoint>> ReadKeyframePointsAsync(
+        StreamReader reader,
+        MediaTime timestampOrigin,
+        MediaTime? sourceDuration,
+        CancellationToken cancellationToken)
+    {
+        var points = ImmutableArray.CreateBuilder<KeyframePoint>();
+        var exceeded = false;
+        Exception? parseError = null;
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        {
+            if (exceeded || parseError is not null)
+            {
+                continue;
+            }
+            if (line.Length > MaximumKeyframePacketLineCharacters)
+            {
+                exceeded = true;
+                continue;
+            }
+
+            try
+            {
+                if (FfprobeKeyframePacketParser.ParseLine(line, timestampOrigin, sourceDuration) is not { } point)
+                {
+                    continue;
+                }
+                if (points.Count >= MaximumIndexedKeyframes)
+                {
+                    exceeded = true;
+                    continue;
+                }
+
+                points.Add(point);
+            }
+            catch (Exception exception) when (
+                exception is FormatException or OverflowException or ArgumentException)
+            {
+                parseError = exception;
+            }
+        }
+
+        if (exceeded)
+        {
+            throw new OutputLimitExceededException();
+        }
+        if (parseError is not null)
+        {
+            throw new MediaProbeException(
+                MediaProbeFailure.InvalidOutput,
+                "ffprobe returned invalid keyframe packet metadata.",
+                parseError);
+        }
+
+        return points.ToImmutable();
     }
 
     private async Task<string> ExecuteAsync(

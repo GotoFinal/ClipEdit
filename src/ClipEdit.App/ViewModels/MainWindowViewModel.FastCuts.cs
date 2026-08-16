@@ -225,7 +225,10 @@ public sealed partial class MainWindowViewModel
                 failures.Add($"{clip.DisplayName} has a crop or visual transform.");
             }
 
-            var info = CreateSegmentStreamCopyInfo(slice, preset);
+            var info = CreateSegmentStreamCopyInfo(
+                slice,
+                preset,
+                requireConcatCompatibility: true);
             if (info is null)
             {
                 failures.Add($"{clip.DisplayName} lacks a verified compatible stream signature.");
@@ -253,7 +256,8 @@ public sealed partial class MainWindowViewModel
 
     private SegmentStreamCopyInfo? CreateSegmentStreamCopyInfo(
         SequenceExportSlice slice,
-        ExportPreset preset)
+        ExportPreset preset,
+        bool requireConcatCompatibility = false)
     {
         var clip = slice.Clip;
         var probe = clip.Source.Media?.Probe;
@@ -271,17 +275,18 @@ public sealed partial class MainWindowViewModel
         }
 
         var sourceDuration = clip.Source.Edit?.SourceDuration ?? probe.Duration;
-        if (sourceDuration is not { } completeDuration ||
-            slice.SourceRange != new MediaRange(MediaTime.Zero, completeDuration))
+        if (sourceDuration is not { } completeDuration)
         {
             return null;
         }
-        var startsOnBoundary = slice.SourceRange.Start == MediaTime.Zero ||
-                               (clip.Source.IsKeyframeIndexReady &&
-                                clip.Source.VideoKeyframes.Contains(slice.SourceRange.Start));
-        var endsOnBoundary = sourceDuration is { } duration && slice.SourceRange.End == duration ||
-                             (clip.Source.IsKeyframeIndexReady &&
-                              clip.Source.VideoKeyframes.Contains(slice.SourceRange.End));
+        var startPoint = clip.Source.VideoKeyframePoints.FirstOrDefault(point =>
+            point.PresentationTimestamp == slice.SourceRange.Start);
+        var endPoint = clip.Source.VideoKeyframePoints.FirstOrDefault(point =>
+            point.PresentationTimestamp == slice.SourceRange.End);
+        var startsAtSourceStart = slice.SourceRange.Start == MediaTime.Zero;
+        var endsAtSourceEnd = slice.SourceRange.End == completeDuration;
+        var startsOnBoundary = startsAtSourceStart || startPoint?.DecodeTimestamp is not null;
+        var endsOnBoundary = endsAtSourceEnd || endPoint?.DecodeTimestamp is not null;
         if (!startsOnBoundary || !endsOnBoundary)
         {
             return null;
@@ -296,13 +301,13 @@ public sealed partial class MainWindowViewModel
                 clip.IncludesAudioLane(laneIndex) &&
                 track.TryGetEmbeddedStreamIndex(clip.SourcePath, out _))
             .ToArray();
-        if (embedded.Length > 1)
+        if (requireConcatCompatibility && embedded.Length > 1)
         {
             return null;
         }
 
         var selectedStreamCount = 1 + embedded.Length;
-        if (probe.Streams.Length != selectedStreamCount)
+        if (requireConcatCompatibility && probe.Streams.Length != selectedStreamCount)
         {
             return null;
         }
@@ -312,28 +317,66 @@ public sealed partial class MainWindowViewModel
         {
             var track = embedded[0];
             var laneIndex = track.EmbeddedLaneIndex!.Value;
-            if (Math.Abs(CombineAudioGain(track.GainDb, clip.GetAudioLaneGainDb(laneIndex))) >= 0.000_001 ||
-                !track.CreateEditForClip(clip).IsUnedited ||
-                !track.TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex))
+            var streamIndex = -1;
+            var canCopyAudio =
+                Math.Abs(CombineAudioGain(track.GainDb, clip.GetAudioLaneGainDb(laneIndex))) < 0.000_001 &&
+                track.CreateEditForClip(clip).IsUnedited &&
+                track.TryGetEmbeddedStreamIndex(clip.SourcePath, out streamIndex);
+            var audio = canCopyAudio
+                ? probe.AudioStreams.FirstOrDefault(stream => stream.Index == streamIndex)
+                : null;
+            if (audio is not null &&
+                SourceAudioCodecMatches(audio.CodecName, preset.AudioCodec) &&
+                CreateAudioStreamCopySignature(audio) is { } signature)
+            {
+                audioSignature = signature;
+            }
+            else if (requireConcatCompatibility)
             {
                 return null;
             }
-
-            var audio = probe.AudioStreams.FirstOrDefault(stream => stream.Index == streamIndex);
-            if (audio is null ||
-                !SourceAudioCodecMatches(audio.CodecName, preset.AudioCodec) ||
-                CreateAudioStreamCopySignature(audio) is not { } signature)
-            {
-                return null;
-            }
-            audioSignature = signature;
         }
 
         return new SegmentStreamCopyInfo(
             videoSignature,
             audioSignature,
             startsOnBoundary,
-            endsOnBoundary);
+            endsOnBoundary,
+            startPoint?.DecodeTimestamp,
+            endPoint?.DecodeTimestamp);
+    }
+
+    private bool CanCopyTrimmedVideoPackets(
+        SequenceExportSlice slice,
+        ExportPreset preset,
+        SegmentStreamCopyInfo? streamCopyInfo)
+    {
+        var probe = slice.Clip.Source.Media?.Probe;
+        var video = probe?.VideoStreams.FirstOrDefault();
+        var sourceDuration = slice.Clip.Source.Edit?.SourceDuration ?? probe?.Duration;
+        if (video is null || sourceDuration is not { } duration ||
+            !SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.H264) ||
+            preset.VideoCodec != VideoCodecFamily.H264 ||
+            streamCopyInfo is not
+            {
+                StartsOnKeyframeOrAtSourceStart: true,
+                EndsOnKeyframeOrAtSourceEnd: true,
+            })
+        {
+            return false;
+        }
+
+        var range = slice.SourceRange;
+        if (range == new MediaRange(MediaTime.Zero, duration))
+        {
+            return false;
+        }
+        if (range.Start > MediaTime.Zero && streamCopyInfo.StartDecodeTimestamp is null)
+        {
+            return false;
+        }
+        return range.End == duration ||
+               streamCopyInfo.EndDecodeTimestamp is { } endDts && endDts > range.Start;
     }
 
     private static VideoStreamCopySignature? CreateVideoStreamCopySignature(VideoStreamInfo video)

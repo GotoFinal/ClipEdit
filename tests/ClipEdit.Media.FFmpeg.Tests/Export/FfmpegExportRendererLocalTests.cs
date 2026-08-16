@@ -429,4 +429,130 @@ public sealed class FfmpegExportRendererLocalTests
             File.Delete(destinationPath);
         }
     }
+
+    [Fact]
+    [Trait("Category", "LocalMedia")]
+    public async Task Renderer_packet_copies_keyframe_trimmed_h264_video_and_rebuilds_audio()
+    {
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
+        var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+        var ffprobePath = FfprobeExecutableLocator.Find();
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            !File.Exists(sourcePath) ||
+            ffmpegPath is null ||
+            ffprobePath is null)
+        {
+            return;
+        }
+
+        var mediaProbe = new FfprobeMediaProbe(ffprobePath);
+        var probe = await mediaProbe.ProbeAsync(sourcePath);
+        var video = probe.VideoStreams.FirstOrDefault();
+        var sourceDuration = video?.Duration ?? probe.Duration;
+        if (video is null ||
+            !video.CodecName.Equals("h264", StringComparison.OrdinalIgnoreCase) ||
+            video.RotationDegrees != 0 ||
+            sourceDuration is null ||
+            video.TimeBase is not { } timeBase ||
+            video.AverageFrameRate is not { IsZero: false } frameRate ||
+            string.IsNullOrWhiteSpace(video.CodecTag) ||
+            string.IsNullOrWhiteSpace(video.CodecExtradataHash) ||
+            string.IsNullOrWhiteSpace(video.PixelFormat))
+        {
+            return;
+        }
+
+        var keyframes = await mediaProbe.ProbeKeyframesAsync(
+            sourcePath,
+            video.Index,
+            video.StartTime ?? probe.StartTime,
+            sourceDuration);
+        var boundaries = keyframes.Points
+            .Where(static point => point.DecodeTimestamp is not null)
+            .Take(3)
+            .ToArray();
+        if (boundaries.Length < 3 || boundaries[2].DecodeTimestamp <= boundaries[1].PresentationTimestamp)
+        {
+            return;
+        }
+
+        var range = new MediaRange(
+            boundaries[1].PresentationTimestamp,
+            boundaries[2].PresentationTimestamp);
+        var audioPlans = probe.AudioStreams.FirstOrDefault() is { } audio
+            ? ImmutableArray.Create(new ExportAudioTrackPlan(
+                audio.Index,
+                0,
+                new SourceEdit(sourceDuration.Value)))
+            : ImmutableArray<ExportAudioTrackPlan>.Empty;
+        var signature = new VideoStreamCopySignature(
+            video.CodecName,
+            video.CodecTag,
+            video.CodecExtradataHash,
+            video.EncodedSize,
+            timeBase,
+            frameRate,
+            video.PixelFormat,
+            video.Profile,
+            video.CodecLevel,
+            video.SampleAspectRatio,
+            video.ColorRange,
+            video.ColorSpace,
+            video.ColorTransfer,
+            video.ColorPrimaries,
+            video.FieldOrder);
+        var destinationPath = Path.Combine(
+            Path.GetTempPath(),
+            $"clipedit-keyframe-copy-{Guid.NewGuid():N}.mp4");
+        var segment = new ExportVideoSegmentPlan(
+            sourcePath,
+            video.Index,
+            range,
+            video.EncodedSize,
+            CropRegion.FullFrame(video.EncodedSize),
+            ClipCanvasTransform.Identity,
+            audioPlans,
+            range.Start,
+            isCompleteSource: false,
+            sourceSize: video.EncodedSize,
+            streamCopyInfo: new SegmentStreamCopyInfo(
+                signature,
+                null,
+                true,
+                true,
+                boundaries[1].DecodeTimestamp,
+                boundaries[2].DecodeTimestamp));
+        var plan = new ExportPlan(
+            [segment],
+            video.EncodedSize,
+            destinationPath,
+            new ExportPreset(
+                "mp4-local-keyframe-copy",
+                "MP4 local keyframe copy",
+                ".mp4",
+                ExportContainer.Mp4,
+                VideoCodecFamily.H264,
+                audioPlans.IsEmpty ? AudioCodecFamily.None : AudioCodecFamily.Aac,
+                requiresEvenDimensions: true),
+            sequenceTimelineStart: range.Start,
+            sequenceDuration: range.Duration,
+            strategy: ExportStrategy.VideoStreamCopy);
+
+        try
+        {
+            await new FfmpegExportRenderer(ffmpegPath).RenderAsync(plan);
+            var rendered = await mediaProbe.ProbeAsync(destinationPath);
+            var renderedVideo = Assert.Single(rendered.VideoStreams);
+            var tolerance = new MediaTime(1, 10);
+
+            Assert.Equal("h264", renderedVideo.CodecName, ignoreCase: true);
+            var renderedDuration = renderedVideo.Duration ?? rendered.Duration ?? MediaTime.Zero;
+            Assert.True(renderedDuration >= range.Duration - tolerance);
+            Assert.True(renderedDuration <= range.Duration + tolerance);
+        }
+        finally
+        {
+            File.Delete(destinationPath);
+        }
+    }
 }

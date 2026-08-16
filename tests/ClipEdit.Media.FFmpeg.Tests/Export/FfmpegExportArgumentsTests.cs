@@ -113,6 +113,68 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Fact]
+    public void Keyframe_trim_seeks_video_by_pts_stops_by_dts_and_reads_audio_separately()
+    {
+        var sourceDuration = new MediaTime(60, 1);
+        var range = new MediaRange(new MediaTime(5, 1), new MediaTime(30, 1));
+        var canvas = new PixelSize(1_920, 1_080);
+        var signature = new VideoStreamCopySignature(
+            "h264",
+            "avc1",
+            "SHA256:video",
+            canvas,
+            new MediaTime(1, 1_000),
+            new FrameRate(30, 1),
+            "yuv420p",
+            "High",
+            40,
+            "1:1",
+            "tv",
+            "bt709",
+            "bt709",
+            "bt709",
+            "progressive");
+        var segment = new ExportVideoSegmentPlan(
+            TestPath("C:\\source.mp4"),
+            0,
+            range,
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity,
+            [new ExportAudioTrackPlan(1, 0, new SourceEdit(sourceDuration))],
+            range.Start,
+            isCompleteSource: false,
+            streamCopyInfo: new SegmentStreamCopyInfo(
+                signature,
+                null,
+                true,
+                true,
+                new MediaTime(49, 10),
+                new MediaTime(299, 10)));
+        var plan = new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\keyframe-trim.mp4"),
+            Mp4Compatible,
+            sequenceTimelineStart: range.Start,
+            sequenceDuration: range.Duration,
+            strategy: ExportStrategy.VideoStreamCopy);
+
+        var arguments = FfmpegExportArguments.Create(
+            plan,
+            TestPath("C:\\.keyframe-trim.partial"));
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.Equal("5", ValueAfter(arguments, "-ss"));
+        Assert.Equal("24.9", ValueAfter(arguments, "-t"));
+        Assert.Equal(2, arguments.Count(argument => argument == segment.SourcePath));
+        Assert.Equal("0:0", ValueAfter(arguments, "-map"));
+        Assert.Contains("[1:1]", graph, StringComparison.Ordinal);
+        Assert.Contains("atrim=start=5:end=30", graph, StringComparison.Ordinal);
+        Assert.Equal("copy", ValueAfter(arguments, "-c:v"));
+    }
+
+    [Fact]
     public void External_audio_can_be_mixed_while_video_is_copied()
     {
         var duration = new MediaTime(10, 1);
