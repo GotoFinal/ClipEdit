@@ -1,4 +1,7 @@
+using ClipEdit.Domain.Editing;
+using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
+using ClipEdit.Media.Export;
 using ClipEdit.Media.Probe;
 
 namespace ClipEdit.App.ViewModels;
@@ -36,7 +39,7 @@ public sealed partial class MainWindowViewModel
             RaiseFastCutStateChanged();
             StatusText = value
                 ? IsFastCutSnappingActive
-                    ? "Fast cuts enabled; cuts snap to lossless packet-copy boundaries"
+                    ? "Fast cuts enabled; cuts snap to indexed keyframes"
                     : "Fast cuts enabled; keyframe indexes are still loading"
                 : "Exact cuts enabled; cuts may require video encoding";
         }
@@ -53,7 +56,7 @@ public sealed partial class MainWindowViewModel
 
     public string FastCutModeDetails => IsFastCutMode
         ? IsFastCutSnappingActive
-            ? "Selection edges, clip trims, and Split snap to indexed keyframes."
+            ? "Selection edges, clip trims, and Split snap to indexed keyframes. Export still verifies whether a faster strategy is safe."
             : "Indexing source keyframes in the background; cuts remain exact until ready."
         : "Frame-exact cuts are preserved and re-encoded when necessary.";
 
@@ -176,6 +179,216 @@ public sealed partial class MainWindowViewModel
     }
 
     private static MediaTime Absolute(MediaTime value) => value < MediaTime.Zero ? -value : value;
+
+    private bool TryResolveConcatStreamCopy(
+        IReadOnlyList<SequenceExportSlice> slices,
+        ExportPreset preset,
+        out IReadOnlyList<string> reasons)
+    {
+        var failures = new List<string>();
+        if (slices.Count == 0)
+        {
+            reasons = ["No video clips are selected for export."];
+            return false;
+        }
+        if (AudioTracks.Any(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty))
+        {
+            failures.Add("External audio is not compatible with packet-copy concatenation.");
+        }
+
+        var exportRange = HasSequenceSelection
+            ? NormalizedSequenceSelection()
+            : new MediaRange(MediaTime.Zero, NonNegativeTimelineTime(SequenceDurationSeconds));
+        var cursor = exportRange.Start;
+        SegmentStreamCopyInfo? first = null;
+        foreach (var slice in slices)
+        {
+            var clip = slice.Clip;
+            var sourceDuration = clip.Source.Edit?.SourceDuration ?? clip.Source.Media?.Probe.Duration;
+            if (sourceDuration is not { } duration ||
+                slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
+            {
+                failures.Add($"{clip.DisplayName} is trimmed; direct packet-copy joining currently accepts complete clips only.");
+            }
+            var timelineStart = clip.Model.SourceTimeToTimeline(slice.SourceRange.Start);
+            if (timelineStart != cursor)
+            {
+                failures.Add("Packet-copy concatenation cannot contain timeline gaps.");
+            }
+            if (clip.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent)
+            {
+                failures.Add($"{clip.DisplayName} does not use 100% playback speed.");
+            }
+            if (clip.CanvasTransform != ClipCanvasTransform.Identity ||
+                CanvasCrop != CropRegion.FullFrame(CanvasSize))
+            {
+                failures.Add($"{clip.DisplayName} has a crop or visual transform.");
+            }
+
+            var info = CreateSegmentStreamCopyInfo(slice, preset);
+            if (info is null)
+            {
+                failures.Add($"{clip.DisplayName} lacks a verified compatible stream signature.");
+            }
+            else if (first is null)
+            {
+                first = info;
+            }
+            else if (info.Video != first.Video || info.Audio != first.Audio)
+            {
+                failures.Add($"{clip.DisplayName} has different encoded stream parameters.");
+            }
+
+            cursor = timelineStart + clip.Model.SourceDurationToTimeline(slice.SourceRange.Duration);
+        }
+
+        if (cursor != exportRange.End)
+        {
+            failures.Add("The selected export range must end exactly at the last clip boundary.");
+        }
+
+        reasons = failures.Distinct().ToArray();
+        return failures.Count == 0 && first is not null;
+    }
+
+    private SegmentStreamCopyInfo? CreateSegmentStreamCopyInfo(
+        SequenceExportSlice slice,
+        ExportPreset preset)
+    {
+        var clip = slice.Clip;
+        var probe = clip.Source.Media?.Probe;
+        var video = probe?.VideoStreams.FirstOrDefault();
+        if (probe is null || video is null ||
+            video.RotationDegrees != 0 ||
+            clip.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent ||
+            clip.CanvasTransform != ClipCanvasTransform.Identity ||
+            CanvasSize != video.EncodedSize ||
+            CanvasCrop != CropRegion.FullFrame(CanvasSize) ||
+            !SourceVideoCodecMatches(video.CodecName, preset.VideoCodec) ||
+            CreateVideoStreamCopySignature(video) is not { } videoSignature)
+        {
+            return null;
+        }
+
+        var sourceDuration = clip.Source.Edit?.SourceDuration ?? probe.Duration;
+        if (sourceDuration is not { } completeDuration ||
+            slice.SourceRange != new MediaRange(MediaTime.Zero, completeDuration))
+        {
+            return null;
+        }
+        var startsOnBoundary = slice.SourceRange.Start == MediaTime.Zero ||
+                               (clip.Source.IsKeyframeIndexReady &&
+                                clip.Source.VideoKeyframes.Contains(slice.SourceRange.Start));
+        var endsOnBoundary = sourceDuration is { } duration && slice.SourceRange.End == duration ||
+                             (clip.Source.IsKeyframeIndexReady &&
+                              clip.Source.VideoKeyframes.Contains(slice.SourceRange.End));
+        if (!startsOnBoundary || !endsOnBoundary)
+        {
+            return null;
+        }
+
+        var embedded = AudioTracks
+            .Where(track =>
+                preset.SupportsAudio &&
+                !track.IsExternal &&
+                !track.IsMuted &&
+                track.EmbeddedLaneIndex is { } laneIndex &&
+                clip.IncludesAudioLane(laneIndex) &&
+                track.TryGetEmbeddedStreamIndex(clip.SourcePath, out _))
+            .ToArray();
+        if (embedded.Length > 1)
+        {
+            return null;
+        }
+
+        var selectedStreamCount = 1 + embedded.Length;
+        if (probe.Streams.Length != selectedStreamCount)
+        {
+            return null;
+        }
+
+        AudioStreamCopySignature? audioSignature = null;
+        if (embedded.Length == 1)
+        {
+            var track = embedded[0];
+            var laneIndex = track.EmbeddedLaneIndex!.Value;
+            if (Math.Abs(CombineAudioGain(track.GainDb, clip.GetAudioLaneGainDb(laneIndex))) >= 0.000_001 ||
+                !track.CreateEditForClip(clip).IsUnedited ||
+                !track.TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex))
+            {
+                return null;
+            }
+
+            var audio = probe.AudioStreams.FirstOrDefault(stream => stream.Index == streamIndex);
+            if (audio is null ||
+                !SourceAudioCodecMatches(audio.CodecName, preset.AudioCodec) ||
+                CreateAudioStreamCopySignature(audio) is not { } signature)
+            {
+                return null;
+            }
+            audioSignature = signature;
+        }
+
+        return new SegmentStreamCopyInfo(
+            videoSignature,
+            audioSignature,
+            startsOnBoundary,
+            endsOnBoundary);
+    }
+
+    private static VideoStreamCopySignature? CreateVideoStreamCopySignature(VideoStreamInfo video)
+    {
+        if (string.IsNullOrWhiteSpace(video.CodecTag) ||
+            string.IsNullOrWhiteSpace(video.CodecExtradataHash) ||
+            string.IsNullOrWhiteSpace(video.PixelFormat) ||
+            video.TimeBase is not { } timeBase ||
+            video.AverageFrameRate is not { IsZero: false } frameRate)
+        {
+            return null;
+        }
+
+        return new VideoStreamCopySignature(
+            video.CodecName,
+            video.CodecTag,
+            video.CodecExtradataHash,
+            video.EncodedSize,
+            timeBase,
+            frameRate,
+            video.PixelFormat,
+            video.Profile,
+            video.CodecLevel,
+            video.SampleAspectRatio,
+            video.ColorRange,
+            video.ColorSpace,
+            video.ColorTransfer,
+            video.ColorPrimaries,
+            video.FieldOrder);
+    }
+
+    private static AudioStreamCopySignature? CreateAudioStreamCopySignature(AudioStreamInfo audio)
+    {
+        if (string.IsNullOrWhiteSpace(audio.CodecTag) ||
+            string.IsNullOrWhiteSpace(audio.CodecExtradataHash) ||
+            string.IsNullOrWhiteSpace(audio.ChannelLayout) ||
+            string.IsNullOrWhiteSpace(audio.SampleFormat) ||
+            audio.TimeBase is not { } timeBase ||
+            audio.SampleRate is not { } sampleRate ||
+            audio.ChannelCount is not { } channelCount)
+        {
+            return null;
+        }
+
+        return new AudioStreamCopySignature(
+            audio.CodecName,
+            audio.CodecTag,
+            audio.CodecExtradataHash,
+            timeBase,
+            sampleRate,
+            channelCount,
+            audio.ChannelLayout,
+            audio.SampleFormat,
+            audio.Profile);
+    }
 
     private void RaiseFastCutStateChanged()
     {

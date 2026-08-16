@@ -10,6 +10,7 @@ public enum ExportStrategy
     ExactTranscode,
     StreamCopy,
     VideoStreamCopy,
+    ConcatStreamCopy,
 }
 
 /// <summary>
@@ -306,6 +307,11 @@ public sealed record ExportPlan
         {
             throw new ArgumentOutOfRangeException(nameof(strategy));
         }
+        if (strategy == ExportStrategy.ConcatStreamCopy)
+        {
+            ValidateConcatStreamCopy(segments, externalTracks, resolvedDuration);
+            return;
+        }
         if (strategy is not (ExportStrategy.StreamCopy or ExportStrategy.VideoStreamCopy))
         {
             return;
@@ -336,6 +342,52 @@ public sealed record ExportPlan
                 strategy == ExportStrategy.StreamCopy
                     ? "Packet-copy export requires one complete, untransformed, untrimmed source clip with unchanged audio."
                     : "Video-copy export requires one complete, untransformed, untrimmed source clip.");
+        }
+    }
+
+    private void ValidateConcatStreamCopy(
+        ImmutableArray<ExportVideoSegmentPlan> segments,
+        ImmutableArray<ExportAudioTrackPlan> externalTracks,
+        MediaTime resolvedDuration)
+    {
+        var cursor = SequenceTimelineStart;
+        if (segments[0].StreamCopyInfo is not { } firstInfo)
+        {
+            throw new ExportPlanException(
+                "Packet-copy concatenation requires verified encoded stream signatures.");
+        }
+        var hasAudio = segments[0].AudioTracks.Length == 1;
+        var videoStreamIndex = segments[0].VideoStreamIndex;
+        var audioStreamIndex = hasAudio ? segments[0].AudioTracks[0].StreamIndex : (int?)null;
+        var compatible = externalTracks.IsEmpty &&
+                         EncodingSettings.ScalePercent == ExportEncodingSettings.DefaultScalePercent &&
+                         EncodingSettings.PlaybackSpeedPercent == ExportEncodingSettings.DefaultPlaybackSpeedPercent;
+        foreach (var segment in segments)
+        {
+            var info = segment.StreamCopyInfo;
+            compatible &= segment.TimelineStart == cursor &&
+                          segment.IsCompleteSource &&
+                          segment.VideoStreamIndex == videoStreamIndex &&
+                          segment.PlaybackSpeedPercent == SequenceClip.DefaultPlaybackSpeedPercent &&
+                          segment.CanvasTransform == ClipCanvasTransform.Identity &&
+                          segment.CanvasCrop == CropRegion.FullFrame(segment.CanvasSize) &&
+                          info is not null &&
+                          info.Video == firstInfo.Video &&
+                          info.Audio == firstInfo.Audio &&
+                          info.StartsOnKeyframeOrAtSourceStart &&
+                          info.EndsOnKeyframeOrAtSourceEnd &&
+                          segment.AudioTracks.Length == (hasAudio ? 1 : 0) &&
+                          (!hasAudio || segment.AudioTracks[0].StreamIndex == audioStreamIndex) &&
+                          segment.AudioTracks.All(track =>
+                              Math.Abs(track.GainDb) < 0.000_001 &&
+                              track.AudioEdit is { IsUnedited: true });
+            cursor += segment.TimelineDuration;
+        }
+
+        if (!compatible || cursor != SequenceTimelineStart + resolvedDuration)
+        {
+            throw new ExportPlanException(
+                "Packet-copy concatenation requires contiguous complete clips with identical encoded stream signatures and unchanged audio.");
         }
     }
 
@@ -396,7 +448,8 @@ public sealed record ExportVideoSegmentPlan
         int playbackSpeedPercent = SequenceClip.DefaultPlaybackSpeedPercent,
         ExportVideoColorInfo? videoColorInfo = null,
         bool isCompleteSource = false,
-        PixelSize? sourceSize = null)
+        PixelSize? sourceSize = null,
+        SegmentStreamCopyInfo? streamCopyInfo = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
@@ -441,6 +494,7 @@ public sealed record ExportVideoSegmentPlan
         PlaybackSpeedPercent = playbackSpeedPercent;
         VideoColorInfo = videoColorInfo;
         IsCompleteSource = isCompleteSource;
+        StreamCopyInfo = streamCopyInfo;
         UsesCanvasTransform = true;
     }
 
@@ -476,6 +530,8 @@ public sealed record ExportVideoSegmentPlan
     public bool UsesCanvasTransform { get; private init; }
 
     public bool IsCompleteSource { get; }
+
+    public SegmentStreamCopyInfo? StreamCopyInfo { get; }
 
     public CropRegion Crop => CanvasCrop;
 

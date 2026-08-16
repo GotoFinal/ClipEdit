@@ -78,7 +78,7 @@ public sealed class PacketCopyExportTests
         viewModel.SequenceSelectionEndSeconds = 30;
 
         Assert.False(viewModel.IsPacketCopyExport);
-        Assert.Contains("trimmed or split", viewModel.ExportMethodDetails);
+        Assert.Contains("Trimmed clips still require encoding", viewModel.ExportMethodDetails);
     }
 
     [Fact]
@@ -118,6 +118,30 @@ public sealed class PacketCopyExportTests
 
         Assert.True(viewModel.IsPacketCopyExport);
         Assert.Contains("packet copy · no re-encode", viewModel.ExportPlanSummary);
+    }
+
+    [Fact]
+    public async Task Compatible_complete_clips_use_packet_copy_concatenation()
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(
+            new CompatibleCopyProbe(),
+            exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([TestPath("first.mp4"), TestPath("second.mp4")]);
+        viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
+
+        Assert.True(viewModel.IsPacketCopyExport);
+        Assert.Equal("Fast packet copy", viewModel.ExportMethodTitle);
+        Assert.Contains("joined without decoding", viewModel.ExportMethodDetails);
+        Assert.Contains("packet-copy join · no re-encode", viewModel.ExportPlanSummary);
+
+        var result = await viewModel.ExportAsync(
+            TestPath("joined.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(ExportStrategy.ConcatStreamCopy, renderer.Plan!.Strategy);
+        Assert.Equal(2, renderer.Plan.VideoSegments.Length);
     }
 
     private static string TestPath(string fileName) => Path.Combine(Path.GetTempPath(), fileName);
@@ -177,7 +201,10 @@ public sealed class PacketCopyExportTests
                         "bt709",
                         "bt709",
                         "progressive",
-                        6_208_000),
+                        6_208_000,
+                        _videoCodec == "h264" ? "avc1" : "[0][0][0][0]",
+                        _videoCodec == "h264" ? 40 : null,
+                        "SHA256:compatible-video"),
                     new AudioStreamInfo(
                         1,
                         _audioCodec,
@@ -194,7 +221,9 @@ public sealed class PacketCopyExportTests
                         2,
                         "stereo",
                         "fltp",
-                        192_000))));
+                        192_000,
+                        _audioCodec == "aac" ? "mp4a" : "[0][0][0][0]",
+                        "SHA256:compatible-audio"))));
         }
     }
 

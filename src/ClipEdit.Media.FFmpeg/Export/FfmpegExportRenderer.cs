@@ -31,16 +31,26 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         ValidatePaths(plan);
 
         var temporaryPath = CreateTemporaryPath(plan.DestinationPath);
+        var concatManifestPath = plan.Strategy == ExportStrategy.ConcatStreamCopy
+            ? temporaryPath + ".ffconcat"
+            : null;
+        if (concatManifestPath is not null)
+        {
+            await WriteConcatManifestAsync(plan, concatManifestPath, cancellationToken)
+                .ConfigureAwait(false);
+        }
         using var process = new DiagnosticProcess
         {
-            StartInfo = CreateStartInfo(plan, temporaryPath),
+            StartInfo = CreateStartInfo(plan, temporaryPath, concatManifestPath),
         };
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
             StartProcess(process);
-            var activePhase = plan.Strategy == ExportStrategy.StreamCopy ? "Copying" : "Encoding";
+            var activePhase = plan.Strategy is ExportStrategy.StreamCopy or ExportStrategy.ConcatStreamCopy
+                ? "Copying"
+                : "Encoding";
             progress?.Report(new ExportProgress(0, activePhase, TimeSpan.Zero));
 
             var progressTask = ReadProgressAsync(
@@ -107,11 +117,20 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             TryDelete(temporaryPath);
             throw;
         }
+        finally
+        {
+            if (concatManifestPath is not null)
+            {
+                TryDelete(concatManifestPath);
+            }
+        }
     }
 
     private static void ValidatePaths(ExportPlan plan)
     {
-        if (!File.Exists(plan.SourcePath))
+        if (plan.IsSequence
+                ? plan.VideoSegments.Any(segment => !File.Exists(segment.SourcePath))
+                : !File.Exists(plan.SourcePath))
         {
             throw new ExportException(
                 ExportFailure.SourceUnavailable,
@@ -129,7 +148,10 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         var pathComparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
-        if (string.Equals(plan.SourcePath, plan.DestinationPath, pathComparison))
+        if ((plan.IsSequence
+                ? plan.VideoSegments.Any(segment =>
+                    string.Equals(segment.SourcePath, plan.DestinationPath, pathComparison))
+                : string.Equals(plan.SourcePath, plan.DestinationPath, pathComparison)))
         {
             throw new ExportException(
                 ExportFailure.DestinationUnavailable,
@@ -193,7 +215,10 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         return Path.Combine(directory, $".{fileName}.{Guid.NewGuid():N}.partial");
     }
 
-    private ProcessStartInfo CreateStartInfo(ExportPlan plan, string temporaryPath)
+    private ProcessStartInfo CreateStartInfo(
+        ExportPlan plan,
+        string temporaryPath,
+        string? concatManifestPath)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -207,7 +232,7 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             StandardErrorEncoding = Encoding.UTF8,
         };
 
-        foreach (var argument in FfmpegExportArguments.Create(plan, temporaryPath))
+        foreach (var argument in FfmpegExportArguments.Create(plan, temporaryPath, concatManifestPath))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -264,6 +289,27 @@ public sealed class FfmpegExportRenderer : IExportRenderer
                     parser.EncodedDuration,
                     parser.ProcessingSpeed,
                     stopwatch.Elapsed)));
+        }
+    }
+
+    private static async Task WriteConcatManifestAsync(
+        ExportPlan plan,
+        string manifestPath,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await File.WriteAllTextAsync(
+                    manifestPath,
+                    FfconcatManifest.Create(plan),
+                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            TryDelete(manifestPath);
+            throw;
         }
     }
 

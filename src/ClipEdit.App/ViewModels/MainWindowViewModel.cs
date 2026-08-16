@@ -397,6 +397,24 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             Block(PacketCopyBlocker.Format, "GIF always requires encoding.");
         }
+        if (slices.Count > 1)
+        {
+            IReadOnlyList<string> concatReasons = [];
+            if (blockers == PacketCopyBlocker.None &&
+                TryResolveConcatStreamCopy(slices, preset, out concatReasons))
+            {
+                return PacketCopyDecision.CopyConcat;
+            }
+
+            if (blockers == PacketCopyBlocker.None)
+            {
+                foreach (var reason in concatReasons)
+                {
+                    Block(PacketCopyBlocker.SequenceCompatibility, reason);
+                }
+            }
+            return PacketCopyDecision.Transcode(blockers, reasons);
+        }
         if (slices.Count != 1)
         {
             Block(PacketCopyBlocker.ClipCount, "Export exactly one complete clip for packet copy.");
@@ -418,7 +436,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
         {
-            Block(PacketCopyBlocker.SourceRange, "The clip is trimmed or split; exact cuts currently require encoding because keyframe-copy mode is not implemented yet.");
+            Block(PacketCopyBlocker.SourceRange, "Trimmed clips still require encoding; Fast cuts can place keyframe boundaries, but trimmed packet copy remains experimental.");
         }
         if (exportRange.Start != clip.TimelineStart || exportRange.Duration != clip.Duration)
         {
@@ -1071,6 +1089,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var strategy = ResolveExportStrategy(slices, preset) switch
             {
                 ExportStrategy.StreamCopy => "packet copy · no re-encode",
+                ExportStrategy.ConcatStreamCopy => "packet-copy join · no re-encode",
                 ExportStrategy.VideoStreamCopy => "video copy · audio re-encode",
                 _ => "exact sequence re-encode",
             };
@@ -1499,7 +1518,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                                       slice.SourceRange.End ==
                                       (slice.Clip.Source.Edit?.SourceDuration ??
                                        slice.Clip.Source.Media!.Probe.Duration),
-                    sourceSize: video.OrientedSize);
+                    sourceSize: video.OrientedSize,
+                    streamCopyInfo: CreateSegmentStreamCopyInfo(slice, exportPreset));
             }).ToImmutableArray();
             var externalAudio = AudioTracks
                 .Where(track =>
@@ -5046,6 +5066,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         AudioGain = 1 << 17,
         AudioEdit = 1 << 18,
         AudioCodec = 1 << 19,
+        SequenceCompatibility = 1 << 20,
     }
 
     private readonly record struct PacketCopyDecision(
@@ -5055,6 +5076,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         public static PacketCopyDecision Copy { get; } = new(
             ExportStrategy.StreamCopy,
+            PacketCopyBlocker.None,
+            []);
+
+        public static PacketCopyDecision CopyConcat { get; } = new(
+            ExportStrategy.ConcatStreamCopy,
             PacketCopyBlocker.None,
             []);
 

@@ -7,7 +7,10 @@ namespace ClipEdit.Media.FFmpeg.Export;
 
 internal static class FfmpegExportArguments
 {
-    public static IReadOnlyList<string> Create(ExportPlan plan, string temporaryOutputPath)
+    public static IReadOnlyList<string> Create(
+        ExportPlan plan,
+        string temporaryOutputPath,
+        string? concatManifestPath = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentException.ThrowIfNullOrWhiteSpace(temporaryOutputPath);
@@ -19,6 +22,10 @@ internal static class FfmpegExportArguments
         if (plan.Strategy == ExportStrategy.VideoStreamCopy)
         {
             return CreateVideoStreamCopy(plan, temporaryOutputPath);
+        }
+        if (plan.Strategy == ExportStrategy.ConcatStreamCopy)
+        {
+            return CreateConcatStreamCopy(plan, temporaryOutputPath, concatManifestPath);
         }
 
         var arguments = new List<string>
@@ -111,6 +118,63 @@ internal static class FfmpegExportArguments
         {
             arguments.Add("-map");
             arguments.Add($"0:{segment.AudioTracks[0].StreamIndex}");
+        }
+        else
+        {
+            arguments.Add("-an");
+        }
+
+        arguments.Add("-c");
+        arguments.Add("copy");
+        arguments.Add("-map_metadata");
+        arguments.Add("-1");
+        arguments.Add("-map_chapters");
+        arguments.Add("-1");
+        if (plan.Preset.Container == ExportContainer.Mp4)
+        {
+            arguments.Add("-movflags");
+            arguments.Add("+faststart");
+        }
+        arguments.Add("-f");
+        arguments.Add(GetMuxer(plan.Preset.Container));
+        arguments.Add(temporaryOutputPath);
+        return arguments;
+    }
+
+    private static IReadOnlyList<string> CreateConcatStreamCopy(
+        ExportPlan plan,
+        string temporaryOutputPath,
+        string? concatManifestPath)
+    {
+        if (string.IsNullOrWhiteSpace(concatManifestPath) || !Path.IsPathFullyQualified(concatManifestPath))
+        {
+            throw new ExportPlanException("Packet-copy concatenation requires an absolute ffconcat manifest path.");
+        }
+
+        var hasAudio = plan.VideoSegments[0].AudioTracks.Length == 1;
+        var arguments = new List<string>
+        {
+            "-hide_banner",
+            "-nostdin",
+            "-n",
+            "-loglevel",
+            "warning",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concatManifestPath,
+            "-map",
+            "0:v:0",
+        };
+        if (hasAudio)
+        {
+            arguments.Add("-map");
+            arguments.Add("0:a:0");
         }
         else
         {

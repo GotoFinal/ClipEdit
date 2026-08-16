@@ -266,7 +266,8 @@ public sealed partial class MainWindowViewModel
         {
             var slices = GetSequenceExportSlices();
             var preset = ResolveSelectedExportPreset(slices);
-            return ResolveExportStrategyDecision(slices, preset).Strategy == ExportStrategy.StreamCopy;
+            return ResolveExportStrategyDecision(slices, preset).Strategy is
+                ExportStrategy.StreamCopy or ExportStrategy.ConcatStreamCopy;
         }
     }
 
@@ -291,6 +292,7 @@ public sealed partial class MainWindowViewModel
             return ResolveExportStrategyDecision(slices, preset).Strategy switch
             {
                 ExportStrategy.StreamCopy => "Fast packet copy",
+                ExportStrategy.ConcatStreamCopy => "Fast packet copy",
                 ExportStrategy.VideoStreamCopy => "Fast video copy",
                 _ => "Full re-encode",
             };
@@ -308,6 +310,8 @@ public sealed partial class MainWindowViewModel
             {
                 ExportStrategy.StreamCopy =>
                     "Compressed video and eligible audio will be remuxed without filters or quality loss.",
+                ExportStrategy.ConcatStreamCopy =>
+                    "Complete compatible clips will be joined without decoding or quality loss.",
                 ExportStrategy.VideoStreamCopy =>
                     "Video will be copied without quality loss; only audio will be processed and encoded." +
                     Environment.NewLine +
@@ -333,7 +337,7 @@ public sealed partial class MainWindowViewModel
 
             var preset = ResolveSelectedExportPreset(slices);
             var decision = ResolveExportStrategyDecision(slices, preset);
-            if (decision.Strategy == ExportStrategy.StreamCopy ||
+            if (decision.Strategy is ExportStrategy.StreamCopy or ExportStrategy.ConcatStreamCopy ||
                 (!SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.H264) &&
                  !SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.Vp9)))
             {
@@ -377,6 +381,8 @@ public sealed partial class MainWindowViewModel
         {
             ExportStrategy.StreamCopy =>
                 "Source-matching settings applied; export will use fast packet copy",
+            ExportStrategy.ConcatStreamCopy =>
+                "Source-matching settings applied; compatible clips will be joined without encoding",
             ExportStrategy.VideoStreamCopy =>
                 "Source-matching settings applied; video will be copied and only audio encoded",
             _ => $"Source-matching settings applied; encoding is still required: {decision.Reasons.First()}",

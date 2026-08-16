@@ -29,7 +29,10 @@ public sealed record VideoStreamInfo : MediaStreamInfo
         string? colorTransfer,
         string? colorPrimaries,
         string? fieldOrder,
-        long? bitRateBitsPerSecond = null)
+        long? bitRateBitsPerSecond = null,
+        string? codecTag = null,
+        int? codecLevel = null,
+        string? codecExtradataHash = null)
         : base(
             index,
             MediaStreamKind.Video,
@@ -61,6 +64,9 @@ public sealed record VideoStreamInfo : MediaStreamInfo
         ColorPrimaries = colorPrimaries;
         FieldOrder = fieldOrder;
         BitRateBitsPerSecond = bitRateBitsPerSecond;
+        CodecTag = codecTag;
+        CodecLevel = codecLevel;
+        CodecExtradataHash = codecExtradataHash;
     }
 
     public PixelSize EncodedSize { get; }
@@ -93,6 +99,12 @@ public sealed record VideoStreamInfo : MediaStreamInfo
     public string? FieldOrder { get; }
 
     public long? BitRateBitsPerSecond { get; }
+
+    public string? CodecTag { get; }
+
+    public int? CodecLevel { get; }
+
+    public string? CodecExtradataHash { get; }
 
     private static int NormalizeRotation(int value)
     {

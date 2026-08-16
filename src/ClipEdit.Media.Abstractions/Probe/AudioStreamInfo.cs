@@ -20,7 +20,9 @@ public sealed record AudioStreamInfo : MediaStreamInfo
         int? channelCount,
         string? channelLayout,
         string? sampleFormat,
-        long? bitRateBitsPerSecond = null)
+        long? bitRateBitsPerSecond = null,
+        string? codecTag = null,
+        string? codecExtradataHash = null)
         : base(
             index,
             MediaStreamKind.Audio,
@@ -55,6 +57,8 @@ public sealed record AudioStreamInfo : MediaStreamInfo
         ChannelLayout = channelLayout;
         SampleFormat = sampleFormat;
         BitRateBitsPerSecond = bitRateBitsPerSecond;
+        CodecTag = codecTag;
+        CodecExtradataHash = codecExtradataHash;
     }
 
     public int? SampleRate { get; }
@@ -66,4 +70,8 @@ public sealed record AudioStreamInfo : MediaStreamInfo
     public string? SampleFormat { get; }
 
     public long? BitRateBitsPerSecond { get; }
+
+    public string? CodecTag { get; }
+
+    public string? CodecExtradataHash { get; }
 }

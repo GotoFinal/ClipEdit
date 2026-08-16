@@ -14,7 +14,10 @@ public sealed class FfprobeJsonParserTests
               "index": 0,
               "codec_name": "h264",
               "codec_long_name": "H.264 / AVC",
+              "codec_tag_string": "avc1",
+              "extradata_hash": "SHA256:video",
               "profile": "High",
+              "level": 40,
               "codec_type": "video",
               "width": 1920,
               "height": 1080,
@@ -40,6 +43,8 @@ public sealed class FfprobeJsonParserTests
               "index": 1,
               "codec_name": "aac",
               "codec_type": "audio",
+              "codec_tag_string": "mp4a",
+              "extradata_hash": "SHA256:audio",
               "profile": "LC",
               "sample_fmt": "fltp",
               "sample_rate": "44100",
@@ -91,6 +96,13 @@ public sealed class FfprobeJsonParserTests
         Assert.Equal(1_448_587_333, result.FileSizeBytes);
         Assert.Equal(8_160_693, result.BitRateBitsPerSecond);
         Assert.Equal(4, result.Streams.Length);
+        var video = Assert.Single(result.VideoStreams);
+        Assert.Equal("avc1", video.CodecTag);
+        Assert.Equal(40, video.CodecLevel);
+        Assert.Equal("SHA256:video", video.CodecExtradataHash);
+        var audio = Assert.Single(result.AudioStreams);
+        Assert.Equal("mp4a", audio.CodecTag);
+        Assert.Equal("SHA256:audio", audio.CodecExtradataHash);
     }
 
     [Fact]
