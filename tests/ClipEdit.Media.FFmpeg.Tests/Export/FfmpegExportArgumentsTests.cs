@@ -527,6 +527,7 @@ public sealed class FfmpegExportArgumentsTests
         var graph = FfmpegExportArguments.CreateSequenceFilterGraph(plan);
 
         Assert.Contains("split=2[vseg0basein][vseg0contentin]", graph);
+        Assert.DoesNotContain(",[vseg0content]", graph, StringComparison.Ordinal);
         Assert.Contains(
             "scale=2:2:flags=fast_bilinear,drawbox=c=black:t=fill," +
             "pad=1280:720:0:0:color=black[vseg0base]",

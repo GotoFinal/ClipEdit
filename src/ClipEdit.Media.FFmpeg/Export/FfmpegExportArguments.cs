@@ -582,7 +582,7 @@ internal static class FfmpegExportArguments
             $"[vseg{segmentIndex}contentin]" +
             mirroring +
             rotation +
-            CreateCanvasScaleFilter(transform.ScaleX, transform.ScaleY) +
+            CreateCanvasScaleFilter(transform.ScaleX, transform.ScaleY).TrimEnd(',') +
             $"[vseg{segmentIndex}content]");
         filters.Add(
             $"[vseg{segmentIndex}base][vseg{segmentIndex}content]" +
