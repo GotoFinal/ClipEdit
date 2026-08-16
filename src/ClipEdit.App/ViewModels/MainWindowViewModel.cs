@@ -107,10 +107,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         IProjectStore? projectStore = null,
         string? recoveryDirectory = null,
         TimeSpan? autosaveDelay = null,
-        IWaveformRenderer? waveformRenderer = null)
+        IWaveformRenderer? waveformRenderer = null,
+        IKeyframeProbe? keyframeProbe = null)
     {
         _frameDecoder = frameDecoder;
         _waveformRenderer = waveformRenderer;
+        _keyframeProbe = keyframeProbe ?? mediaProbe as IKeyframeProbe;
         _exportRenderer = exportRenderer;
         _projectStore = projectStore;
         _recoveryDirectory = recoveryDirectory;
@@ -1301,6 +1303,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             await item.ProbeAsync(_importMedia, cancellationToken);
+            StartKeyframeIndexing(item);
             AddAudioTracks(item);
             if (!_isLoadingProject && item is { IsReady: true, HasVideo: true })
             {
@@ -1579,7 +1582,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void MarkSequenceSelectionStart()
     {
-        _sequenceSelectionStart = _sequencePlayhead;
+        _sequenceSelectionStart = SnapTimelineCutIfEnabled(_sequencePlayhead);
         if (_sequenceSelectionEnd < _sequenceSelectionStart)
         {
             _sequenceSelectionEnd = _sequenceSelectionStart;
@@ -1592,7 +1595,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void MarkSequenceSelectionEnd()
     {
-        _sequenceSelectionEnd = _sequencePlayhead;
+        _sequenceSelectionEnd = SnapTimelineCutIfEnabled(_sequencePlayhead);
         if (_sequenceSelectionStart > _sequenceSelectionEnd)
         {
             _sequenceSelectionStart = _sequenceSelectionEnd;
@@ -1786,7 +1789,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return false;
         }
 
-        var sourceTime = clip.Model.TimelineTimeToSource(_sequencePlayhead);
+        var splitTime = SnapTimelineCutIfEnabled(_sequencePlayhead, clip);
+        var sourceTime = clip.Model.TimelineTimeToSource(splitTime);
         var (left, right) = clip.Model.Split(sourceTime, Guid.NewGuid());
         var index = VideoClips.IndexOf(clip);
         var replacements = VideoClips.ToList();
@@ -1794,7 +1798,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         replacements.Insert(index, clip.CreateSibling(left));
         replacements.Insert(index + 1, clip.CreateSibling(right));
         ReplaceVideoClips(replacements, right.Id);
-        CollapseSequenceSelection(_sequencePlayhead);
+        _sequencePlayhead = splitTime;
+        OnPropertyChanged(nameof(SequencePlayheadSeconds));
+        OnPropertyChanged(nameof(SequencePlayheadText));
+        CollapseSequenceSelection(splitTime);
         StatusText = $"Split {clip.DisplayName} at {SequencePlayheadText}";
         MarkProjectDirty();
         StartSequenceTimelineAnalysis(debounce: false);
@@ -2284,6 +2291,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         MediaItems.Remove(mediaItem);
+        CancelKeyframeIndexing(mediaItem);
         mediaItem.Dispose();
         _knownPaths.Remove(mediaItem.SourcePath);
         if (_videoClipClipboard?.SourceId == mediaItem.Id)
@@ -2944,6 +2952,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        CancelAllKeyframeIndexing();
         DisposeMediaRuntimeValidation();
         Updates.Dispose();
         if (SelectedMedia is not null)
@@ -3018,6 +3027,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanRotateCanvas));
         OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
         OnPropertyChanged(nameof(CanMoveSelectedVideoRight));
+        RaiseFastCutStateChanged();
         RaiseRecoveryStateChanged();
         RaiseSequenceStateChanged();
         RaiseExportStateChanged();
@@ -3025,6 +3035,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void ClearProjectContent()
     {
+        CancelAllKeyframeIndexing();
         SelectedMedia = null;
         SelectedVideoClip = null;
         foreach (var clip in VideoClips)

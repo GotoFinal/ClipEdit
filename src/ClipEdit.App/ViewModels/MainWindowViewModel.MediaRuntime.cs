@@ -186,9 +186,15 @@ public sealed partial class MainWindowViewModel
         if (validation.Ffprobe is { IsValid: true, ResolvedPath: { } ffprobePath } &&
             !PathsEqual(ffprobePath, _activeFfprobePath))
         {
-            _importMedia = new ImportMediaUseCase(new FfprobeMediaProbe(ffprobePath));
+            var probe = new FfprobeMediaProbe(ffprobePath);
+            _importMedia = new ImportMediaUseCase(probe);
+            _keyframeProbe = probe;
             _activeFfprobePath = ffprobePath;
             OnPropertyChanged(nameof(IsImportAvailable));
+            foreach (var media in MediaItems.Where(static media => media is { IsReady: true, HasVideo: true }))
+            {
+                StartKeyframeIndexing(media);
+            }
         }
     }
 

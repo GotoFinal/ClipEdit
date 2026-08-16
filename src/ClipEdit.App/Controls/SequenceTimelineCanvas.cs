@@ -47,6 +47,9 @@ public sealed class SequenceTimelineCanvas : Control
     public static readonly StyledProperty<bool> MoveClipsByDefaultProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, bool>(nameof(MoveClipsByDefault));
 
+    public static readonly StyledProperty<bool> FastCutSnappingProperty =
+        AvaloniaProperty.Register<SequenceTimelineCanvas, bool>(nameof(FastCutSnapping));
+
     public static readonly StyledProperty<double> HoverTimeProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, double>(nameof(HoverTime), -1);
 
@@ -96,6 +99,7 @@ public sealed class SequenceTimelineCanvas : Control
             FreeViewportProperty,
             SnappingEnabledProperty,
             MoveClipsByDefaultProperty,
+            FastCutSnappingProperty,
             HoverTimeProperty,
             VisualRevisionProperty);
     }
@@ -181,6 +185,12 @@ public sealed class SequenceTimelineCanvas : Control
     {
         get => GetValue(MoveClipsByDefaultProperty);
         set => SetValue(MoveClipsByDefaultProperty, value);
+    }
+
+    public bool FastCutSnapping
+    {
+        get => GetValue(FastCutSnappingProperty);
+        set => SetValue(FastCutSnappingProperty, value);
     }
 
 
@@ -296,16 +306,16 @@ public sealed class SequenceTimelineCanvas : Control
         }
 
         _pointerStartX = point.X;
-        _selectionAnchor = time;
+        _selectionAnchor = FastCutSnapping ? SnapTimelineCut(time) : time;
         _dragSourceStart = _dragClip?.SourceStartSeconds ?? 0;
         _dragSourceEnd = _dragClip?.SourceEndSeconds ?? 0;
         _dragTimelineStart = _dragClip?.TimelineStartSeconds ?? 0;
         _previewTimelineStart = _dragTimelineStart;
         if (_dragMode == SequenceTimelineDragMode.NewSelection)
         {
-            SetCurrentValue(SelectionStartProperty, time);
-            SetCurrentValue(SelectionEndProperty, time);
-            SetCurrentValue(PlayheadProperty, time);
+            SetCurrentValue(SelectionStartProperty, _selectionAnchor);
+            SetCurrentValue(SelectionEndProperty, _selectionAnchor);
+            SetCurrentValue(PlayheadProperty, _selectionAnchor);
         }
 
         eventArgs.Pointer.Capture(this);
@@ -334,20 +344,21 @@ public sealed class SequenceTimelineCanvas : Control
         }
 
         var time = XToTime(point.X);
+        var cutTime = FastCutSnapping ? SnapTimelineCut(time) : time;
         switch (_dragMode)
         {
             case SequenceTimelineDragMode.NewSelection:
-                SetCurrentValue(SelectionStartProperty, Math.Min(_selectionAnchor, time));
-                SetCurrentValue(SelectionEndProperty, Math.Max(_selectionAnchor, time));
-                SetCurrentValue(PlayheadProperty, time);
+                SetCurrentValue(SelectionStartProperty, Math.Min(_selectionAnchor, cutTime));
+                SetCurrentValue(SelectionEndProperty, Math.Max(_selectionAnchor, cutTime));
+                SetCurrentValue(PlayheadProperty, cutTime);
                 break;
             case SequenceTimelineDragMode.SelectionStart:
-                SetCurrentValue(SelectionStartProperty, Math.Min(time, SelectionEnd));
-                SetCurrentValue(PlayheadProperty, Math.Min(time, SelectionEnd));
+                SetCurrentValue(SelectionStartProperty, Math.Min(cutTime, SelectionEnd));
+                SetCurrentValue(PlayheadProperty, Math.Min(cutTime, SelectionEnd));
                 break;
             case SequenceTimelineDragMode.SelectionEnd:
-                SetCurrentValue(SelectionEndProperty, Math.Max(time, SelectionStart));
-                SetCurrentValue(PlayheadProperty, Math.Max(time, SelectionStart));
+                SetCurrentValue(SelectionEndProperty, Math.Max(cutTime, SelectionStart));
+                SetCurrentValue(PlayheadProperty, Math.Max(cutTime, SelectionStart));
                 break;
             case SequenceTimelineDragMode.TrimStart:
             case SequenceTimelineDragMode.TrimEnd:
@@ -612,6 +623,22 @@ public sealed class SequenceTimelineCanvas : Control
                 new Rect(rect.Right - 4, handleTop, 6, handleHeight),
                 2);
         }
+
+        if (FastCutSnapping && clip.Source.IsKeyframeIndexReady)
+        {
+            foreach (var keyframe in clip.Source.VideoKeyframeSeconds
+                         .Where(sourceTime => sourceTime >= clip.SourceStartSeconds && sourceTime <= clip.SourceEndSeconds)
+                         .Select(sourceTime => clip.Model.SourceTimeToTimeline(ToMediaTime(sourceTime)).TotalSeconds)
+                         .Where(IsVisibleTime)
+                         .Take(600))
+            {
+                var x = TimeToX(keyframe);
+                context.DrawLine(
+                    HoverPen,
+                    new Point(x, TrackTop),
+                    new Point(x, Math.Min(Bounds.Height, TrackTop + 5)));
+            }
+        }
     }
 
     internal static bool ShouldMoveClip(bool moveClipsByDefault, KeyModifiers modifiers) =>
@@ -729,10 +756,11 @@ public sealed class SequenceTimelineCanvas : Control
                 var earliestSourceStart = _dragClip.SourceStartSeconds -
                                           ((_dragClip.TimelineStartSeconds - previousEnd) *
                                            _dragClip.PlaybackSpeed);
-                var bounded = Math.Clamp(
-                    requestedSourceTime,
-                    Math.Max(_dragClip.Model.AvailableRange.Start.TotalSeconds, earliestSourceStart),
-                    _dragClip.SourceEndSeconds - frameStep);
+                var minimum = Math.Max(_dragClip.Model.AvailableRange.Start.TotalSeconds, earliestSourceStart);
+                var maximum = _dragClip.SourceEndSeconds - frameStep;
+                var bounded = FastCutSnapping
+                    ? SnapSourceCut(_dragClip, requestedSourceTime, minimum, maximum)
+                    : Math.Clamp(requestedSourceTime, minimum, maximum);
                 _dragClip.SourceStartSeconds = bounded;
                 SetCurrentValue(PlayheadProperty, _dragClip.TimelineStartSeconds);
             }
@@ -747,16 +775,73 @@ public sealed class SequenceTimelineCanvas : Control
                     ? _dragClip.Model.AvailableRange.End.TotalSeconds
                     : _dragClip.SourceEndSeconds +
                       ((nextStart - _dragClip.TimelineEndSeconds) * _dragClip.PlaybackSpeed);
-                var bounded = Math.Clamp(
-                    requestedSourceTime,
-                    _dragClip.SourceStartSeconds + frameStep,
-                    Math.Min(_dragClip.Model.AvailableRange.End.TotalSeconds, latestSourceEnd));
+                var minimum = _dragClip.SourceStartSeconds + frameStep;
+                var maximum = Math.Min(_dragClip.Model.AvailableRange.End.TotalSeconds, latestSourceEnd);
+                var bounded = FastCutSnapping
+                    ? SnapSourceCut(_dragClip, requestedSourceTime, minimum, maximum)
+                    : Math.Clamp(requestedSourceTime, minimum, maximum);
                 _dragClip.SourceEndSeconds = bounded;
                 SetCurrentValue(PlayheadProperty, _dragClip.TimelineEndSeconds);
             }
         }
         catch (ArgumentOutOfRangeException)
         {
+        }
+    }
+
+    private double SnapTimelineCut(double requestedTime)
+    {
+        var candidates = (Clips ?? [])
+            .SelectMany(clip => GetTimelineCopyBoundaries(clip))
+            .Distinct()
+            .ToArray();
+        return candidates.Length == 0
+            ? requestedTime
+            : candidates
+                .OrderBy(candidate => Math.Abs(candidate - requestedTime))
+                .ThenBy(static candidate => candidate)
+                .First();
+    }
+
+    private static double SnapSourceCut(
+        VideoClipViewModel clip,
+        double requestedSourceTime,
+        double minimum,
+        double maximum)
+    {
+        var duration = clip.Source.SourceDurationSeconds;
+        var candidates = clip.Source.VideoKeyframeSeconds
+            .Where(timestamp => timestamp >= minimum && timestamp <= maximum)
+            .Concat(minimum <= 0 && maximum >= 0 ? [0d] : [])
+            .Concat(duration >= minimum && duration <= maximum ? [duration] : [])
+            .Distinct()
+            .ToArray();
+        return candidates.Length == 0
+            ? Math.Clamp(requestedSourceTime, minimum, maximum)
+            : candidates
+                .OrderBy(candidate => Math.Abs(candidate - requestedSourceTime))
+                .ThenBy(static candidate => candidate)
+                .First();
+    }
+
+    private static IEnumerable<double> GetTimelineCopyBoundaries(VideoClipViewModel clip)
+    {
+        foreach (var timestamp in clip.Source.VideoKeyframes)
+        {
+            if (timestamp >= clip.Model.AvailableRange.Start && timestamp <= clip.Model.AvailableRange.End)
+            {
+                yield return clip.Model.SourceTimeToTimeline(timestamp).TotalSeconds;
+            }
+        }
+
+        if (clip.Model.AvailableRange.Start == MediaTime.Zero)
+        {
+            yield return clip.Model.SourceTimeToTimeline(MediaTime.Zero).TotalSeconds;
+        }
+        var duration = clip.Source.Edit?.SourceDuration ?? clip.Source.Media?.Probe.Duration;
+        if (duration is { } sourceDuration && clip.Model.AvailableRange.End == sourceDuration)
+        {
+            yield return clip.Model.SourceTimeToTimeline(clip.Model.AvailableRange.End).TotalSeconds;
         }
     }
 

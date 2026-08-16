@@ -222,9 +222,11 @@ public sealed class MainWindowChromeTests
         var window = new MainWindow();
         var workspace = window.FindControl<Grid>("QuickWorkspaceGrid");
         var splitter = window.FindControl<GridSplitter>("WorkspacePaneSplitter");
+        var fastCuts = window.FindControl<ToggleButton>("FastCutModeToggle");
 
         Assert.NotNull(workspace);
         Assert.NotNull(splitter);
+        Assert.NotNull(fastCuts);
         Assert.Equal(3, workspace.RowDefinitions.Count);
         Assert.Equal(new GridLength(5), workspace.RowDefinitions[1].Height);
         Assert.Equal(220, workspace.RowDefinitions[0].MinHeight);

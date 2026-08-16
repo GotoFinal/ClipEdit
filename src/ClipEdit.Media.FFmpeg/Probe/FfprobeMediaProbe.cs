@@ -1,13 +1,15 @@
 using System.Diagnostics;
 using System.Text;
+using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Probe;
 using DiagnosticProcess = System.Diagnostics.Process;
 
 namespace ClipEdit.Media.FFmpeg.Probe;
 
-public sealed class FfprobeMediaProbe : IMediaProbe
+public sealed class FfprobeMediaProbe : IMediaProbe, IKeyframeProbe
 {
     private const int MaximumStandardOutputCharacters = 4 * 1024 * 1024;
+    private const int MaximumKeyframeOutputCharacters = 32 * 1024 * 1024;
     private const int MaximumStandardErrorCharacters = 256 * 1024;
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
@@ -37,19 +39,49 @@ public sealed class FfprobeMediaProbe : IMediaProbe
         string sourcePath,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        var fullSourcePath = ValidateSourcePath(sourcePath);
+        var standardOutput = await ExecuteAsync(
+                FfprobeArguments.Create(fullSourcePath),
+                MaximumStandardOutputCharacters,
+                _timeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return FfprobeJsonParser.Parse(fullSourcePath, standardOutput);
+    }
 
-        var fullSourcePath = Path.GetFullPath(sourcePath);
-        if (!Path.IsPathFullyQualified(fullSourcePath) || !File.Exists(fullSourcePath))
-        {
-            throw new MediaProbeException(
-                MediaProbeFailure.SourceUnavailable,
-                "The selected media file no longer exists or cannot be accessed.");
-        }
+    public async Task<KeyframeIndex> ProbeKeyframesAsync(
+        string sourcePath,
+        int videoStreamIndex,
+        MediaTime timestampOrigin,
+        MediaTime? sourceDuration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
+        var fullSourcePath = ValidateSourcePath(sourcePath);
+        var standardOutput = await ExecuteAsync(
+                FfprobeKeyframeArguments.Create(fullSourcePath, videoStreamIndex),
+                MaximumKeyframeOutputCharacters,
+                _timeout < TimeSpan.FromMinutes(2) ? TimeSpan.FromMinutes(2) : _timeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return FfprobeKeyframeJsonParser.Parse(
+            videoStreamIndex,
+            standardOutput,
+            timestampOrigin,
+            sourceDuration);
+    }
+
+    private async Task<string> ExecuteAsync(
+        IReadOnlyList<string> arguments,
+        int maximumOutputCharacters,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
 
         using var process = new DiagnosticProcess
         {
-            StartInfo = CreateStartInfo(fullSourcePath),
+            StartInfo = CreateStartInfo(arguments),
             EnableRaisingEvents = true,
         };
 
@@ -70,14 +102,14 @@ public sealed class FfprobeMediaProbe : IMediaProbe
                 exception);
         }
 
-        using var timeoutCancellation = new CancellationTokenSource(_timeout);
+        using var timeoutCancellation = new CancellationTokenSource(timeout);
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeoutCancellation.Token);
 
         var standardOutputTask = ReadBoundedAsync(
             process.StandardOutput,
-            MaximumStandardOutputCharacters,
+            maximumOutputCharacters,
             linkedCancellation.Token);
         var standardErrorTask = ReadBoundedAsync(
             process.StandardError,
@@ -98,14 +130,14 @@ public sealed class FfprobeMediaProbe : IMediaProbe
                     BuildToolFailureMessage(process.ExitCode, standardError));
             }
 
-            return FfprobeJsonParser.Parse(fullSourcePath, standardOutput);
+            return standardOutput;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             TryKill(process);
             throw new MediaProbeException(
                 MediaProbeFailure.TimedOut,
-                $"ffprobe did not finish within {_timeout.TotalSeconds:0} seconds.");
+                $"ffprobe did not finish within {timeout.TotalSeconds:0} seconds.");
         }
         catch (OutputLimitExceededException exception)
         {
@@ -127,7 +159,21 @@ public sealed class FfprobeMediaProbe : IMediaProbe
         }
     }
 
-    private ProcessStartInfo CreateStartInfo(string sourcePath)
+    private static string ValidateSourcePath(string sourcePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        var fullSourcePath = Path.GetFullPath(sourcePath);
+        if (!Path.IsPathFullyQualified(fullSourcePath) || !File.Exists(fullSourcePath))
+        {
+            throw new MediaProbeException(
+                MediaProbeFailure.SourceUnavailable,
+                "The selected media file no longer exists or cannot be accessed.");
+        }
+
+        return fullSourcePath;
+    }
+
+    private ProcessStartInfo CreateStartInfo(IReadOnlyList<string> arguments)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -141,7 +187,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe
             StandardErrorEncoding = Encoding.UTF8,
         };
 
-        foreach (var argument in FfprobeArguments.Create(sourcePath))
+        foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }

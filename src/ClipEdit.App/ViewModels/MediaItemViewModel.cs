@@ -24,6 +24,11 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     private IReadOnlyList<TimelineThumbnailFrame> _timelineThumbnails = [];
     private bool _isTimelineLoading;
     private string? _timelineErrorText;
+    private ImmutableArray<MediaTime> _videoKeyframes = [];
+    private ImmutableArray<double> _videoKeyframeSeconds = [];
+    private bool _isKeyframeIndexLoading;
+    private bool _isKeyframeIndexReady;
+    private string? _keyframeIndexError;
 
     public MediaItemViewModel(string sourcePath, Guid? id = null)
     {
@@ -248,6 +253,61 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
                 ? frameRate.Value.Denominator / (double)frameRate.Value.Numerator
                 : _timelineQuantum.TotalSeconds;
         }
+    }
+
+    public ImmutableArray<MediaTime> VideoKeyframes => _videoKeyframes;
+
+    public IReadOnlyList<double> VideoKeyframeSeconds => _videoKeyframeSeconds;
+
+    public bool IsKeyframeIndexLoading
+    {
+        get => _isKeyframeIndexLoading;
+        private set => SetProperty(ref _isKeyframeIndexLoading, value);
+    }
+
+    public bool IsKeyframeIndexReady
+    {
+        get => _isKeyframeIndexReady;
+        private set => SetProperty(ref _isKeyframeIndexReady, value);
+    }
+
+    public string? KeyframeIndexError
+    {
+        get => _keyframeIndexError;
+        private set => SetProperty(ref _keyframeIndexError, value);
+    }
+
+    internal void BeginKeyframeIndexing()
+    {
+        IsKeyframeIndexLoading = true;
+        IsKeyframeIndexReady = false;
+        KeyframeIndexError = null;
+    }
+
+    internal void SetKeyframeIndex(KeyframeIndex index)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        _videoKeyframes = index.Timestamps;
+        _videoKeyframeSeconds = index.Timestamps
+            .Select(static timestamp => timestamp.TotalSeconds)
+            .ToImmutableArray();
+        IsKeyframeIndexLoading = false;
+        IsKeyframeIndexReady = true;
+        KeyframeIndexError = null;
+        OnPropertyChanged(nameof(VideoKeyframes));
+        OnPropertyChanged(nameof(VideoKeyframeSeconds));
+    }
+
+    internal void SetKeyframeIndexError(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        _videoKeyframes = [];
+        _videoKeyframeSeconds = [];
+        IsKeyframeIndexLoading = false;
+        IsKeyframeIndexReady = false;
+        KeyframeIndexError = message;
+        OnPropertyChanged(nameof(VideoKeyframes));
+        OnPropertyChanged(nameof(VideoKeyframeSeconds));
     }
 
     public double TimelineZoom
