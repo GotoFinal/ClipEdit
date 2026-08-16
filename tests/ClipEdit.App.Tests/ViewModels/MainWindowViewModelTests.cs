@@ -19,6 +19,30 @@ public sealed class MainWindowViewModelTests
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
 
     [Fact]
+    public void Export_progress_text_includes_fps_and_estimated_remaining_time()
+    {
+        var framesPerSecond = 87.25;
+
+        var text = MainWindowViewModel.FormatExportProgress(
+            new ExportProgress(
+                0.42,
+                "Encoding",
+                TimeSpan.FromSeconds(42),
+                framesPerSecond,
+                TimeSpan.FromSeconds(82.1)),
+            42);
+
+        Assert.Equal(
+            $"Encoding · 42% · {framesPerSecond.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture)} FPS · 1:23 remaining",
+            text);
+        Assert.Equal(
+            "Encoding · 0% · estimating remaining time",
+            MainWindowViewModel.FormatExportProgress(
+                new ExportProgress(0, "Encoding", TimeSpan.Zero),
+                0));
+    }
+
+    [Fact]
     public async Task Progressive_workspace_reveals_only_when_content_requires_it()
     {
         var firstVideo = Path.Combine(Path.GetTempPath(), "first.mkv");

@@ -43,7 +43,12 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             var activePhase = plan.Strategy == ExportStrategy.StreamCopy ? "Copying" : "Encoding";
             progress?.Report(new ExportProgress(0, activePhase, TimeSpan.Zero));
 
-            var progressTask = ReadProgressAsync(process.StandardOutput, plan, progress, activePhase);
+            var progressTask = ReadProgressAsync(
+                process.StandardOutput,
+                plan,
+                progress,
+                activePhase,
+                stopwatch);
             var diagnosticTask = ReadDiagnosticTailAsync(process.StandardError);
             try
             {
@@ -234,12 +239,13 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         StreamReader reader,
         ExportPlan plan,
         IProgress<ExportProgress>? progress,
-        string activePhase)
+        string activePhase,
+        Stopwatch stopwatch)
     {
         var parser = new FfmpegProgressParser();
         while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
         {
-            if (!parser.Parse(line))
+            if (!parser.Parse(line) || !parser.IsReportBoundary)
             {
                 continue;
             }
@@ -248,8 +254,48 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             var fraction = expectedSeconds <= 0
                 ? 0
                 : Math.Min(0.98, parser.EncodedDuration.TotalSeconds / expectedSeconds);
-            progress?.Report(new ExportProgress(fraction, activePhase, parser.EncodedDuration));
+            progress?.Report(new ExportProgress(
+                fraction,
+                activePhase,
+                parser.EncodedDuration,
+                parser.FramesPerSecond,
+                EstimateRemaining(
+                    plan.ExpectedDurationToTimeSpan(),
+                    parser.EncodedDuration,
+                    parser.ProcessingSpeed,
+                    stopwatch.Elapsed)));
         }
+    }
+
+    internal static TimeSpan? EstimateRemaining(
+        TimeSpan expectedDuration,
+        TimeSpan encodedDuration,
+        double? reportedProcessingSpeed,
+        TimeSpan elapsed)
+    {
+        var remainingMediaSeconds = expectedDuration.TotalSeconds - encodedDuration.TotalSeconds;
+        if (!double.IsFinite(remainingMediaSeconds))
+        {
+            return null;
+        }
+
+        if (remainingMediaSeconds <= 0)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var effectiveSpeed = reportedProcessingSpeed is > 0 &&
+                             double.IsFinite(reportedProcessingSpeed.Value)
+            ? reportedProcessingSpeed.Value
+            : elapsed >= TimeSpan.FromSeconds(1) && encodedDuration > TimeSpan.Zero
+                ? encodedDuration.TotalSeconds / elapsed.TotalSeconds
+                : double.NaN;
+        var remainingWallSeconds = remainingMediaSeconds / effectiveSpeed;
+        return double.IsFinite(remainingWallSeconds) &&
+               remainingWallSeconds >= 0 &&
+               remainingWallSeconds <= TimeSpan.MaxValue.TotalSeconds
+            ? TimeSpan.FromSeconds(remainingWallSeconds)
+            : null;
     }
 
     private static async Task<string> ReadDiagnosticTailAsync(StreamReader reader)

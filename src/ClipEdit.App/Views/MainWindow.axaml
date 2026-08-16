@@ -1790,10 +1790,17 @@
             Grid.Column="2"
             Height="5"
             Maximum="1"
+            AutomationProperties.Name="Export progress"
             Value="{Binding ExportProgress}"
             IsVisible="{Binding ShowExportProgress}" />
         <StackPanel Grid.Column="3" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="10">
-          <TextBlock FontSize="11" Foreground="#B7A9FF" Text="{Binding ExportPhaseText}" />
+          <TextBlock
+              MaxWidth="360"
+              FontSize="11"
+              Foreground="#B7A9FF"
+              Text="{Binding ExportPhaseText}"
+              TextTrimming="CharacterEllipsis"
+              ToolTip.Tip="{Binding ExportPhaseText}" />
           <TextBlock FontSize="11" Foreground="#A2A8B8" Text="{Binding StatusText}" TextTrimming="CharacterEllipsis" />
         </StackPanel>
       </Grid>

@@ -9,6 +9,30 @@ namespace ClipEdit.Media.FFmpeg.Tests.Export;
 public sealed class FfmpegExportRendererTests
 {
     [Fact]
+    public void Remaining_time_prefers_ffmpeg_speed_and_falls_back_to_elapsed_progress()
+    {
+        Assert.Equal(
+            TimeSpan.FromSeconds(30),
+            FfmpegExportRenderer.EstimateRemaining(
+                TimeSpan.FromSeconds(100),
+                TimeSpan.FromSeconds(40),
+                reportedProcessingSpeed: 2,
+                elapsed: TimeSpan.FromSeconds(100)));
+        Assert.Equal(
+            TimeSpan.FromSeconds(90),
+            FfmpegExportRenderer.EstimateRemaining(
+                TimeSpan.FromSeconds(100),
+                TimeSpan.FromSeconds(40),
+                reportedProcessingSpeed: null,
+                elapsed: TimeSpan.FromSeconds(60)));
+        Assert.Null(FfmpegExportRenderer.EstimateRemaining(
+            TimeSpan.FromSeconds(100),
+            TimeSpan.Zero,
+            reportedProcessingSpeed: null,
+            elapsed: TimeSpan.FromMilliseconds(500)));
+    }
+
+    [Fact]
     public async Task Existing_destination_is_rejected_before_launch_and_remains_unchanged()
     {
         var sourcePath = Path.GetTempFileName();

@@ -6,10 +6,17 @@ internal sealed class FfmpegProgressParser
 {
     public TimeSpan EncodedDuration { get; private set; }
 
+    public double? FramesPerSecond { get; private set; }
+
+    public double? ProcessingSpeed { get; private set; }
+
     public bool IsComplete { get; private set; }
+
+    public bool IsReportBoundary { get; private set; }
 
     public bool Parse(string line)
     {
+        IsReportBoundary = false;
         if (string.IsNullOrWhiteSpace(line))
         {
             return false;
@@ -39,12 +46,37 @@ internal sealed class FfmpegProgressParser
             return true;
         }
 
-        if (key == "progress" && value == "end")
+        if (key == "fps" && TryParsePositiveDouble(value, out var framesPerSecond))
         {
-            IsComplete = true;
+            FramesPerSecond = framesPerSecond;
+            return true;
+        }
+
+        var trimmedValue = value.Trim();
+        if (key == "speed" &&
+            trimmedValue.EndsWith('x') &&
+            TryParsePositiveDouble(trimmedValue[..^1], out var processingSpeed))
+        {
+            ProcessingSpeed = processingSpeed;
+            return true;
+        }
+
+        if (key == "progress" && value is "continue" or "end")
+        {
+            IsComplete = value == "end";
+            IsReportBoundary = true;
             return true;
         }
 
         return false;
     }
+
+    private static bool TryParsePositiveDouble(string value, out double result) =>
+        double.TryParse(
+            value,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out result) &&
+        result > 0 &&
+        double.IsFinite(result);
 }

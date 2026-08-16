@@ -1437,7 +1437,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var progress = new Progress<ClipEdit.Media.Export.ExportProgress>(update =>
             {
                 ExportProgress = update.Fraction;
-                ExportPhaseText = $"{update.Phase} · {ExportProgressPercent}%";
+                ExportPhaseText = FormatExportProgress(update, ExportProgressPercent);
             });
 
             var result = await _exportRenderer.RenderAsync(plan, progress, request.Token);
