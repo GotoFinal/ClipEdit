@@ -9,6 +9,7 @@ public enum ExportStrategy
 {
     ExactTranscode,
     StreamCopy,
+    VideoStreamCopy,
 }
 
 /// <summary>
@@ -305,21 +306,22 @@ public sealed record ExportPlan
         {
             throw new ArgumentOutOfRangeException(nameof(strategy));
         }
-        if (strategy != ExportStrategy.StreamCopy)
+        if (strategy is not (ExportStrategy.StreamCopy or ExportStrategy.VideoStreamCopy))
         {
             return;
         }
 
         var segment = segments.Length == 1 ? segments[0] : null;
-        var hasUnchangedAudio = segment?.AudioTracks.Length switch
-        {
-            0 => true,
-            1 => Math.Abs(segment.AudioTracks[0].GainDb) < 0.000_001 &&
-                 segment.AudioTracks[0].AudioEdit is { IsUnedited: true },
-            _ => false,
-        };
+        var hasUnchangedAudio = strategy == ExportStrategy.VideoStreamCopy ||
+                                (segment?.AudioTracks.Length switch
+                                {
+                                    0 => true,
+                                    1 => Math.Abs(segment.AudioTracks[0].GainDb) < 0.000_001 &&
+                                         segment.AudioTracks[0].AudioEdit is { IsUnedited: true },
+                                    _ => false,
+                                });
         if (segment is null ||
-            !externalTracks.IsEmpty ||
+            (strategy == ExportStrategy.StreamCopy && !externalTracks.IsEmpty) ||
             !segment.IsCompleteSource ||
             segment.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent ||
             segment.TimelineStart != SequenceTimelineStart ||
@@ -331,7 +333,9 @@ public sealed record ExportPlan
             !hasUnchangedAudio)
         {
             throw new ExportPlanException(
-                "Packet-copy export requires one complete, untransformed, untrimmed source clip with unchanged audio.");
+                strategy == ExportStrategy.StreamCopy
+                    ? "Packet-copy export requires one complete, untransformed, untrimmed source clip with unchanged audio."
+                    : "Video-copy export requires one complete, untransformed, untrimmed source clip.");
         }
     }
 

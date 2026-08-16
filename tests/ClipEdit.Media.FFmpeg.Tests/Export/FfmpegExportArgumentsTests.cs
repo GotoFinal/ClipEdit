@@ -65,6 +65,97 @@ public sealed class FfmpegExportArgumentsTests
             Mp4Compatible,
             sequenceDuration: duration,
             strategy: ExportStrategy.StreamCopy));
+        Assert.Throws<ExportPlanException>(() => new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\video-copied.mp4"),
+            Mp4Compatible,
+            sequenceDuration: duration,
+            strategy: ExportStrategy.VideoStreamCopy));
+    }
+
+    [Fact]
+    public void Audio_only_edit_copies_video_and_filters_only_audio()
+    {
+        var duration = new MediaTime(10, 1);
+        var canvas = new PixelSize(1_920, 1_080);
+        var segment = new ExportVideoSegmentPlan(
+            TestPath("C:\\source.mp4"),
+            0,
+            new MediaRange(MediaTime.Zero, duration),
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity,
+            [new ExportAudioTrackPlan(1, -3, new SourceEdit(duration))],
+            MediaTime.Zero,
+            videoColorInfo: null,
+            isCompleteSource: true);
+        var plan = new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\audio-adjusted.mp4"),
+            Mp4Compatible,
+            sequenceDuration: duration,
+            strategy: ExportStrategy.VideoStreamCopy);
+
+        var arguments = FfmpegExportArguments.Create(
+            plan,
+            TestPath("C:\\.audio-adjusted.partial"));
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.Equal("copy", ValueAfter(arguments, "-c:v"));
+        Assert.Equal("aac", ValueAfter(arguments, "-c:a"));
+        Assert.Equal("0:0", ValueAfter(arguments, "-map"));
+        Assert.Contains("[aout]", arguments);
+        Assert.Contains("volume=-3dB", graph);
+        Assert.DoesNotContain("[vout]", arguments);
+        Assert.DoesNotContain("libx264", arguments);
+    }
+
+    [Fact]
+    public void External_audio_can_be_mixed_while_video_is_copied()
+    {
+        var duration = new MediaTime(10, 1);
+        var canvas = new PixelSize(1_920, 1_080);
+        var music = TestPath("C:\\music.flac");
+        var segment = new ExportVideoSegmentPlan(
+            TestPath("C:\\source.mp4"),
+            0,
+            new MediaRange(MediaTime.Zero, duration),
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity,
+            audioTracks: [],
+            timelineStart: MediaTime.Zero,
+            isCompleteSource: true);
+        var plan = new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\music-mix.mp4"),
+            Mp4Compatible,
+            externalAudioTracks:
+            [
+                new ExportAudioTrackPlan(
+                    music,
+                    0,
+                    -9,
+                    new MediaTime(1, 1),
+                    new SourceEdit(duration)),
+            ],
+            sequenceDuration: duration,
+            strategy: ExportStrategy.VideoStreamCopy);
+
+        var arguments = FfmpegExportArguments.Create(
+            plan,
+            TestPath("C:\\.music-mix.partial"));
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.Equal(1, arguments.Count(argument => argument == music));
+        Assert.Equal("copy", ValueAfter(arguments, "-c:v"));
+        Assert.Contains("[1:0]", graph);
+        Assert.Contains("adelay=delays=1s:all=1", graph);
+        Assert.Contains("volume=-9dB", graph);
+        Assert.DoesNotContain(music, graph, StringComparison.Ordinal);
     }
 
     [Fact]

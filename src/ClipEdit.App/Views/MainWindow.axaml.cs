@@ -1209,6 +1209,13 @@ public sealed partial class MainWindow : Window
         ViewModel?.MakeExportCropCompatible();
     }
 
+    private void ApplyFastCopySettings_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.ApplyFastCopySettings();
+    }
+
     private void SaveExportPreset_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

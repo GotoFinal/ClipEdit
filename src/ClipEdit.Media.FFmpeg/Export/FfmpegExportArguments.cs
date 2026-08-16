@@ -16,6 +16,10 @@ internal static class FfmpegExportArguments
         {
             return CreateStreamCopy(plan, temporaryOutputPath);
         }
+        if (plan.Strategy == ExportStrategy.VideoStreamCopy)
+        {
+            return CreateVideoStreamCopy(plan, temporaryOutputPath);
+        }
 
         var arguments = new List<string>
         {
@@ -128,6 +132,120 @@ internal static class FfmpegExportArguments
         arguments.Add(GetMuxer(plan.Preset.Container));
         arguments.Add(temporaryOutputPath);
         return arguments;
+    }
+
+    private static IReadOnlyList<string> CreateVideoStreamCopy(
+        ExportPlan plan,
+        string temporaryOutputPath)
+    {
+        var segment = plan.VideoSegments.Single();
+        var arguments = new List<string>
+        {
+            "-hide_banner",
+            "-nostdin",
+            "-n",
+            "-loglevel",
+            "warning",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+            "-i",
+            segment.SourcePath,
+        };
+        foreach (var externalSourcePath in GetSequenceExternalAudioSources(plan))
+        {
+            arguments.Add("-i");
+            arguments.Add(externalSourcePath);
+        }
+
+        arguments.Add("-map");
+        arguments.Add($"0:{segment.VideoStreamIndex}");
+        if (HasAnyAudio(plan))
+        {
+            arguments.Add("-filter_complex");
+            arguments.Add(CreateVideoStreamCopyAudioFilterGraph(plan));
+            arguments.Add("-map");
+            arguments.Add("[aout]");
+        }
+        else
+        {
+            arguments.Add("-an");
+        }
+
+        arguments.Add("-c:v");
+        arguments.Add("copy");
+        arguments.AddRange(CreateAudioPresetArguments(plan));
+        arguments.Add("-map_metadata");
+        arguments.Add("-1");
+        arguments.Add("-map_chapters");
+        arguments.Add("-1");
+        if (plan.Preset.Container == ExportContainer.Mp4)
+        {
+            arguments.Add("-movflags");
+            arguments.Add("+faststart");
+        }
+        arguments.Add("-f");
+        arguments.Add(GetMuxer(plan.Preset.Container));
+        arguments.Add(temporaryOutputPath);
+        return arguments;
+    }
+
+    internal static string CreateVideoStreamCopyAudioFilterGraph(ExportPlan plan)
+    {
+        if (!plan.IsSequence || plan.Strategy != ExportStrategy.VideoStreamCopy)
+        {
+            throw new ArgumentException("The plan is not a video-stream-copy export.", nameof(plan));
+        }
+
+        var segment = plan.VideoSegments.Single();
+        var range = segment.SourceRange;
+        var filters = new List<string>();
+        var mixInputs = new List<string>();
+        for (var trackIndex = 0; trackIndex < segment.AudioTracks.Length; trackIndex++)
+        {
+            var track = segment.AudioTracks[trackIndex];
+            var output = $"emb{trackIndex}";
+            filters.Add(
+                $"[0:{track.StreamIndex}]" +
+                CreateRangeMask(track) +
+                $"apad,atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                "asetpts=PTS-STARTPTS,aresample=48000," +
+                "aformat=sample_fmts=fltp:channel_layouts=stereo," +
+                $"volume={FormatGain(track.GainDb)}dB[{output}]");
+            mixInputs.Add(output);
+        }
+
+        var externalSources = GetSequenceExternalAudioSources(plan);
+        for (var trackIndex = 0; trackIndex < plan.AudioTracks.Length; trackIndex++)
+        {
+            var track = plan.AudioTracks[trackIndex];
+            var inputIndex = 1 + GetExternalAudioSourceIndex(track, externalSources);
+            var output = $"ext{trackIndex}";
+            filters.Add(
+                $"[{inputIndex}:{track.StreamIndex}]" +
+                CreateRangeMask(track) +
+                CreateDelay(track.TimelineOffset) +
+                $"apad,atrim=start={FormatTime(plan.SequenceTimelineStart)}:" +
+                $"end={FormatTime(plan.SequenceTimelineStart + plan.TimelineDuration)}," +
+                "asetpts=PTS-STARTPTS,aresample=48000," +
+                "aformat=sample_fmts=fltp:channel_layouts=stereo," +
+                $"volume={FormatGain(track.GainDb)}dB[{output}]");
+            mixInputs.Add(output);
+        }
+
+        if (mixInputs.Count == 1)
+        {
+            filters.Add($"[{mixInputs[0]}]anull[aout]");
+        }
+        else
+        {
+            filters.Add(
+                string.Concat(mixInputs.Select(input => $"[{input}]")) +
+                $"amix=inputs={mixInputs.Count}:duration=longest:normalize=0," +
+                "alimiter=limit=0.95[aout]");
+        }
+
+        return string.Join(';', filters);
     }
 
     internal static string CreateSequenceFilterGraph(ExportPlan plan)
@@ -740,22 +858,7 @@ internal static class FfmpegExportArguments
             arguments.Add($"{frameRate.Numerator}/{frameRate.Denominator}");
         }
 
-        var baseAudioBitRate = plan.Preset.AudioBitRateBitsPerSecond ??
-                               (plan.Preset.AudioCodec == AudioCodecFamily.Aac ? 192_000 : 160_000);
-        var audioBitRate = (plan.EncodingSettings.QualityMode == ExportQualityMode.MatchSource
-                ? baseAudioBitRate
-                : ScaleBitRate(baseAudioBitRate, quality))
-            .ToString(CultureInfo.InvariantCulture);
-
-        if (HasAnyAudio(plan))
-        {
-            arguments.AddRange(plan.Preset.AudioCodec switch
-            {
-                AudioCodecFamily.Aac => ["-c:a", "aac", "-b:a", audioBitRate],
-                AudioCodecFamily.Opus => ["-c:a", "libopus", "-b:a", audioBitRate],
-                _ => throw new ExportPlanException($"Unsupported audio codec family: {plan.Preset.AudioCodec}."),
-            });
-        }
+        arguments.AddRange(CreateAudioPresetArguments(plan));
 
         if (plan.Preset.Container == ExportContainer.Mp4)
         {
@@ -764,6 +867,27 @@ internal static class FfmpegExportArguments
         }
 
         return arguments;
+    }
+
+    private static IEnumerable<string> CreateAudioPresetArguments(ExportPlan plan)
+    {
+        if (!HasAnyAudio(plan))
+        {
+            return [];
+        }
+
+        var baseAudioBitRate = plan.Preset.AudioBitRateBitsPerSecond ??
+                               (plan.Preset.AudioCodec == AudioCodecFamily.Aac ? 192_000 : 160_000);
+        var audioBitRate = (plan.EncodingSettings.QualityMode == ExportQualityMode.MatchSource
+                ? baseAudioBitRate
+                : ScaleBitRate(baseAudioBitRate, plan.EncodingSettings.Quality))
+            .ToString(CultureInfo.InvariantCulture);
+        return plan.Preset.AudioCodec switch
+        {
+            AudioCodecFamily.Aac => ["-c:a", "aac", "-b:a", audioBitRate],
+            AudioCodecFamily.Opus => ["-c:a", "libopus", "-b:a", audioBitRate],
+            _ => throw new ExportPlanException($"Unsupported audio codec family: {plan.Preset.AudioCodec}."),
+        };
     }
 
     private static void RemoveOption(List<string> arguments, string option)

@@ -187,6 +187,8 @@ public sealed class MainWindowChromeTests
         var customQuality = window.FindControl<ToggleButton>("CustomQualityButton");
         var customQualityPanel = window.FindControl<Grid>("CustomQualityPanel");
         var remember = window.FindControl<CheckBox>("RememberExportAdjustmentsCheckBox");
+        var exportMethod = window.FindControl<Border>("ExportMethodPanel");
+        var fastCopySettings = window.FindControl<Button>("ApplyFastCopySettingsButton");
 
         Assert.NotNull(export);
         Assert.NotNull(settings);
@@ -195,6 +197,8 @@ public sealed class MainWindowChromeTests
         Assert.NotNull(customQuality);
         Assert.NotNull(customQualityPanel);
         Assert.NotNull(remember);
+        Assert.NotNull(exportMethod);
+        Assert.NotNull(fastCopySettings);
         Assert.Equal(30, export.Height);
         Assert.Equal(30, settings.Height);
         Assert.Equal(24, settings.Width);

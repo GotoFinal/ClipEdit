@@ -1,3 +1,4 @@
+using ClipEdit.Application.Export;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Media.Export;
 
@@ -257,6 +258,131 @@ public sealed partial class MainWindowViewModel
                 ? $"{destination}{ExportOutputSizeText} · {quality} · {GifFrameRate} fps{speed}"
                 : $"{destination}{ExportOutputSizeText} · {quality}{speed}";
         }
+    }
+
+    public bool IsPacketCopyExport
+    {
+        get
+        {
+            var slices = GetSequenceExportSlices();
+            var preset = ResolveSelectedExportPreset(slices);
+            return ResolveExportStrategyDecision(slices, preset).Strategy == ExportStrategy.StreamCopy;
+        }
+    }
+
+    public bool IsVideoStreamCopyExport
+    {
+        get
+        {
+            var slices = GetSequenceExportSlices();
+            var preset = ResolveSelectedExportPreset(slices);
+            return ResolveExportStrategyDecision(slices, preset).Strategy == ExportStrategy.VideoStreamCopy;
+        }
+    }
+
+    public bool IsFullReencodeExport => !IsPacketCopyExport && !IsVideoStreamCopyExport;
+
+    public string ExportMethodTitle
+    {
+        get
+        {
+            var slices = GetSequenceExportSlices();
+            var preset = ResolveSelectedExportPreset(slices);
+            return ResolveExportStrategyDecision(slices, preset).Strategy switch
+            {
+                ExportStrategy.StreamCopy => "Fast packet copy",
+                ExportStrategy.VideoStreamCopy => "Fast video copy",
+                _ => "Full re-encode",
+            };
+        }
+    }
+
+    public string ExportMethodDetails
+    {
+        get
+        {
+            var slices = GetSequenceExportSlices();
+            var preset = ResolveSelectedExportPreset(slices);
+            var decision = ResolveExportStrategyDecision(slices, preset);
+            return decision.Strategy switch
+            {
+                ExportStrategy.StreamCopy =>
+                    "Compressed video and eligible audio will be remuxed without filters or quality loss.",
+                ExportStrategy.VideoStreamCopy =>
+                    "Video will be copied without quality loss; only audio will be processed and encoded." +
+                    Environment.NewLine +
+                    string.Join(
+                        Environment.NewLine,
+                        decision.Reasons.Select(static reason => $"• {reason}")),
+                _ => string.Join(
+                    Environment.NewLine,
+                    decision.Reasons.Select(static reason => $"• {reason}")),
+            };
+        }
+    }
+
+    public bool CanApplyFastCopySettings
+    {
+        get
+        {
+            var slices = GetSequenceExportSlices();
+            if (slices.Count != 1 || slices[0].Clip.Source.Media?.Probe.VideoStreams.FirstOrDefault() is not { } video)
+            {
+                return false;
+            }
+
+            var preset = ResolveSelectedExportPreset(slices);
+            var decision = ResolveExportStrategyDecision(slices, preset);
+            if (decision.Strategy == ExportStrategy.StreamCopy ||
+                (!SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.H264) &&
+                 !SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.Vp9)))
+            {
+                return false;
+            }
+
+            var actionable = PacketCopyBlocker.Quality |
+                             PacketCopyBlocker.ExportScale |
+                             PacketCopyBlocker.ExportSpeed |
+                             PacketCopyBlocker.Format |
+                             PacketCopyBlocker.VideoCodec |
+                             PacketCopyBlocker.FrameRate;
+            var sourceAudioIsCopyable = slices[0].Clip.Source.Media!.Probe.AudioStreams
+                .Any(audio =>
+                    SourceAudioCodecMatches(audio.CodecName, AudioCodecFamily.Aac) ||
+                    SourceAudioCodecMatches(audio.CodecName, AudioCodecFamily.Opus));
+            if (sourceAudioIsCopyable)
+            {
+                actionable |= PacketCopyBlocker.AudioCodec;
+            }
+
+            return (decision.Blockers & actionable) != 0;
+        }
+    }
+
+    public bool ApplyFastCopySettings()
+    {
+        if (!CanApplyFastCopySettings)
+        {
+            return false;
+        }
+
+        SelectedExportPreset = BuiltInExportPresets.MatchInput;
+        SelectedExportQuality = ExportQualityChoice.MatchSource;
+        ExportScalePercent = ExportEncodingSettings.DefaultScalePercent;
+        ExportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;
+
+        var slices = GetSequenceExportSlices();
+        var decision = ResolveExportStrategyDecision(slices, ResolveSelectedExportPreset(slices));
+        StatusText = decision.Strategy switch
+        {
+            ExportStrategy.StreamCopy =>
+                "Source-matching settings applied; export will use fast packet copy",
+            ExportStrategy.VideoStreamCopy =>
+                "Source-matching settings applied; video will be copied and only audio encoded",
+            _ => $"Source-matching settings applied; encoding is still required: {decision.Reasons.First()}",
+        };
+        RaiseExportStateChanged();
+        return true;
     }
 
     private ExportEncodingSettings CurrentExportEncodingSettings => new(

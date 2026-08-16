@@ -497,7 +497,7 @@
                                   Click="MatchInputQuality_Click"
                                   Content="Match input"
                                   IsChecked="{Binding UsesMatchedInputQuality, Mode=OneWay}"
-                                  ToolTip.Tip="Reuse the first exported clip's bitrate when available" />
+                                  ToolTip.Tip="Preserve source quality and enable packet copy when no processing is needed" />
                               <ToggleButton
                                   x:Name="CustomQualityButton"
                                   Grid.Column="1"
@@ -717,6 +717,48 @@
                             <TextBlock Classes="muted" FontSize="11" Text="Final output size" />
                             <TextBlock Grid.Column="1" FontWeight="SemiBold" Foreground="#BBAEFF" Text="{Binding ExportOutputSizeText}" />
                           </Grid>
+                        </Border>
+                        <Border
+                            x:Name="ExportMethodPanel"
+                            Padding="8,6"
+                            Background="#171A21"
+                            BorderBrush="#353A47"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                          <StackPanel Spacing="4">
+                            <TextBlock
+                                FontSize="11"
+                                FontWeight="SemiBold"
+                                Foreground="#54D68C"
+                                IsVisible="{Binding IsPacketCopyExport}"
+                                Text="{Binding ExportMethodTitle}" />
+                            <TextBlock
+                                FontSize="11"
+                                FontWeight="SemiBold"
+                                Foreground="#69C8F0"
+                                IsVisible="{Binding IsVideoStreamCopyExport}"
+                                Text="{Binding ExportMethodTitle}" />
+                            <TextBlock
+                                FontSize="11"
+                                FontWeight="SemiBold"
+                                Foreground="#F0B66A"
+                                IsVisible="{Binding IsFullReencodeExport}"
+                                Text="{Binding ExportMethodTitle}" />
+                            <TextBlock
+                                Classes="muted"
+                                FontSize="10"
+                                Text="{Binding ExportMethodDetails}"
+                                TextWrapping="Wrap" />
+                            <Button
+                                x:Name="ApplyFastCopySettingsButton"
+                                HorizontalAlignment="Left"
+                                Padding="8,4"
+                                Classes="secondary"
+                                Click="ApplyFastCopySettings_Click"
+                                Content="Use source settings"
+                                IsVisible="{Binding CanApplyFastCopySettings}"
+                                ToolTip.Tip="Select Match input format and quality, 100% scale, and 100% export speed" />
+                          </StackPanel>
                         </Border>
                         <StackPanel Orientation="Horizontal" Spacing="6">
                           <CheckBox

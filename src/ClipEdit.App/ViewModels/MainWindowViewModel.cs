@@ -346,15 +346,59 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private ExportStrategy ResolveExportStrategy(
         IReadOnlyList<SequenceExportSlice> slices,
+        ExportPreset preset) => ResolveExportStrategyDecision(slices, preset).Strategy;
+
+    private PacketCopyDecision ResolveExportStrategyDecision(
+        IReadOnlyList<SequenceExportSlice> slices,
         ExportPreset preset)
     {
-        if (ExportQualityMode != ClipEdit.Media.Export.ExportQualityMode.MatchSource ||
-            ExportScalePercent != ExportEncodingSettings.DefaultScalePercent ||
-            ExportPlaybackSpeedPercent != ExportEncodingSettings.DefaultPlaybackSpeedPercent ||
-            preset.VideoCodec == VideoCodecFamily.Gif ||
-            slices.Count != 1)
+        var blockers = PacketCopyBlocker.None;
+        var reasons = new List<string>();
+
+        void Block(PacketCopyBlocker blocker, string reason)
         {
-            return ExportStrategy.ExactTranscode;
+            blockers |= blocker;
+            reasons.Add(reason);
+        }
+
+        PacketCopyDecision Finish()
+        {
+            if (blockers == PacketCopyBlocker.None)
+            {
+                return PacketCopyDecision.Copy;
+            }
+
+            const PacketCopyBlocker audioOnlyBlockers =
+                PacketCopyBlocker.ExternalAudio |
+                PacketCopyBlocker.AudioLayout |
+                PacketCopyBlocker.AudioGain |
+                PacketCopyBlocker.AudioEdit |
+                PacketCopyBlocker.AudioCodec;
+            return (blockers & ~audioOnlyBlockers) == PacketCopyBlocker.None
+                ? PacketCopyDecision.CopyVideo(blockers, reasons)
+                : PacketCopyDecision.Transcode(blockers, reasons);
+        }
+
+        if (ExportQualityMode != ClipEdit.Media.Export.ExportQualityMode.MatchSource)
+        {
+            Block(PacketCopyBlocker.Quality, "Quality is set to Custom instead of Match input.");
+        }
+        if (ExportScalePercent != ExportEncodingSettings.DefaultScalePercent)
+        {
+            Block(PacketCopyBlocker.ExportScale, "Export scale is not 100%.");
+        }
+        if (ExportPlaybackSpeedPercent != ExportEncodingSettings.DefaultPlaybackSpeedPercent)
+        {
+            Block(PacketCopyBlocker.ExportSpeed, "Export playback speed is not 100%.");
+        }
+        if (preset.VideoCodec == VideoCodecFamily.Gif)
+        {
+            Block(PacketCopyBlocker.Format, "GIF always requires encoding.");
+        }
+        if (slices.Count != 1)
+        {
+            Block(PacketCopyBlocker.ClipCount, "Export exactly one complete clip for packet copy.");
+            return PacketCopyDecision.Transcode(blockers, reasons);
         }
 
         var slice = slices[0];
@@ -365,25 +409,57 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var exportRange = HasSequenceSelection
             ? NormalizedSequenceSelection()
             : new MediaRange(MediaTime.Zero, NonNegativeTimelineTime(SequenceDurationSeconds));
-        if (probe is null || video is null || sourceDuration is not { } duration ||
-            slice.SourceRange != new MediaRange(MediaTime.Zero, duration) ||
-            exportRange.Start != clip.TimelineStart ||
-            exportRange.Duration != clip.Duration ||
-            clip.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent ||
-            video.RotationDegrees != 0 ||
-            clip.CanvasTransform != ClipCanvasTransform.Identity ||
-            CanvasSize != video.EncodedSize ||
-            CanvasCrop != CropRegion.FullFrame(CanvasSize) ||
-            !SourceVideoCodecMatches(video.CodecName, preset.VideoCodec) ||
-            preset.FrameRate is not null ||
+        if (probe is null || video is null || sourceDuration is not { } duration)
+        {
+            Block(PacketCopyBlocker.Media, "Source stream information is incomplete.");
+            return PacketCopyDecision.Transcode(blockers, reasons);
+        }
+        if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
+        {
+            Block(PacketCopyBlocker.SourceRange, "The clip is trimmed or split; exact cuts currently require encoding because keyframe-copy mode is not implemented yet.");
+        }
+        if (exportRange.Start != clip.TimelineStart || exportRange.Duration != clip.Duration)
+        {
+            Block(PacketCopyBlocker.TimelineRange, "The export range must match the clip boundaries without surrounding gaps.");
+        }
+        if (clip.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent)
+        {
+            Block(PacketCopyBlocker.ClipSpeed, "Clip playback speed is not 100%.");
+        }
+        if (video.RotationDegrees != 0)
+        {
+            Block(PacketCopyBlocker.SourceRotation, "Sources with rotation metadata are not yet packet-copy eligible.");
+        }
+        if (clip.CanvasTransform != ClipCanvasTransform.Identity)
+        {
+            Block(PacketCopyBlocker.Transform, "The clip has a move, scale, rotation, or mirror transform.");
+        }
+        if (CanvasSize != video.EncodedSize)
+        {
+            Block(PacketCopyBlocker.Canvas, "The project canvas does not match the encoded video size.");
+        }
+        if (CanvasCrop != CropRegion.FullFrame(CanvasSize))
+        {
+            Block(PacketCopyBlocker.Crop, "The crop does not cover the complete canvas.");
+        }
+        if (!SourceVideoCodecMatches(video.CodecName, preset.VideoCodec))
+        {
+            Block(PacketCopyBlocker.VideoCodec, "The selected output video codec differs from the source.");
+        }
+        if (preset.FrameRate is not null &&
+            SelectedExportPreset.ParameterMode != ExportParameterMode.MatchInput)
+        {
+            Block(PacketCopyBlocker.FrameRate, "A fixed output frame rate is enabled.");
+        }
+        if (preset.SupportsAudio &&
             AudioTracks.Any(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty))
         {
-            return ExportStrategy.ExactTranscode;
+            Block(PacketCopyBlocker.ExternalAudio, "Active external audio requires mixing.");
         }
 
         if (!preset.SupportsAudio)
         {
-            return ExportStrategy.StreamCopy;
+            return Finish();
         }
 
         var embedded = AudioTracks
@@ -396,23 +472,36 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             .ToArray();
         if (embedded.Length == 0)
         {
-            return ExportStrategy.StreamCopy;
+            return Finish();
         }
-        if (embedded.Length != 1 ||
-            embedded[0].EmbeddedLaneIndex is not { } embeddedLaneIndex ||
-            Math.Abs(CombineAudioGain(
-                embedded[0].GainDb,
-                clip.GetAudioLaneGainDb(embeddedLaneIndex))) >= 0.000_001 ||
-            !embedded[0].CreateEditForClip(clip).IsUnedited ||
-            !embedded[0].TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex))
+        if (embedded.Length != 1 || embedded[0].EmbeddedLaneIndex is not { } embeddedLaneIndex)
         {
-            return ExportStrategy.ExactTranscode;
+            Block(PacketCopyBlocker.AudioLayout, "Packet copy supports at most one active embedded audio track.");
+            return Finish();
+        }
+        if (Math.Abs(CombineAudioGain(
+                embedded[0].GainDb,
+                clip.GetAudioLaneGainDb(embeddedLaneIndex))) >= 0.000_001)
+        {
+            Block(PacketCopyBlocker.AudioGain, "Audio gain changes require encoding.");
+        }
+        if (!embedded[0].CreateEditForClip(clip).IsUnedited)
+        {
+            Block(PacketCopyBlocker.AudioEdit, "Silenced or cut audio ranges require encoding.");
+        }
+        if (!embedded[0].TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex))
+        {
+            Block(PacketCopyBlocker.AudioLayout, "The embedded audio stream could not be mapped unchanged.");
+            return Finish();
         }
 
         var audio = probe.AudioStreams.FirstOrDefault(stream => stream.Index == streamIndex);
-        return audio is not null && SourceAudioCodecMatches(audio.CodecName, preset.AudioCodec)
-            ? ExportStrategy.StreamCopy
-            : ExportStrategy.ExactTranscode;
+        if (audio is null || !SourceAudioCodecMatches(audio.CodecName, preset.AudioCodec))
+        {
+            Block(PacketCopyBlocker.AudioCodec, "The selected output audio codec differs from the source.");
+        }
+
+        return Finish();
     }
 
     private static bool SourceVideoCodecMatches(string codecName, VideoCodecFamily codec) => codec switch
@@ -977,9 +1066,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                           ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.Custom
                 ? $"quality {ExportQuality}%"
                 : "match input quality";
-            var strategy = ResolveExportStrategy(slices, preset) == ExportStrategy.StreamCopy
-                ? "packet copy · no re-encode"
-                : "exact sequence re-encode";
+            var strategy = ResolveExportStrategy(slices, preset) switch
+            {
+                ExportStrategy.StreamCopy => "packet copy · no re-encode",
+                ExportStrategy.VideoStreamCopy => "video copy · audio re-encode",
+                _ => "exact sequence re-encode",
+            };
             return $"{preset.DisplayName} · {strategy} · " +
                    $"{outputSize.Width} × {outputSize.Height} · {quality}{gifDetails} · " +
                    FormatSequenceTimestamp(duration);
@@ -1407,7 +1499,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     sourceSize: video.OrientedSize);
             }).ToImmutableArray();
             var externalAudio = AudioTracks
-                .Where(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty)
+                .Where(track =>
+                    exportPreset.SupportsAudio &&
+                    track.IsExternal &&
+                    !track.IsMuted &&
+                    !track.Edit.IsEmpty)
                 .Select(track => new ExportAudioTrackPlan(
                     track.SourcePath,
                     track.StreamIndex,
@@ -3852,6 +3948,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ExportPlanSummary));
         OnPropertyChanged(nameof(ExportOutputSizeText));
         OnPropertyChanged(nameof(ExportSettingsSummary));
+        OnPropertyChanged(nameof(IsPacketCopyExport));
+        OnPropertyChanged(nameof(IsVideoStreamCopyExport));
+        OnPropertyChanged(nameof(IsFullReencodeExport));
+        OnPropertyChanged(nameof(ExportMethodTitle));
+        OnPropertyChanged(nameof(ExportMethodDetails));
+        OnPropertyChanged(nameof(CanApplyFastCopySettings));
     }
 
     private bool TryCreateMediaDocument(
@@ -4908,6 +5010,57 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private static double CombineAudioGain(double trackGainDb, double clipGainDb) =>
         Math.Clamp(trackGainDb + clipGainDb, -60, 12);
+
+    [Flags]
+    private enum PacketCopyBlocker
+    {
+        None = 0,
+        Quality = 1 << 0,
+        ExportScale = 1 << 1,
+        ExportSpeed = 1 << 2,
+        Format = 1 << 3,
+        ClipCount = 1 << 4,
+        Media = 1 << 5,
+        SourceRange = 1 << 6,
+        TimelineRange = 1 << 7,
+        ClipSpeed = 1 << 8,
+        SourceRotation = 1 << 9,
+        Transform = 1 << 10,
+        Canvas = 1 << 11,
+        Crop = 1 << 12,
+        VideoCodec = 1 << 13,
+        FrameRate = 1 << 14,
+        ExternalAudio = 1 << 15,
+        AudioLayout = 1 << 16,
+        AudioGain = 1 << 17,
+        AudioEdit = 1 << 18,
+        AudioCodec = 1 << 19,
+    }
+
+    private readonly record struct PacketCopyDecision(
+        ExportStrategy Strategy,
+        PacketCopyBlocker Blockers,
+        ImmutableArray<string> Reasons)
+    {
+        public static PacketCopyDecision Copy { get; } = new(
+            ExportStrategy.StreamCopy,
+            PacketCopyBlocker.None,
+            []);
+
+        public static PacketCopyDecision CopyVideo(
+            PacketCopyBlocker blockers,
+            IEnumerable<string> reasons) => new(
+                ExportStrategy.VideoStreamCopy,
+                blockers,
+                reasons.ToImmutableArray());
+
+        public static PacketCopyDecision Transcode(
+            PacketCopyBlocker blockers,
+            IEnumerable<string> reasons) => new(
+                ExportStrategy.ExactTranscode,
+                blockers,
+                reasons.ToImmutableArray());
+    }
 
     private int GetSelectedVideoIndex()
     {
