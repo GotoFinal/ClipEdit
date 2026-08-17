@@ -94,6 +94,8 @@ public sealed partial class App : Avalonia.Application
                 interactionSettings.ClipboardExportMaximumMegabytes;
             viewModel.RecoveryRetentionDays = interactionSettings.RecoveryRetentionDays;
             viewModel.MaximumRecoveryFiles = interactionSettings.MaximumRecoveryFiles;
+            viewModel.EnableExperimentalBoundaryGopRendering =
+                interactionSettings.EnableExperimentalBoundaryGopRendering;
             var hasShownProjectFileAssociationPrompt =
                 interactionSettings.HasShownProjectFileAssociationPrompt;
             var exportPreferencesStore = new ExportPreferencesStore(
@@ -131,7 +133,8 @@ public sealed partial class App : Avalonia.Application
                     viewModel.ClipboardExportMaximumMegabytes,
                     hasShownProjectFileAssociationPrompt,
                     viewModel.RecoveryRetentionDays,
-                    viewModel.MaximumRecoveryFiles));
+                    viewModel.MaximumRecoveryFiles,
+                    viewModel.EnableExperimentalBoundaryGopRendering));
             }
 
             var mainWindow = new MainWindow(

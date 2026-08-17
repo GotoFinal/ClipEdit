@@ -119,25 +119,31 @@ public sealed class MainWindowChromeTests
 
         var interaction = window.FindControl<Expander>("InteractionSettingsExpander");
         var recovery = window.FindControl<Expander>("RecoverySettingsExpander");
+        var experimental = window.FindControl<Expander>("ExperimentalSettingsExpander");
         var mediaRuntime = window.FindControl<Expander>("MediaRuntimeSettingsExpander");
         var updates = window.FindControl<Expander>("UpdateSettingsExpander");
         var retentionDays = window.FindControl<NumericUpDown>("RecoveryRetentionDaysInput");
         var maximumFiles = window.FindControl<NumericUpDown>("MaximumRecoveryFilesInput");
+        var boundaryGop = window.FindControl<CheckBox>("BoundaryGopRenderingCheckBox");
 
         Assert.NotNull(interaction);
         Assert.NotNull(recovery);
+        Assert.NotNull(experimental);
         Assert.NotNull(mediaRuntime);
         Assert.NotNull(updates);
         Assert.NotNull(retentionDays);
         Assert.NotNull(maximumFiles);
+        Assert.NotNull(boundaryGop);
         Assert.True(interaction.IsExpanded);
         Assert.False(recovery.IsExpanded);
+        Assert.False(experimental.IsExpanded);
         Assert.False(mediaRuntime.IsExpanded);
         Assert.False(updates.IsExpanded);
         Assert.Equal(365, retentionDays.Maximum);
         Assert.Equal(200, maximumFiles.Maximum);
         Assert.Equal(7, viewModel.RecoveryRetentionDays);
         Assert.Equal(20, viewModel.MaximumRecoveryFiles);
+        Assert.False(boundaryGop.IsChecked);
 
         window.Close();
     }

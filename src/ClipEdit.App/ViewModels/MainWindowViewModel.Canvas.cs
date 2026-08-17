@@ -15,6 +15,7 @@ public sealed partial class MainWindowViewModel
         CanvasInteractionSettings.DefaultRecoveryRetentionDays;
     private int _maximumRecoveryFiles =
         CanvasInteractionSettings.DefaultMaximumRecoveryFiles;
+    private bool _enableExperimentalBoundaryGopRendering;
     private CanvasInteractionTool _canvasTool = CanvasInteractionTool.Crop;
 
     public PixelSize CanvasSize
@@ -137,6 +138,23 @@ public sealed partial class MainWindowViewModel
                 value,
                 CanvasInteractionSettings.MinimumRecoveryFiles,
                 CanvasInteractionSettings.MaximumRecoveryFilesLimit));
+    }
+
+    public bool EnableExperimentalBoundaryGopRendering
+    {
+        get => _enableExperimentalBoundaryGopRendering;
+        set
+        {
+            if (!SetProperty(ref _enableExperimentalBoundaryGopRendering, value))
+            {
+                return;
+            }
+
+            StatusText = value
+                ? "Experimental Boundary-GOP rendering enabled; eligible trims will be validated and fall back on failure"
+                : "Experimental Boundary-GOP rendering disabled";
+            RaiseExportStateChanged();
+        }
     }
 
     public void ResetCanvasInteractionSettings()

@@ -14,9 +14,9 @@ public sealed class CanvasInteractionSettingsStoreTests
             var store = new CanvasInteractionSettingsStore(path);
 
             Assert.Equal(CanvasInteractionSettings.Default, store.Load());
-            Assert.True(store.Save(new CanvasInteractionSettings(500, 0, 10_000, true, 999, 999)));
+            Assert.True(store.Save(new CanvasInteractionSettings(500, 0, 10_000, true, 999, 999, true)));
 
-            Assert.Equal(new CanvasInteractionSettings(50, 1, 4_096, true, 365, 200), store.Load());
+            Assert.Equal(new CanvasInteractionSettings(50, 1, 4_096, true, 365, 200, true), store.Load());
         }
         finally
         {
@@ -84,5 +84,6 @@ public sealed class CanvasInteractionSettingsStoreTests
         viewModel.ResetRecoveryRetentionSettings();
         Assert.Equal(7, viewModel.RecoveryRetentionDays);
         Assert.Equal(20, viewModel.MaximumRecoveryFiles);
+        Assert.False(viewModel.EnableExperimentalBoundaryGopRendering);
     }
 }

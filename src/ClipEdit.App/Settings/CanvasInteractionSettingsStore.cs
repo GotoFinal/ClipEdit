@@ -8,7 +8,8 @@ internal sealed record CanvasInteractionSettings(
     int ClipboardExportMaximumMegabytes,
     bool HasShownProjectFileAssociationPrompt = false,
     int RecoveryRetentionDays = 7,
-    int MaximumRecoveryFiles = 20)
+    int MaximumRecoveryFiles = 20,
+    bool EnableExperimentalBoundaryGopRendering = false)
 {
     public const int MinimumClipboardExportMegabytes = 1;
     public const int MaximumClipboardExportMegabytes = 4_096;
@@ -26,7 +27,8 @@ internal sealed record CanvasInteractionSettings(
         DefaultClipboardExportMegabytes,
         false,
         DefaultRecoveryRetentionDays,
-        DefaultMaximumRecoveryFiles);
+        DefaultMaximumRecoveryFiles,
+        false);
 
     public CanvasInteractionSettings Normalize()
     {
@@ -58,7 +60,8 @@ internal sealed record CanvasInteractionSettings(
             clipboardMaximum,
             HasShownProjectFileAssociationPrompt,
             recoveryRetentionDays,
-            maximumRecoveryFiles);
+            maximumRecoveryFiles,
+            EnableExperimentalBoundaryGopRendering);
     }
 }
 

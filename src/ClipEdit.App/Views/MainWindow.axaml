@@ -1707,6 +1707,20 @@
                           Content="Reset to 7 days / 20 files" />
                     </StackPanel>
                   </Expander>
+                  <Expander x:Name="ExperimentalSettingsExpander" Header="Experimental">
+                    <StackPanel Margin="8,5,4,8" Spacing="6">
+                      <CheckBox
+                          x:Name="BoundaryGopRenderingCheckBox"
+                          Content="Try Boundary-GOP rendering"
+                          IsChecked="{Binding EnableExperimentalBoundaryGopRendering, Mode=TwoWay}"
+                          ToolTip.Tip="For eligible trims, re-encode only the cut GOPs and copy the untouched middle. Every candidate is checked before use; failures fall back to the normal exact encode." />
+                      <TextBlock
+                          Classes="muted"
+                          FontSize="10"
+                          Text="May export much faster, but support is codec- and container-specific. ClipEdit validates decoding, timing, and stream shape before accepting the result."
+                          TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Expander>
                   <Expander x:Name="MediaRuntimeSettingsExpander" Header="Media runtime">
                     <StackPanel Margin="8,5,4,8" Spacing="6">
                   <CheckBox
