@@ -54,9 +54,17 @@ public sealed class FfconcatStreamCopyTests
         Assert.DoesNotContain("outpoint", manifest, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Plan_rejects_a_missing_stable_video_signature()
+    {
+        Assert.Throws<ExportPlanException>(() => CreatePlan(
+            null,
+            CreateSignature("SHA256:video")));
+    }
+
     private static ExportPlan CreatePlan(
-        VideoStreamCopySignature firstVideo,
-        VideoStreamCopySignature secondVideo,
+        VideoStreamCopySignature? firstVideo,
+        VideoStreamCopySignature? secondVideo,
         string firstFileName = "first.mp4")
     {
         var duration = new MediaTime(10, 1);
@@ -71,7 +79,7 @@ public sealed class FfconcatStreamCopyTests
             "stereo",
             "fltp",
             "LC");
-        ExportVideoSegmentPlan Segment(string path, MediaTime start, VideoStreamCopySignature video) => new(
+        ExportVideoSegmentPlan Segment(string path, MediaTime start, VideoStreamCopySignature? video) => new(
             path,
             0,
             new MediaRange(MediaTime.Zero, duration),

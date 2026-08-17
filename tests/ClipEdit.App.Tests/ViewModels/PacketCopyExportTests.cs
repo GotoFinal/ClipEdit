@@ -137,14 +137,61 @@ public sealed class PacketCopyExportTests
         Assert.Equal(new MediaTime(299, 10), segment.StreamCopyInfo.EndDecodeTimestamp);
     }
 
-    [Fact]
-    public async Task Experimental_boundary_gop_uses_complete_interior_gops_for_an_exact_trim()
+    [Theory]
+    [InlineData("vp9", "opus", "webm", false)]
+    [InlineData("av1", "opus", "webm", true)]
+    public async Task Keyframe_aligned_vp9_and_av1_trims_copy_video_packets(
+        string videoCodec,
+        string audioCodec,
+        string formatName,
+        bool includeVideoExtradata)
     {
         var renderer = new RecordingExportRenderer();
         using var viewModel = new MainWindowViewModel(
-            new CompatibleCopyProbe(includePacketTimestamps: true),
+            new CompatibleCopyProbe(
+                videoCodec,
+                audioCodec,
+                formatName,
+                includePacketTimestamps: true,
+                includeVideoExtradata: includeVideoExtradata),
             exportRenderer: renderer);
-        await viewModel.ImportFilesAsync([TestPath("source.mp4")]);
+        await viewModel.ImportFilesAsync([TestPath($"source-{videoCodec}.webm")]);
+        viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 30;
+
+        Assert.True(viewModel.IsVideoStreamCopyExport);
+
+        var result = await viewModel.ExportAsync(
+            TestPath($"keyframe-trim-{videoCodec}.webm"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(ExportStrategy.VideoStreamCopy, renderer.Plan!.Strategy);
+        var copyInfo = Assert.Single(renderer.Plan.VideoSegments).StreamCopyInfo;
+        Assert.NotNull(copyInfo);
+        Assert.Equal(includeVideoExtradata, copyInfo.Video is not null);
+    }
+
+    [Theory]
+    [InlineData("h264", "aac", "mov,mp4,m4a,3gp,3g2,mj2", "mp4")]
+    [InlineData("vp9", "opus", "webm", "webm")]
+    [InlineData("av1", "opus", "webm", "webm")]
+    public async Task Experimental_boundary_gop_uses_complete_interior_gops_for_an_exact_trim(
+        string videoCodec,
+        string audioCodec,
+        string formatName,
+        string extension)
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(
+            new CompatibleCopyProbe(
+                videoCodec,
+                audioCodec,
+                formatName,
+                includePacketTimestamps: true),
+            exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([TestPath($"source.{extension}")]);
         viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
         viewModel.EnableExperimentalBoundaryGopRendering = true;
         viewModel.SequenceSelectionStartSeconds = 6;
@@ -156,7 +203,7 @@ public sealed class PacketCopyExportTests
         Assert.Contains("falls back to a full exact encode", viewModel.ExportMethodDetails);
 
         var result = await viewModel.ExportAsync(
-            TestPath("boundary-gop.mp4"),
+            TestPath($"boundary-gop.{extension}"),
             replaceExistingDestination: false);
 
         Assert.NotNull(result);
@@ -234,17 +281,20 @@ public sealed class PacketCopyExportTests
         private readonly string _audioCodec;
         private readonly string _formatName;
         private readonly bool _includePacketTimestamps;
+        private readonly bool _includeVideoExtradata;
 
         public CompatibleCopyProbe(
             string videoCodec = "h264",
             string audioCodec = "aac",
             string formatName = "mov,mp4,m4a,3gp,3g2,mj2",
-            bool includePacketTimestamps = false)
+            bool includePacketTimestamps = false,
+            bool includeVideoExtradata = true)
         {
             _videoCodec = videoCodec;
             _audioCodec = audioCodec;
             _formatName = formatName;
             _includePacketTimestamps = includePacketTimestamps;
+            _includeVideoExtradata = includeVideoExtradata;
         }
 
         public Task<MediaProbeResult> ProbeAsync(
@@ -289,7 +339,7 @@ public sealed class PacketCopyExportTests
                         6_208_000,
                         _videoCodec == "h264" ? "avc1" : "[0][0][0][0]",
                         _videoCodec == "h264" ? 40 : null,
-                        "SHA256:compatible-video"),
+                        _includeVideoExtradata ? "SHA256:compatible-video" : null),
                     new AudioStreamInfo(
                         1,
                         _audioCodec,

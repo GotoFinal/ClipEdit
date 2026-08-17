@@ -373,6 +373,8 @@ public sealed record ExportPlan
                       Preset.Container is ExportContainer.Mp4 or ExportContainer.Matroska,
             "vp9" => Preset.VideoCodec == VideoCodecFamily.Vp9 &&
                      Preset.Container is ExportContainer.WebM or ExportContainer.Matroska,
+            "av1" => Preset.VideoCodec == VideoCodecFamily.Av1 &&
+                     Preset.Container is ExportContainer.Mp4 or ExportContainer.WebM or ExportContainer.Matroska,
             _ => false,
         };
         if (segment is null ||
@@ -389,7 +391,7 @@ public sealed record ExportPlan
             EncodingSettings.PlaybackSpeedPercent != ExportEncodingSettings.DefaultPlaybackSpeedPercent)
         {
             throw new ExportPlanException(
-                "Boundary-GOP rendering requires one CFR H.264 or VP9 trim with source-matching output and no visual transforms.");
+                "Boundary-GOP rendering requires one CFR H.264, VP9, or AV1 trim with source-matching output and no visual transforms.");
         }
     }
 
@@ -399,7 +401,7 @@ public sealed record ExportPlan
         MediaTime resolvedDuration)
     {
         var cursor = SequenceTimelineStart;
-        if (segments[0].StreamCopyInfo is not { } firstInfo)
+        if (segments[0].StreamCopyInfo is not { Video: not null } firstInfo)
         {
             throw new ExportPlanException(
                 "Packet-copy concatenation requires verified encoded stream signatures.");
@@ -425,6 +427,7 @@ public sealed record ExportPlan
                           segment.CanvasTransform == ClipCanvasTransform.Identity &&
                           segment.CanvasCrop == CropRegion.FullFrame(segment.CanvasSize) &&
                           info is not null &&
+                          info.Video is not null &&
                           info.Video == firstInfo.Video &&
                           info.Audio == firstInfo.Audio &&
                           info.StartsOnKeyframeOrAtSourceStart &&

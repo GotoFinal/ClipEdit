@@ -463,7 +463,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             Block(
                 PacketCopyBlocker.SourceRange,
                 EnableExperimentalBoundaryGopRendering
-                    ? "This trim is not eligible for Boundary-GOP rendering; use CFR 8-bit H.264/VP9 with at least one second of complete interior GOPs."
+                    ? "This trim is not eligible for Boundary-GOP rendering; use CFR 8-bit H.264, VP9, or AV1 with at least one second of complete interior GOPs."
                     : "Trimmed clips still require encoding unless both edges are keyframes. Experimental Boundary-GOP rendering can be enabled in global settings.");
         }
         var sliceTimelineStart = clip.Model.SourceTimeToTimeline(slice.SourceRange.Start);

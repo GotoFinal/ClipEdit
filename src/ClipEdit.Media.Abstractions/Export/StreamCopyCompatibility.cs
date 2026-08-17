@@ -111,7 +111,7 @@ public sealed record AudioStreamCopySignature
 }
 
 public sealed record SegmentStreamCopyInfo(
-    VideoStreamCopySignature Video,
+    VideoStreamCopySignature? Video,
     AudioStreamCopySignature? Audio,
     bool StartsOnKeyframeOrAtSourceStart,
     bool EndsOnKeyframeOrAtSourceEnd,

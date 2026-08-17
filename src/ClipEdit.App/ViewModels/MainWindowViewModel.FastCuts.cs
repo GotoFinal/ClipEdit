@@ -268,8 +268,13 @@ public sealed partial class MainWindowViewModel
             clip.CanvasTransform != ClipCanvasTransform.Identity ||
             CanvasSize != video.EncodedSize ||
             CanvasCrop != CropRegion.FullFrame(CanvasSize) ||
-            !SourceVideoCodecMatches(video.CodecName, preset.VideoCodec) ||
-            CreateVideoStreamCopySignature(video) is not { } videoSignature)
+            !SourceVideoCodecMatches(video.CodecName, preset.VideoCodec))
+        {
+            return null;
+        }
+
+        var videoSignature = CreateVideoStreamCopySignature(video);
+        if (requireConcatCompatibility && videoSignature is null)
         {
             return null;
         }
@@ -355,8 +360,7 @@ public sealed partial class MainWindowViewModel
         var video = probe?.VideoStreams.FirstOrDefault();
         var sourceDuration = slice.Clip.Source.Edit?.SourceDuration ?? probe?.Duration;
         if (video is null || sourceDuration is not { } duration ||
-            !SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.H264) ||
-            preset.VideoCodec != VideoCodecFamily.H264 ||
+            !IsKeyframeVideoCopySupported(preset, video.CodecName) ||
             streamCopyInfo is not
             {
                 StartsOnKeyframeOrAtSourceStart: true,
@@ -435,6 +439,19 @@ public sealed partial class MainWindowViewModel
         {
             "h264" => preset.Container is ExportContainer.Mp4 or ExportContainer.Matroska,
             "vp9" => preset.Container is ExportContainer.WebM or ExportContainer.Matroska,
+            "av1" => preset.Container is ExportContainer.Mp4 or ExportContainer.WebM or ExportContainer.Matroska,
+            _ => false,
+        };
+
+    private static bool IsKeyframeVideoCopySupported(ExportPreset preset, string codecName) =>
+        codecName.ToLowerInvariant() switch
+        {
+            "h264" => preset.VideoCodec == VideoCodecFamily.H264 &&
+                      preset.Container is ExportContainer.Mp4 or ExportContainer.Matroska,
+            "vp9" => preset.VideoCodec == VideoCodecFamily.Vp9 &&
+                     preset.Container is ExportContainer.WebM or ExportContainer.Matroska,
+            "av1" => preset.VideoCodec == VideoCodecFamily.Av1 &&
+                     preset.Container is ExportContainer.Mp4 or ExportContainer.WebM or ExportContainer.Matroska,
             _ => false,
         };
 

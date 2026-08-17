@@ -432,9 +432,10 @@ public sealed class FfmpegExportRendererLocalTests
 
     [Fact]
     [Trait("Category", "LocalMedia")]
-    public async Task Renderer_packet_copies_keyframe_trimmed_h264_video_and_rebuilds_audio()
+    public async Task Renderer_packet_copies_keyframe_trimmed_h264_vp9_or_av1_video_and_rebuilds_audio()
     {
-        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_KEYFRAME_COPY_MEDIA") ??
+                         Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
         var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
         var ffprobePath = FfprobeExecutableLocator.Find();
         if (string.IsNullOrWhiteSpace(sourcePath) ||
@@ -450,13 +451,11 @@ public sealed class FfmpegExportRendererLocalTests
         var video = probe.VideoStreams.FirstOrDefault();
         var sourceDuration = video?.Duration ?? probe.Duration;
         if (video is null ||
-            !video.CodecName.Equals("h264", StringComparison.OrdinalIgnoreCase) ||
+            video.CodecName is not ("h264" or "vp9" or "av1") ||
             video.RotationDegrees != 0 ||
             sourceDuration is null ||
             video.TimeBase is not { } timeBase ||
             video.AverageFrameRate is not { IsZero: false } frameRate ||
-            string.IsNullOrWhiteSpace(video.CodecTag) ||
-            string.IsNullOrWhiteSpace(video.CodecExtradataHash) ||
             string.IsNullOrWhiteSpace(video.PixelFormat))
         {
             return;
@@ -485,25 +484,37 @@ public sealed class FfmpegExportRendererLocalTests
                 0,
                 new SourceEdit(sourceDuration.Value)))
             : ImmutableArray<ExportAudioTrackPlan>.Empty;
-        var signature = new VideoStreamCopySignature(
-            video.CodecName,
-            video.CodecTag,
-            video.CodecExtradataHash,
-            video.EncodedSize,
-            timeBase,
-            frameRate,
-            video.PixelFormat,
-            video.Profile,
-            video.CodecLevel,
-            video.SampleAspectRatio,
-            video.ColorRange,
-            video.ColorSpace,
-            video.ColorTransfer,
-            video.ColorPrimaries,
-            video.FieldOrder);
+        var signature = string.IsNullOrWhiteSpace(video.CodecTag) ||
+                        string.IsNullOrWhiteSpace(video.CodecExtradataHash)
+            ? null
+            : new VideoStreamCopySignature(
+                video.CodecName,
+                video.CodecTag,
+                video.CodecExtradataHash,
+                video.EncodedSize,
+                timeBase,
+                frameRate,
+                video.PixelFormat,
+                video.Profile,
+                video.CodecLevel,
+                video.SampleAspectRatio,
+                video.ColorRange,
+                video.ColorSpace,
+                video.ColorTransfer,
+                video.ColorPrimaries,
+                video.FieldOrder);
+        var isH264 = video.CodecName == "h264";
+        var usesMp4 = isH264 || Path.GetExtension(sourcePath).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
+        var extension = usesMp4 ? ".mp4" : ".webm";
+        var container = usesMp4 ? ExportContainer.Mp4 : ExportContainer.WebM;
+        var videoCodec = video.CodecName == "h264"
+            ? VideoCodecFamily.H264
+            : video.CodecName == "vp9"
+                ? VideoCodecFamily.Vp9
+                : VideoCodecFamily.Av1;
         var destinationPath = Path.Combine(
             Path.GetTempPath(),
-            $"clipedit-keyframe-copy-{Guid.NewGuid():N}.mp4");
+            $"clipedit-keyframe-copy-{Guid.NewGuid():N}{extension}");
         var segment = new ExportVideoSegmentPlan(
             sourcePath,
             video.Index,
@@ -527,12 +538,14 @@ public sealed class FfmpegExportRendererLocalTests
             video.EncodedSize,
             destinationPath,
             new ExportPreset(
-                "mp4-local-keyframe-copy",
-                "MP4 local keyframe copy",
-                ".mp4",
-                ExportContainer.Mp4,
-                VideoCodecFamily.H264,
-                audioPlans.IsEmpty ? AudioCodecFamily.None : AudioCodecFamily.Aac,
+                "local-keyframe-copy",
+                "Local keyframe copy",
+                extension,
+                container,
+                videoCodec,
+                audioPlans.IsEmpty
+                    ? AudioCodecFamily.None
+                    : usesMp4 ? AudioCodecFamily.Aac : AudioCodecFamily.Opus,
                 requiresEvenDimensions: true),
             sequenceTimelineStart: range.Start,
             sequenceDuration: range.Duration,
@@ -545,7 +558,7 @@ public sealed class FfmpegExportRendererLocalTests
             var renderedVideo = Assert.Single(rendered.VideoStreams);
             var tolerance = new MediaTime(1, 10);
 
-            Assert.Equal("h264", renderedVideo.CodecName, ignoreCase: true);
+            Assert.Equal(video.CodecName, renderedVideo.CodecName, ignoreCase: true);
             var renderedDuration = renderedVideo.Duration ?? rendered.Duration ?? MediaTime.Zero;
             Assert.True(renderedDuration >= range.Duration - tolerance);
             Assert.True(renderedDuration <= range.Duration + tolerance);
@@ -558,7 +571,7 @@ public sealed class FfmpegExportRendererLocalTests
 
     [Fact]
     [Trait("Category", "LocalMedia")]
-    public async Task Renderer_validates_boundary_gop_h264_or_vp9_splices_before_finalizing()
+    public async Task Renderer_validates_boundary_gop_h264_vp9_or_av1_splices_before_finalizing()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_BOUNDARY_GOP_MEDIA") ??
                          Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
@@ -578,14 +591,12 @@ public sealed class FfmpegExportRendererLocalTests
         var sourceDuration = video?.Duration ?? probe.Duration;
         if (video is null ||
             sourceDuration is null ||
-            video.CodecName is not ("h264" or "vp9") ||
+            video.CodecName is not ("h264" or "vp9" or "av1") ||
             !string.Equals(video.PixelFormat, "yuv420p", StringComparison.OrdinalIgnoreCase) ||
             video.RotationDegrees != 0 ||
             video.TimeBase is not { } timeBase ||
             video.AverageFrameRate is not { IsZero: false } frameRate ||
-            video.NominalFrameRate != frameRate ||
-            string.IsNullOrWhiteSpace(video.CodecTag) ||
-            string.IsNullOrWhiteSpace(video.CodecExtradataHash))
+            video.NominalFrameRate != frameRate)
         {
             return;
         }
@@ -614,24 +625,14 @@ public sealed class FfmpegExportRendererLocalTests
             return;
         }
 
-        var signature = new VideoStreamCopySignature(
+        var boundaryVideo = new BoundaryGopVideoInfo(
             video.CodecName,
-            video.CodecTag,
-            video.CodecExtradataHash,
             video.EncodedSize,
             timeBase,
             frameRate,
-            video.PixelFormat!,
-            video.Profile,
-            video.CodecLevel,
-            video.SampleAspectRatio,
-            video.ColorRange,
-            video.ColorSpace,
-            video.ColorTransfer,
-            video.ColorPrimaries,
-            video.FieldOrder);
+            video.PixelFormat!);
         var boundary = new BoundaryGopRenderInfo(
-            signature,
+            boundaryVideo,
             range,
             boundaries[0].PresentationTimestamp,
             boundaries[0].DecodeTimestamp!.Value,
@@ -645,7 +646,7 @@ public sealed class FfmpegExportRendererLocalTests
             : ImmutableArray<ExportAudioTrackPlan>.Empty;
         var destinationPath = Path.Combine(
             Path.GetTempPath(),
-            $"clipedit-boundary-gop-{Guid.NewGuid():N}{(video.CodecName == "vp9" ? ".webm" : ".mp4")}");
+            $"clipedit-boundary-gop-{Guid.NewGuid():N}{(video.CodecName == "h264" ? ".mp4" : ".webm")}");
         var segment = new ExportVideoSegmentPlan(
             sourcePath,
             video.Index,
@@ -664,12 +665,14 @@ public sealed class FfmpegExportRendererLocalTests
             new ExportPreset(
                 "local-boundary-gop",
                 "Local Boundary-GOP",
-                video.CodecName == "vp9" ? ".webm" : ".mp4",
-                video.CodecName == "vp9" ? ExportContainer.WebM : ExportContainer.Mp4,
-                video.CodecName == "vp9" ? VideoCodecFamily.Vp9 : VideoCodecFamily.H264,
+                video.CodecName == "h264" ? ".mp4" : ".webm",
+                video.CodecName == "h264" ? ExportContainer.Mp4 : ExportContainer.WebM,
+                video.CodecName == "h264"
+                    ? VideoCodecFamily.H264
+                    : video.CodecName == "vp9" ? VideoCodecFamily.Vp9 : VideoCodecFamily.Av1,
                 audioPlans.IsEmpty
                     ? AudioCodecFamily.None
-                    : video.CodecName == "vp9" ? AudioCodecFamily.Opus : AudioCodecFamily.Aac,
+                    : video.CodecName == "h264" ? AudioCodecFamily.Aac : AudioCodecFamily.Opus,
                 requiresEvenDimensions: true,
                 frameRate: frameRate,
                 videoBitRateBitsPerSecond: video.BitRateBitsPerSecond),
