@@ -11,6 +11,7 @@ public enum ExportStrategy
     StreamCopy,
     VideoStreamCopy,
     ConcatStreamCopy,
+    BoundaryGop,
 }
 
 /// <summary>
@@ -312,6 +313,11 @@ public sealed record ExportPlan
             ValidateConcatStreamCopy(segments, externalTracks, resolvedDuration);
             return;
         }
+        if (strategy == ExportStrategy.BoundaryGop)
+        {
+            ValidateBoundaryGop(segments, resolvedDuration);
+            return;
+        }
         if (strategy is not (ExportStrategy.StreamCopy or ExportStrategy.VideoStreamCopy))
         {
             return;
@@ -353,6 +359,37 @@ public sealed record ExportPlan
                 strategy == ExportStrategy.StreamCopy
                     ? "Packet-copy export requires one complete, untransformed, untrimmed source clip with unchanged audio."
                     : "Video-copy export requires one complete clip or a verified keyframe-aligned trim without visual transforms.");
+        }
+    }
+
+    private void ValidateBoundaryGop(
+        ImmutableArray<ExportVideoSegmentPlan> segments,
+        MediaTime resolvedDuration)
+    {
+        var segment = segments.Length == 1 ? segments[0] : null;
+        var codecMatches = segment?.BoundaryGopInfo?.Video.CodecName.ToLowerInvariant() switch
+        {
+            "h264" => Preset.VideoCodec == VideoCodecFamily.H264 &&
+                      Preset.Container is ExportContainer.Mp4 or ExportContainer.Matroska,
+            "vp9" => Preset.VideoCodec == VideoCodecFamily.Vp9 &&
+                     Preset.Container is ExportContainer.WebM or ExportContainer.Matroska,
+            _ => false,
+        };
+        if (segment is null ||
+            segment.BoundaryGopInfo is null ||
+            !codecMatches ||
+            segment.IsCompleteSource ||
+            segment.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent ||
+            segment.TimelineStart != SequenceTimelineStart ||
+            segment.TimelineDuration != resolvedDuration ||
+            segment.CanvasTransform != ClipCanvasTransform.Identity ||
+            segment.CanvasCrop != CropRegion.FullFrame(segment.CanvasSize) ||
+            segment.SourceSize != segment.CanvasSize ||
+            EncodingSettings.ScalePercent != ExportEncodingSettings.DefaultScalePercent ||
+            EncodingSettings.PlaybackSpeedPercent != ExportEncodingSettings.DefaultPlaybackSpeedPercent)
+        {
+            throw new ExportPlanException(
+                "Boundary-GOP rendering requires one CFR H.264 or VP9 trim with source-matching output and no visual transforms.");
         }
     }
 
@@ -465,7 +502,8 @@ public sealed record ExportVideoSegmentPlan
         ExportVideoColorInfo? videoColorInfo = null,
         bool isCompleteSource = false,
         PixelSize? sourceSize = null,
-        SegmentStreamCopyInfo? streamCopyInfo = null)
+        SegmentStreamCopyInfo? streamCopyInfo = null,
+        BoundaryGopRenderInfo? boundaryGopInfo = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentOutOfRangeException.ThrowIfNegative(videoStreamIndex);
@@ -511,6 +549,7 @@ public sealed record ExportVideoSegmentPlan
         VideoColorInfo = videoColorInfo;
         IsCompleteSource = isCompleteSource;
         StreamCopyInfo = streamCopyInfo;
+        BoundaryGopInfo = boundaryGopInfo;
         UsesCanvasTransform = true;
     }
 
@@ -548,6 +587,8 @@ public sealed record ExportVideoSegmentPlan
     public bool IsCompleteSource { get; }
 
     public SegmentStreamCopyInfo? StreamCopyInfo { get; }
+
+    public BoundaryGopRenderInfo? BoundaryGopInfo { get; }
 
     public CropRegion Crop => CanvasCrop;
 

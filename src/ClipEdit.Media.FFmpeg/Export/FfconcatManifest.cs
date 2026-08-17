@@ -30,6 +30,26 @@ internal static class FfconcatManifest
         return manifest.ToString();
     }
 
+    public static string CreatePaths(IEnumerable<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        var materialized = paths.ToArray();
+        if (materialized.Length == 0 || materialized.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new ArgumentException("At least one media path is required.", nameof(paths));
+        }
+
+        var manifest = new StringBuilder("ffconcat version 1.0\n");
+        foreach (var path in materialized)
+        {
+            manifest.Append("file ")
+                .Append(EscapePath(Path.GetFullPath(path)))
+                .Append('\n');
+        }
+
+        return manifest.ToString();
+    }
+
     private static string EscapePath(string path)
     {
         if (path.IndexOfAny(['\r', '\n', '\0']) >= 0)

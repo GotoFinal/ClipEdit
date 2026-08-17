@@ -28,6 +28,15 @@ internal static class FfmpegExportArguments
             return CreateConcatStreamCopy(plan, temporaryOutputPath, concatManifestPath);
         }
 
+        return CreateExactTranscode(plan, temporaryOutputPath);
+    }
+
+    internal static IReadOnlyList<string> CreateExactTranscode(
+        ExportPlan plan,
+        string temporaryOutputPath)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentException.ThrowIfNullOrWhiteSpace(temporaryOutputPath);
         var arguments = new List<string>
         {
             "-hide_banner",
@@ -275,7 +284,7 @@ internal static class FfmpegExportArguments
         ExportPlan plan,
         bool usesSeparateAudioInput = false)
     {
-        if (!plan.IsSequence || plan.Strategy != ExportStrategy.VideoStreamCopy)
+        if (!plan.IsSequence || plan.Strategy is not (ExportStrategy.VideoStreamCopy or ExportStrategy.BoundaryGop))
         {
             throw new ArgumentException("The plan is not a video-stream-copy export.", nameof(plan));
         }
@@ -954,7 +963,7 @@ internal static class FfmpegExportArguments
         return arguments;
     }
 
-    private static IEnumerable<string> CreateAudioPresetArguments(ExportPlan plan)
+    internal static IEnumerable<string> CreateAudioPresetArguments(ExportPlan plan)
     {
         if (!HasAnyAudio(plan))
         {
@@ -987,7 +996,7 @@ internal static class FfmpegExportArguments
         arguments.RemoveAt(index);
     }
 
-    private static string GetMuxer(ExportContainer container) => container switch
+    internal static string GetMuxer(ExportContainer container) => container switch
     {
         ExportContainer.Mp4 => "mp4",
         ExportContainer.WebM => "webm",
@@ -996,12 +1005,12 @@ internal static class FfmpegExportArguments
         _ => throw new ArgumentOutOfRangeException(nameof(container), container, "Unsupported output container."),
     };
 
-    private static bool HasAnyAudio(ExportPlan plan) =>
+    internal static bool HasAnyAudio(ExportPlan plan) =>
         plan.Preset.SupportsAudio && (plan.IsSequence
             ? plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty) || !plan.AudioTracks.IsEmpty
             : !plan.AudioTracks.IsEmpty);
 
-    private static IReadOnlyList<string> GetSequenceExternalAudioSources(ExportPlan plan)
+    internal static IReadOnlyList<string> GetSequenceExternalAudioSources(ExportPlan plan)
     {
         if (!plan.Preset.SupportsAudio)
         {
@@ -1035,7 +1044,7 @@ internal static class FfmpegExportArguments
         throw new ExportPlanException("An external audio source was not assigned an FFmpeg input.");
     }
 
-    private static string FormatTime(MediaTime value)
+    internal static string FormatTime(MediaTime value)
     {
         return value.TotalSeconds.ToString("0.###############", CultureInfo.InvariantCulture);
     }

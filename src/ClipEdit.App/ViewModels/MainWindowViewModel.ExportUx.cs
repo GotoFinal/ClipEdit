@@ -281,7 +281,18 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    public bool IsFullReencodeExport => !IsPacketCopyExport && !IsVideoStreamCopyExport;
+    public bool IsBoundaryGopExport
+    {
+        get
+        {
+            var slices = GetSequenceExportSlices();
+            var preset = ResolveSelectedExportPreset(slices);
+            return ResolveExportStrategyDecision(slices, preset).Strategy == ExportStrategy.BoundaryGop;
+        }
+    }
+
+    public bool IsFullReencodeExport =>
+        !IsPacketCopyExport && !IsVideoStreamCopyExport && !IsBoundaryGopExport;
 
     public string ExportMethodTitle
     {
@@ -294,6 +305,7 @@ public sealed partial class MainWindowViewModel
                 ExportStrategy.StreamCopy => "Fast packet copy",
                 ExportStrategy.ConcatStreamCopy => "Fast packet copy",
                 ExportStrategy.VideoStreamCopy => "Fast video copy",
+                ExportStrategy.BoundaryGop => "Experimental Boundary-GOP",
                 _ => "Full re-encode",
             };
         }
@@ -314,6 +326,14 @@ public sealed partial class MainWindowViewModel
                     "Complete compatible clips will be joined without decoding or quality loss.",
                 ExportStrategy.VideoStreamCopy =>
                     "Video will be copied without quality loss; only audio will be processed and encoded." +
+                    Environment.NewLine +
+                    string.Join(
+                        Environment.NewLine,
+                        decision.Reasons.Select(static reason => $"• {reason}")),
+                ExportStrategy.BoundaryGop =>
+                    "Only the GOPs touching the exact cut edges will be encoded. Interior GOPs will be copied without quality loss." +
+                    Environment.NewLine +
+                    "The candidate must pass codec, frame-count, duration, timestamp, and splice-decode checks or ClipEdit falls back to a full exact encode." +
                     Environment.NewLine +
                     string.Join(
                         Environment.NewLine,
@@ -385,6 +405,8 @@ public sealed partial class MainWindowViewModel
                 "Source-matching settings applied; compatible clips will be joined without encoding",
             ExportStrategy.VideoStreamCopy =>
                 "Source-matching settings applied; video will be copied and only audio encoded",
+            ExportStrategy.BoundaryGop =>
+                "Source-matching settings applied; export will try experimental Boundary-GOP rendering",
             _ => $"Source-matching settings applied; encoding is still required: {decision.Reasons.First()}",
         };
         RaiseExportStateChanged();

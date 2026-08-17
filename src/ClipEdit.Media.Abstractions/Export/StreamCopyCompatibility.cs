@@ -117,3 +117,99 @@ public sealed record SegmentStreamCopyInfo(
     bool EndsOnKeyframeOrAtSourceEnd,
     MediaTime? StartDecodeTimestamp = null,
     MediaTime? EndDecodeTimestamp = null);
+
+public sealed record BoundaryGopRenderInfo
+{
+    public BoundaryGopRenderInfo(
+        VideoStreamCopySignature video,
+        MediaRange sourceRange,
+        MediaTime copiedStartPresentationTimestamp,
+        MediaTime copiedStartDecodeTimestamp,
+        MediaTime copiedEndPresentationTimestamp,
+        MediaTime copiedEndDecodeTimestamp)
+        : this(
+            new BoundaryGopVideoInfo(
+                video.CodecName,
+                video.EncodedSize,
+                video.TimeBase,
+                video.AverageFrameRate,
+                video.PixelFormat),
+            sourceRange,
+            copiedStartPresentationTimestamp,
+            copiedStartDecodeTimestamp,
+            copiedEndPresentationTimestamp,
+            copiedEndDecodeTimestamp)
+    {
+    }
+
+    public BoundaryGopRenderInfo(
+        BoundaryGopVideoInfo video,
+        MediaRange sourceRange,
+        MediaTime copiedStartPresentationTimestamp,
+        MediaTime copiedStartDecodeTimestamp,
+        MediaTime copiedEndPresentationTimestamp,
+        MediaTime copiedEndDecodeTimestamp)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        if (sourceRange.IsEmpty ||
+            copiedStartPresentationTimestamp < sourceRange.Start ||
+            copiedEndPresentationTimestamp > sourceRange.End ||
+            copiedStartPresentationTimestamp >= copiedEndPresentationTimestamp ||
+            copiedStartDecodeTimestamp > copiedStartPresentationTimestamp ||
+            copiedEndDecodeTimestamp > copiedEndPresentationTimestamp ||
+            copiedEndDecodeTimestamp <= copiedStartPresentationTimestamp)
+        {
+            throw new ArgumentException(
+                "Boundary-GOP copy points must describe a non-empty decodable interior inside the exact trim.");
+        }
+
+        Video = video;
+        SourceRange = sourceRange;
+        CopiedStartPresentationTimestamp = copiedStartPresentationTimestamp;
+        CopiedStartDecodeTimestamp = copiedStartDecodeTimestamp;
+        CopiedEndPresentationTimestamp = copiedEndPresentationTimestamp;
+        CopiedEndDecodeTimestamp = copiedEndDecodeTimestamp;
+    }
+
+    public BoundaryGopVideoInfo Video { get; }
+    public MediaRange SourceRange { get; }
+    public MediaTime CopiedStartPresentationTimestamp { get; }
+    public MediaTime CopiedStartDecodeTimestamp { get; }
+    public MediaTime CopiedEndPresentationTimestamp { get; }
+    public MediaTime CopiedEndDecodeTimestamp { get; }
+    public MediaRange CopiedSourceRange => new(
+        CopiedStartPresentationTimestamp,
+        CopiedEndPresentationTimestamp);
+    public bool HasLeadingBoundary => SourceRange.Start < CopiedStartPresentationTimestamp;
+    public bool HasTrailingBoundary => CopiedEndPresentationTimestamp < SourceRange.End;
+}
+
+public sealed record BoundaryGopVideoInfo
+{
+    public BoundaryGopVideoInfo(
+        string codecName,
+        PixelSize encodedSize,
+        MediaTime timeBase,
+        FrameRate averageFrameRate,
+        string pixelFormat)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(codecName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(pixelFormat);
+        if (timeBase <= MediaTime.Zero || averageFrameRate.IsZero)
+        {
+            throw new ArgumentException("Boundary-GOP video information requires valid timing.");
+        }
+
+        CodecName = codecName;
+        EncodedSize = encodedSize;
+        TimeBase = timeBase;
+        AverageFrameRate = averageFrameRate;
+        PixelFormat = pixelFormat;
+    }
+
+    public string CodecName { get; }
+    public PixelSize EncodedSize { get; }
+    public MediaTime TimeBase { get; }
+    public FrameRate AverageFrameRate { get; }
+    public string PixelFormat { get; }
+}

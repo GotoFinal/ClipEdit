@@ -1,5 +1,9 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
+using System.Text.Json;
+using ClipEdit.Domain.Editing;
+using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Export;
 using DiagnosticProcess = System.Diagnostics.Process;
 
@@ -9,8 +13,9 @@ public sealed class FfmpegExportRenderer : IExportRenderer
 {
     private const int MaximumDiagnosticCharacters = 256 * 1024;
     private readonly string _executablePath;
+    private readonly string? _ffprobeExecutablePath;
 
-    public FfmpegExportRenderer(string executablePath)
+    public FfmpegExportRenderer(string executablePath, string? ffprobeExecutablePath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         _executablePath = Path.GetFullPath(executablePath);
@@ -19,6 +24,16 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             throw new ExportException(
                 ExportFailure.ToolUnavailable,
                 "The configured FFmpeg executable does not exist.");
+        }
+        if (!string.IsNullOrWhiteSpace(ffprobeExecutablePath))
+        {
+            _ffprobeExecutablePath = Path.GetFullPath(ffprobeExecutablePath);
+            if (!File.Exists(_ffprobeExecutablePath))
+            {
+                throw new ExportException(
+                    ExportFailure.ToolUnavailable,
+                    "The configured ffprobe executable does not exist.");
+            }
         }
     }
 
@@ -30,8 +45,40 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         ArgumentNullException.ThrowIfNull(plan);
         ValidatePaths(plan);
 
+        if (plan.Strategy == ExportStrategy.BoundaryGop)
+        {
+            try
+            {
+                return await RenderBoundaryGopAsync(plan, progress, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ExportException)
+            {
+                progress?.Report(new ExportProgress(
+                    0,
+                    "Boundary-GOP rejected · encoding exactly",
+                    TimeSpan.Zero));
+                return await RenderSingleProcessAsync(
+                        plan,
+                        progress,
+                        cancellationToken,
+                        forceExactTranscode: true)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        return await RenderSingleProcessAsync(plan, progress, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<ExportResult> RenderSingleProcessAsync(
+        ExportPlan plan,
+        IProgress<ExportProgress>? progress,
+        CancellationToken cancellationToken,
+        bool forceExactTranscode = false)
+    {
         var temporaryPath = CreateTemporaryPath(plan.DestinationPath);
-        var concatManifestPath = plan.Strategy == ExportStrategy.ConcatStreamCopy
+        var concatManifestPath = !forceExactTranscode && plan.Strategy == ExportStrategy.ConcatStreamCopy
             ? temporaryPath + ".ffconcat"
             : null;
         if (concatManifestPath is not null)
@@ -41,14 +88,18 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         }
         using var process = new DiagnosticProcess
         {
-            StartInfo = CreateStartInfo(plan, temporaryPath, concatManifestPath),
+            StartInfo = CreateStartInfo(
+                forceExactTranscode
+                    ? FfmpegExportArguments.CreateExactTranscode(plan, temporaryPath)
+                    : FfmpegExportArguments.Create(plan, temporaryPath, concatManifestPath)),
         };
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
             StartProcess(process);
-            var activePhase = plan.Strategy is ExportStrategy.StreamCopy or ExportStrategy.ConcatStreamCopy
+            var activePhase = !forceExactTranscode &&
+                              (plan.Strategy is ExportStrategy.StreamCopy or ExportStrategy.ConcatStreamCopy)
                 ? "Copying"
                 : "Encoding";
             progress?.Report(new ExportProgress(0, activePhase, TimeSpan.Zero));
@@ -109,7 +160,11 @@ public sealed class FfmpegExportRenderer : IExportRenderer
 
             stopwatch.Stop();
             progress?.Report(new ExportProgress(1, "Complete", plan.ExpectedDurationToTimeSpan()));
-            return new ExportResult(plan.DestinationPath, fileInfo.Length, stopwatch.Elapsed);
+            return new ExportResult(
+                plan.DestinationPath,
+                fileInfo.Length,
+                stopwatch.Elapsed,
+                forceExactTranscode ? ExportStrategy.ExactTranscode : plan.Strategy);
         }
         catch
         {
@@ -215,15 +270,17 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         return Path.Combine(directory, $".{fileName}.{Guid.NewGuid():N}.partial");
     }
 
-    private ProcessStartInfo CreateStartInfo(
-        ExportPlan plan,
-        string temporaryPath,
-        string? concatManifestPath)
+    private ProcessStartInfo CreateStartInfo(IReadOnlyList<string> arguments) =>
+        CreateStartInfo(_executablePath, arguments);
+
+    private static ProcessStartInfo CreateStartInfo(
+        string executablePath,
+        IReadOnlyList<string> arguments)
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = _executablePath,
-            WorkingDirectory = Path.GetDirectoryName(_executablePath) ?? AppContext.BaseDirectory,
+            FileName = executablePath,
+            WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -232,7 +289,7 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             StandardErrorEncoding = Encoding.UTF8,
         };
 
-        foreach (var argument in FfmpegExportArguments.Create(plan, temporaryPath, concatManifestPath))
+        foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -290,6 +347,341 @@ public sealed class FfmpegExportRenderer : IExportRenderer
                     parser.ProcessingSpeed,
                     stopwatch.Elapsed)));
         }
+    }
+
+    private async Task<ExportResult> RenderBoundaryGopAsync(
+        ExportPlan plan,
+        IProgress<ExportProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (_ffprobeExecutablePath is null)
+        {
+            throw new ExportException(
+                ExportFailure.ToolUnavailable,
+                "Boundary-GOP validation requires ffprobe.");
+        }
+
+        var segment = plan.VideoSegments.Single();
+        var boundary = segment.BoundaryGopInfo ?? throw new ExportException(
+            ExportFailure.ToolFailed,
+            "Boundary-GOP planning data is missing.");
+        var temporaryPath = CreateTemporaryPath(plan.DestinationPath);
+        var workDirectory = temporaryPath + ".boundary-gop";
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            Directory.CreateDirectory(workDirectory);
+            var extension = plan.Preset.FileExtension;
+            var pieces = new List<string>(3);
+            if (boundary.HasLeadingBoundary)
+            {
+                progress?.Report(new ExportProgress(0.03, "Encoding first cut GOP", TimeSpan.Zero));
+                var leadingPath = Path.Combine(workDirectory, "leading" + extension);
+                var leadingRange = new MediaRange(
+                    segment.SourceRange.Start,
+                    boundary.CopiedStartPresentationTimestamp);
+                await RenderBoundaryPieceAsync(plan, segment, leadingRange, leadingPath, cancellationToken)
+                    .ConfigureAwait(false);
+                pieces.Add(leadingPath);
+            }
+
+            progress?.Report(new ExportProgress(0.28, "Copying interior GOPs", TimeSpan.Zero));
+            var interiorPath = Path.Combine(workDirectory, "interior" + extension);
+            await RunUtilityProcessAsync(
+                    _executablePath,
+                    FfmpegBoundaryGopArguments.CreateInteriorCopy(plan, interiorPath),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            pieces.Add(interiorPath);
+
+            if (boundary.HasTrailingBoundary)
+            {
+                progress?.Report(new ExportProgress(0.5, "Encoding last cut GOP", TimeSpan.Zero));
+                var trailingPath = Path.Combine(workDirectory, "trailing" + extension);
+                var trailingRange = new MediaRange(
+                    boundary.CopiedEndPresentationTimestamp,
+                    segment.SourceRange.End);
+                await RenderBoundaryPieceAsync(plan, segment, trailingRange, trailingPath, cancellationToken)
+                    .ConfigureAwait(false);
+                pieces.Add(trailingPath);
+            }
+
+            var manifestPath = Path.Combine(workDirectory, "pieces.ffconcat");
+            await File.WriteAllTextAsync(
+                    manifestPath,
+                    FfconcatManifest.CreatePaths(pieces),
+                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            progress?.Report(new ExportProgress(0.72, "Joining GOPs and audio", TimeSpan.Zero));
+            await RunUtilityProcessAsync(
+                    _executablePath,
+                    FfmpegBoundaryGopArguments.CreateFinalMux(plan, manifestPath, temporaryPath),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            progress?.Report(new ExportProgress(0.9, "Validating Boundary-GOP candidate", TimeSpan.Zero));
+            await ValidateBoundaryGopOutputAsync(plan, temporaryPath, cancellationToken)
+                .ConfigureAwait(false);
+            var fileInfo = new FileInfo(temporaryPath);
+            if (!fileInfo.Exists || fileInfo.Length == 0)
+            {
+                throw new ExportException(
+                    ExportFailure.EmptyOutput,
+                    "Boundary-GOP rendering produced an empty candidate.");
+            }
+
+            progress?.Report(new ExportProgress(0.99, "Finalizing", plan.ExpectedDurationToTimeSpan()));
+            FinalizeOutput(temporaryPath, plan);
+            stopwatch.Stop();
+            progress?.Report(new ExportProgress(1, "Complete · Boundary-GOP validated", plan.ExpectedDurationToTimeSpan()));
+            return new ExportResult(
+                plan.DestinationPath,
+                fileInfo.Length,
+                stopwatch.Elapsed,
+                ExportStrategy.BoundaryGop);
+        }
+        catch (OperationCanceledException)
+        {
+            TryDelete(temporaryPath);
+            throw;
+        }
+        catch (ExportException)
+        {
+            TryDelete(temporaryPath);
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
+        {
+            TryDelete(temporaryPath);
+            throw new ExportException(
+                ExportFailure.ToolFailed,
+                $"Boundary-GOP candidate was rejected: {exception.Message}",
+                exception);
+        }
+        finally
+        {
+            TryDeleteDirectory(workDirectory);
+        }
+    }
+
+    private async Task RenderBoundaryPieceAsync(
+        ExportPlan plan,
+        ExportVideoSegmentPlan sourceSegment,
+        MediaRange range,
+        string outputPath,
+        CancellationToken cancellationToken)
+    {
+        var segment = new ExportVideoSegmentPlan(
+            sourceSegment.SourcePath,
+            sourceSegment.VideoStreamIndex,
+            range,
+            sourceSegment.CanvasSize,
+            sourceSegment.CanvasCrop,
+            sourceSegment.CanvasTransform,
+            [],
+            MediaTime.Zero,
+            videoColorInfo: sourceSegment.VideoColorInfo,
+            sourceSize: sourceSegment.SourceSize);
+        var piecePlan = new ExportPlan(
+            [segment],
+            plan.OutputSize,
+            outputPath,
+            plan.Preset,
+            sequenceDuration: range.Duration,
+            encodingSettings: plan.EncodingSettings);
+        await RunUtilityProcessAsync(
+                _executablePath,
+                FfmpegExportArguments.CreateExactTranscode(piecePlan, outputPath),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task ValidateBoundaryGopOutputAsync(
+        ExportPlan plan,
+        string candidatePath,
+        CancellationToken cancellationToken)
+    {
+        var segment = plan.VideoSegments.Single();
+        var boundary = segment.BoundaryGopInfo!;
+        var json = await RunUtilityProcessAsync(
+                _ffprobeExecutablePath!,
+                [
+                    "-v", "error",
+                    "-select_streams", "v:0",
+                    "-count_packets",
+                    "-show_entries", "stream=codec_name,width,height,avg_frame_rate,nb_read_packets,duration:format=duration",
+                    "-of", "json",
+                    candidatePath,
+                ],
+                cancellationToken)
+            .ConfigureAwait(false);
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("streams", out var streams) ||
+            streams.GetArrayLength() != 1)
+        {
+            throw new InvalidDataException("The candidate does not contain exactly one video stream.");
+        }
+
+        var stream = streams[0];
+        var codec = GetRequiredString(stream, "codec_name");
+        var width = GetRequiredInt32(stream, "width");
+        var height = GetRequiredInt32(stream, "height");
+        var packetCount = GetRequiredInt64(stream, "nb_read_packets");
+        var expectedCodec = boundary.Video.CodecName;
+        var expectedPacketCount = CalculateExpectedFrameCount(plan.ExpectedDuration, boundary.Video.AverageFrameRate);
+        if (!string.Equals(codec, expectedCodec, StringComparison.OrdinalIgnoreCase) ||
+            width != plan.OutputSize.Width ||
+            height != plan.OutputSize.Height ||
+            packetCount != expectedPacketCount)
+        {
+            throw new InvalidDataException(
+                $"Expected {expectedCodec} {plan.OutputSize.Width}x{plan.OutputSize.Height} with " +
+                $"{expectedPacketCount} video packets, but received {codec} {width}x{height} with {packetCount}.");
+        }
+
+        var duration = TryGetSeconds(stream, "duration") ??
+                       (document.RootElement.TryGetProperty("format", out var format)
+                           ? TryGetSeconds(format, "duration")
+                           : null);
+        var frameDuration = 1d / boundary.Video.AverageFrameRate.FramesPerSecond;
+        if (duration is null ||
+            Math.Abs(duration.Value - plan.ExpectedDuration.TotalSeconds) > frameDuration + 0.005)
+        {
+            throw new InvalidDataException(
+                $"Expected about {plan.ExpectedDuration.TotalSeconds:0.###} seconds, but the candidate reports " +
+                $"{duration?.ToString("0.###", CultureInfo.InvariantCulture) ?? "no duration"}.");
+        }
+
+        var splicePositions = new List<MediaTime>(2);
+        var firstSplice = boundary.CopiedStartPresentationTimestamp - segment.SourceRange.Start;
+        if (boundary.HasLeadingBoundary)
+        {
+            splicePositions.Add(firstSplice);
+        }
+        if (boundary.HasTrailingBoundary)
+        {
+            splicePositions.Add(
+                firstSplice + boundary.CopiedSourceRange.Duration);
+        }
+        foreach (var splice in splicePositions.Distinct())
+        {
+            var windowStart = Math.Max(0, splice.TotalSeconds - 0.5);
+            var windowDuration = Math.Min(
+                1,
+                plan.ExpectedDuration.TotalSeconds - windowStart);
+            await RunUtilityProcessAsync(
+                    _executablePath,
+                    [
+                        "-hide_banner", "-nostdin", "-v", "error", "-xerror",
+                        "-ss", windowStart.ToString("0.#########", CultureInfo.InvariantCulture),
+                        "-t", windowDuration.ToString("0.#########", CultureInfo.InvariantCulture),
+                        "-i", candidatePath,
+                        "-map", "0:v:0", "-an", "-f", "null", "-",
+                    ],
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task<string> RunUtilityProcessAsync(
+        string executablePath,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        using var process = new DiagnosticProcess
+        {
+            StartInfo = CreateStartInfo(executablePath, arguments),
+        };
+        StartProcess(process);
+        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var diagnosticTask = ReadDiagnosticTailAsync(process.StandardError);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            await WaitForExitWithoutCancellationAsync(process).ConfigureAwait(false);
+            await IgnoreFailureAsync(outputTask).ConfigureAwait(false);
+            await IgnoreFailureAsync(diagnosticTask).ConfigureAwait(false);
+            throw;
+        }
+
+        var output = await outputTask.ConfigureAwait(false);
+        var diagnostics = await diagnosticTask.ConfigureAwait(false);
+        if (process.ExitCode != 0)
+        {
+            throw new ExportException(
+                ExportFailure.ToolFailed,
+                BuildFailureMessage(process.ExitCode, diagnostics));
+        }
+
+        return output;
+    }
+
+    private static long CalculateExpectedFrameCount(MediaTime duration, FrameRate frameRate)
+    {
+        var numerator = (Int128)duration.Numerator * frameRate.Numerator;
+        var denominator = (Int128)duration.Denominator * frameRate.Denominator;
+        if (numerator % denominator != 0)
+        {
+            throw new InvalidDataException("The Boundary-GOP duration is not aligned to complete CFR frames.");
+        }
+
+        return checked((long)(numerator / denominator));
+    }
+
+    private static string GetRequiredString(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            throw new InvalidDataException($"ffprobe did not report {propertyName}.");
+        }
+
+        return property.GetString()!;
+    }
+
+    private static int GetRequiredInt32(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) || !property.TryGetInt32(out var value))
+        {
+            throw new InvalidDataException($"ffprobe did not report {propertyName}.");
+        }
+
+        return value;
+    }
+
+    private static long GetRequiredInt64(JsonElement element, string propertyName)
+    {
+        var text = GetRequiredString(element, propertyName);
+        if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new InvalidDataException($"ffprobe reported an invalid {propertyName}.");
+        }
+
+        return value;
+    }
+
+    private static double? TryGetSeconds(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String ||
+            !double.TryParse(
+                property.GetString(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var value) ||
+            !double.IsFinite(value))
+        {
+            return null;
+        }
+
+        return value;
     }
 
     private static async Task WriteConcatManifestAsync(
@@ -432,6 +824,25 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         catch (UnauthorizedAccessException)
         {
             // A stale private partial is safer than touching an existing destination.
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // Boundary-GOP scratch data is private and may be removed on a later cleanup pass.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Boundary-GOP scratch data is private and may be removed on a later cleanup pass.
         }
     }
 }

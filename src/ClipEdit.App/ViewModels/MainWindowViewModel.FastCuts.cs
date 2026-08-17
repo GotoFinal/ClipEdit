@@ -379,6 +379,72 @@ public sealed partial class MainWindowViewModel
                streamCopyInfo.EndDecodeTimestamp is { } endDts && endDts > range.Start;
     }
 
+    private BoundaryGopRenderInfo? CreateBoundaryGopRenderInfo(
+        SequenceExportSlice slice,
+        ExportPreset preset)
+    {
+        if (!EnableExperimentalBoundaryGopRendering ||
+            slice.Clip.Source is not { IsKeyframeIndexReady: true } source ||
+            source.Media?.Probe.VideoStreams.FirstOrDefault() is not { } video ||
+            IsHdrVideo(video) ||
+            !string.Equals(video.PixelFormat, "yuv420p", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(video.FieldOrder, "progressive", StringComparison.OrdinalIgnoreCase) ||
+            video.NominalFrameRate is not { IsZero: false } nominalFrameRate ||
+            video.AverageFrameRate is not { IsZero: false } averageFrameRate ||
+            nominalFrameRate != averageFrameRate ||
+            video.TimeBase is not { } timeBase ||
+            !IsFrameAligned(slice.SourceRange.Start, averageFrameRate) ||
+            !IsFrameAligned(slice.SourceRange.End, averageFrameRate) ||
+            !SourceVideoCodecMatches(video.CodecName, preset.VideoCodec) ||
+            !IsBoundaryGopContainerSupported(preset, video.CodecName))
+        {
+            return null;
+        }
+
+        var usablePoints = source.VideoKeyframePoints
+            .Where(static point => point.DecodeTimestamp is not null)
+            .ToArray();
+        var copiedStart = usablePoints.FirstOrDefault(point =>
+            point.PresentationTimestamp >= slice.SourceRange.Start);
+        var copiedEnd = usablePoints.LastOrDefault(point =>
+            point.PresentationTimestamp <= slice.SourceRange.End);
+        if (copiedStart?.DecodeTimestamp is not { } copiedStartDts ||
+            copiedEnd?.DecodeTimestamp is not { } copiedEndDts ||
+            copiedStart.PresentationTimestamp >= copiedEnd.PresentationTimestamp ||
+            copiedEnd.PresentationTimestamp - copiedStart.PresentationTimestamp < new MediaTime(1, 1))
+        {
+            return null;
+        }
+
+        return new BoundaryGopRenderInfo(
+            new BoundaryGopVideoInfo(
+                video.CodecName,
+                video.EncodedSize,
+                timeBase,
+                averageFrameRate,
+                video.PixelFormat!),
+            slice.SourceRange,
+            copiedStart.PresentationTimestamp,
+            copiedStartDts,
+            copiedEnd.PresentationTimestamp,
+            copiedEndDts);
+    }
+
+    private static bool IsBoundaryGopContainerSupported(ExportPreset preset, string codecName) =>
+        codecName.ToLowerInvariant() switch
+        {
+            "h264" => preset.Container is ExportContainer.Mp4 or ExportContainer.Matroska,
+            "vp9" => preset.Container is ExportContainer.WebM or ExportContainer.Matroska,
+            _ => false,
+        };
+
+    private static bool IsFrameAligned(MediaTime timestamp, FrameRate frameRate)
+    {
+        var scaledNumerator = (Int128)timestamp.Numerator * frameRate.Numerator;
+        var scaledDenominator = (Int128)timestamp.Denominator * frameRate.Denominator;
+        return scaledNumerator % scaledDenominator == 0;
+    }
+
     private static VideoStreamCopySignature? CreateVideoStreamCopySignature(VideoStreamInfo video)
     {
         if (string.IsNullOrWhiteSpace(video.CodecTag) ||

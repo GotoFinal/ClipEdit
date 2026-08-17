@@ -138,6 +138,58 @@ public sealed class PacketCopyExportTests
     }
 
     [Fact]
+    public async Task Experimental_boundary_gop_uses_complete_interior_gops_for_an_exact_trim()
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(
+            new CompatibleCopyProbe(includePacketTimestamps: true),
+            exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([TestPath("source.mp4")]);
+        viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
+        viewModel.EnableExperimentalBoundaryGopRendering = true;
+        viewModel.SequenceSelectionStartSeconds = 6;
+        viewModel.SequenceSelectionEndSeconds = 29;
+
+        Assert.True(viewModel.IsBoundaryGopExport);
+        Assert.False(viewModel.IsFullReencodeExport);
+        Assert.Equal("Experimental Boundary-GOP", viewModel.ExportMethodTitle);
+        Assert.Contains("falls back to a full exact encode", viewModel.ExportMethodDetails);
+
+        var result = await viewModel.ExportAsync(
+            TestPath("boundary-gop.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(ExportStrategy.BoundaryGop, renderer.Plan!.Strategy);
+        var boundary = Assert.Single(renderer.Plan.VideoSegments).BoundaryGopInfo;
+        Assert.NotNull(boundary);
+        Assert.Equal(new MediaTime(10, 1), boundary.CopiedStartPresentationTimestamp);
+        Assert.Equal(new MediaTime(20, 1), boundary.CopiedEndPresentationTimestamp);
+    }
+
+    [Fact]
+    public async Task Boundary_gop_fallback_is_reported_after_a_successful_exact_export()
+    {
+        var renderer = new RecordingExportRenderer(ExportStrategy.ExactTranscode);
+        using var viewModel = new MainWindowViewModel(
+            new CompatibleCopyProbe(includePacketTimestamps: true),
+            exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([TestPath("source.mp4")]);
+        viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
+        viewModel.EnableExperimentalBoundaryGopRendering = true;
+        viewModel.SequenceSelectionStartSeconds = 6;
+        viewModel.SequenceSelectionEndSeconds = 29;
+
+        var result = await viewModel.ExportAsync(
+            TestPath("boundary-fallback.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Contains("exact fallback", viewModel.ExportPhaseText, StringComparison.Ordinal);
+        Assert.Contains("validation failed", viewModel.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Webm_vp9_opus_source_uses_packet_copy()
     {
         using var viewModel = new MainWindowViewModel(
@@ -273,13 +325,15 @@ public sealed class PacketCopyExportTests
                     [
                         new KeyframePoint(MediaTime.Zero, new MediaTime(-1, 10)),
                         new KeyframePoint(new MediaTime(5, 1), new MediaTime(49, 10)),
+                        new KeyframePoint(new MediaTime(10, 1), new MediaTime(99, 10)),
+                        new KeyframePoint(new MediaTime(20, 1), new MediaTime(199, 10)),
                         new KeyframePoint(new MediaTime(30, 1), new MediaTime(299, 10)),
                     ])
                 : new KeyframeIndex(videoStreamIndex, ImmutableArray<MediaTime>.Empty));
         }
     }
 
-    private sealed class RecordingExportRenderer : IExportRenderer
+    private sealed class RecordingExportRenderer(ExportStrategy? actualStrategy = null) : IExportRenderer
     {
         public ExportPlan? Plan { get; private set; }
 
@@ -293,7 +347,8 @@ public sealed class PacketCopyExportTests
             return Task.FromResult(new ExportResult(
                 plan.DestinationPath,
                 1_024,
-                TimeSpan.FromMilliseconds(10)));
+                TimeSpan.FromMilliseconds(10),
+                actualStrategy));
         }
     }
 }

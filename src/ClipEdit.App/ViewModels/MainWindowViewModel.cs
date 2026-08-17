@@ -357,6 +357,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var blockers = PacketCopyBlocker.None;
         var reasons = new List<string>();
         var forceVideoStreamCopy = false;
+        var forceBoundaryGop = false;
 
         void Block(PacketCopyBlocker blocker, string reason)
         {
@@ -368,9 +369,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (blockers == PacketCopyBlocker.None)
             {
-                return forceVideoStreamCopy
-                    ? PacketCopyDecision.CopyVideo(blockers, reasons)
-                    : PacketCopyDecision.Copy;
+                return forceBoundaryGop
+                    ? PacketCopyDecision.BoundaryGop(blockers, reasons)
+                    : forceVideoStreamCopy
+                        ? PacketCopyDecision.CopyVideo(blockers, reasons)
+                        : PacketCopyDecision.Copy;
             }
 
             const PacketCopyBlocker audioOnlyBlockers =
@@ -379,9 +382,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 PacketCopyBlocker.AudioGain |
                 PacketCopyBlocker.AudioEdit |
                 PacketCopyBlocker.AudioCodec;
-            return (blockers & ~audioOnlyBlockers) == PacketCopyBlocker.None
-                ? PacketCopyDecision.CopyVideo(blockers, reasons)
-                : PacketCopyDecision.Transcode(blockers, reasons);
+            if ((blockers & ~audioOnlyBlockers) != PacketCopyBlocker.None)
+            {
+                return PacketCopyDecision.Transcode(blockers, reasons);
+            }
+
+            return forceBoundaryGop
+                ? PacketCopyDecision.BoundaryGop(blockers, reasons)
+                : PacketCopyDecision.CopyVideo(blockers, reasons);
         }
 
         if (ExportQualityMode != ClipEdit.Media.Export.ExportQualityMode.MatchSource)
@@ -444,9 +452,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             forceVideoStreamCopy = true;
             reasons.Add("Video boundaries are indexed keyframes; audio is rebuilt for exact timing.");
         }
+        else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration) &&
+                 CreateBoundaryGopRenderInfo(slice, preset) is not null)
+        {
+            forceBoundaryGop = true;
+            reasons.Add("Only the cut GOPs will be encoded; untouched middle GOPs will be copied and the candidate validated.");
+        }
         else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
         {
-            Block(PacketCopyBlocker.SourceRange, "Trimmed clips still require encoding; Fast cuts can place keyframe boundaries, but trimmed packet copy remains experimental.");
+            Block(
+                PacketCopyBlocker.SourceRange,
+                EnableExperimentalBoundaryGopRendering
+                    ? "This trim is not eligible for Boundary-GOP rendering; use CFR 8-bit H.264/VP9 with at least one second of complete interior GOPs."
+                    : "Trimmed clips still require encoding unless both edges are keyframes. Experimental Boundary-GOP rendering can be enabled in global settings.");
         }
         var sliceTimelineStart = clip.Model.SourceTimeToTimeline(slice.SourceRange.Start);
         var sliceTimelineDuration = clip.Model.SourceDurationToTimeline(slice.SourceRange.Duration);
@@ -1103,6 +1121,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 ExportStrategy.StreamCopy => "packet copy · no re-encode",
                 ExportStrategy.ConcatStreamCopy => "packet-copy join · no re-encode",
                 ExportStrategy.VideoStreamCopy => "video copy · audio re-encode",
+                ExportStrategy.BoundaryGop => "experimental Boundary-GOP · validated",
                 _ => "exact sequence re-encode",
             };
             return $"{preset.DisplayName} · {strategy} · " +
@@ -1531,7 +1550,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                                       (slice.Clip.Source.Edit?.SourceDuration ??
                                        slice.Clip.Source.Media!.Probe.Duration),
                     sourceSize: video.OrientedSize,
-                    streamCopyInfo: CreateSegmentStreamCopyInfo(slice, exportPreset));
+                    streamCopyInfo: CreateSegmentStreamCopyInfo(slice, exportPreset),
+                    boundaryGopInfo: exportStrategy == ExportStrategy.BoundaryGop
+                        ? CreateBoundaryGopRenderInfo(slice, exportPreset)
+                        : null);
             }).ToImmutableArray();
             var externalAudio = AudioTracks
                 .Where(track =>
@@ -1573,8 +1595,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
             var result = await _exportRenderer.RenderAsync(plan, progress, request.Token);
             ExportProgress = 1;
-            ExportPhaseText = "Complete · 100%";
-            StatusText = $"Exported {Path.GetFileName(result.DestinationPath)}";
+            var usedBoundaryFallback = exportStrategy == ExportStrategy.BoundaryGop &&
+                                       result.ActualStrategy == ExportStrategy.ExactTranscode;
+            ExportPhaseText = usedBoundaryFallback
+                ? "Complete · exact fallback · 100%"
+                : "Complete · 100%";
+            StatusText = usedBoundaryFallback
+                ? $"Exported {Path.GetFileName(result.DestinationPath)} using exact fallback after Boundary-GOP validation failed"
+                : $"Exported {Path.GetFileName(result.DestinationPath)}";
             return result;
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -3993,6 +4021,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ExportSettingsSummary));
         OnPropertyChanged(nameof(IsPacketCopyExport));
         OnPropertyChanged(nameof(IsVideoStreamCopyExport));
+        OnPropertyChanged(nameof(IsBoundaryGopExport));
         OnPropertyChanged(nameof(IsFullReencodeExport));
         OnPropertyChanged(nameof(ExportMethodTitle));
         OnPropertyChanged(nameof(ExportMethodDetails));
@@ -5100,6 +5129,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             PacketCopyBlocker blockers,
             IEnumerable<string> reasons) => new(
                 ExportStrategy.VideoStreamCopy,
+                blockers,
+                reasons.ToImmutableArray());
+
+        public static PacketCopyDecision BoundaryGop(
+            PacketCopyBlocker blockers,
+            IEnumerable<string> reasons) => new(
+                ExportStrategy.BoundaryGop,
                 blockers,
                 reasons.ToImmutableArray());
 

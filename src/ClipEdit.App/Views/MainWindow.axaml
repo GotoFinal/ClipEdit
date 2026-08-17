@@ -741,6 +741,12 @@
                             <TextBlock
                                 FontSize="11"
                                 FontWeight="SemiBold"
+                                Foreground="#BBAEFF"
+                                IsVisible="{Binding IsBoundaryGopExport}"
+                                Text="{Binding ExportMethodTitle}" />
+                            <TextBlock
+                                FontSize="11"
+                                FontWeight="SemiBold"
                                 Foreground="#F0B66A"
                                 IsVisible="{Binding IsFullReencodeExport}"
                                 Text="{Binding ExportMethodTitle}" />

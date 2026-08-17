@@ -28,7 +28,11 @@ public sealed record ExportProgress(
             : null;
 }
 
-public sealed record ExportResult(string DestinationPath, long FileSizeBytes, TimeSpan Elapsed);
+public sealed record ExportResult(
+    string DestinationPath,
+    long FileSizeBytes,
+    TimeSpan Elapsed,
+    ExportStrategy? ActualStrategy = null);
 
 public enum ExportFailure
 {

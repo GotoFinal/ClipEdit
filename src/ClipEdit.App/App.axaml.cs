@@ -67,7 +67,7 @@ public sealed partial class App : Avalonia.Application
                 : new FfmpegWaveformRenderer(ffmpegPath);
             IExportRenderer? exportRenderer = ffmpegPath is null
                 ? null
-                : new FfmpegExportRenderer(ffmpegPath);
+                : new FfmpegExportRenderer(ffmpegPath, ffprobePath);
             var recoveryDirectory = Path.Combine(
                 applicationDataDirectory,
                 "Recovery");

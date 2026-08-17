@@ -555,4 +555,147 @@ public sealed class FfmpegExportRendererLocalTests
             File.Delete(destinationPath);
         }
     }
+
+    [Fact]
+    [Trait("Category", "LocalMedia")]
+    public async Task Renderer_validates_boundary_gop_h264_or_vp9_splices_before_finalizing()
+    {
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_BOUNDARY_GOP_MEDIA") ??
+                         Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
+        var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+        var ffprobePath = FfprobeExecutableLocator.Find();
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            !File.Exists(sourcePath) ||
+            ffmpegPath is null ||
+            ffprobePath is null)
+        {
+            return;
+        }
+
+        var mediaProbe = new FfprobeMediaProbe(ffprobePath);
+        var probe = await mediaProbe.ProbeAsync(sourcePath);
+        var video = probe.VideoStreams.FirstOrDefault();
+        var sourceDuration = video?.Duration ?? probe.Duration;
+        if (video is null ||
+            sourceDuration is null ||
+            video.CodecName is not ("h264" or "vp9") ||
+            !string.Equals(video.PixelFormat, "yuv420p", StringComparison.OrdinalIgnoreCase) ||
+            video.RotationDegrees != 0 ||
+            video.TimeBase is not { } timeBase ||
+            video.AverageFrameRate is not { IsZero: false } frameRate ||
+            video.NominalFrameRate != frameRate ||
+            string.IsNullOrWhiteSpace(video.CodecTag) ||
+            string.IsNullOrWhiteSpace(video.CodecExtradataHash))
+        {
+            return;
+        }
+
+        var keyframes = await mediaProbe.ProbeKeyframesAsync(
+            sourcePath,
+            video.Index,
+            video.StartTime ?? probe.StartTime,
+            sourceDuration);
+        var boundaries = keyframes.Points
+            .Where(static point => point.DecodeTimestamp is not null)
+            .Skip(1)
+            .Take(3)
+            .ToArray();
+        if (boundaries.Length < 3 || frameRate.Numerator > int.MaxValue)
+        {
+            return;
+        }
+
+        var frameDuration = new MediaTime(frameRate.Denominator, (int)frameRate.Numerator);
+        var range = new MediaRange(
+            boundaries[0].PresentationTimestamp - frameDuration,
+            boundaries[2].PresentationTimestamp + frameDuration);
+        if (range.Start < MediaTime.Zero || range.End > sourceDuration.Value)
+        {
+            return;
+        }
+
+        var signature = new VideoStreamCopySignature(
+            video.CodecName,
+            video.CodecTag,
+            video.CodecExtradataHash,
+            video.EncodedSize,
+            timeBase,
+            frameRate,
+            video.PixelFormat!,
+            video.Profile,
+            video.CodecLevel,
+            video.SampleAspectRatio,
+            video.ColorRange,
+            video.ColorSpace,
+            video.ColorTransfer,
+            video.ColorPrimaries,
+            video.FieldOrder);
+        var boundary = new BoundaryGopRenderInfo(
+            signature,
+            range,
+            boundaries[0].PresentationTimestamp,
+            boundaries[0].DecodeTimestamp!.Value,
+            boundaries[2].PresentationTimestamp,
+            boundaries[2].DecodeTimestamp!.Value);
+        var audioPlans = probe.AudioStreams.FirstOrDefault() is { } audio
+            ? ImmutableArray.Create(new ExportAudioTrackPlan(
+                audio.Index,
+                0,
+                new SourceEdit(sourceDuration.Value)))
+            : ImmutableArray<ExportAudioTrackPlan>.Empty;
+        var destinationPath = Path.Combine(
+            Path.GetTempPath(),
+            $"clipedit-boundary-gop-{Guid.NewGuid():N}{(video.CodecName == "vp9" ? ".webm" : ".mp4")}");
+        var segment = new ExportVideoSegmentPlan(
+            sourcePath,
+            video.Index,
+            range,
+            video.EncodedSize,
+            CropRegion.FullFrame(video.EncodedSize),
+            ClipCanvasTransform.Identity,
+            audioPlans,
+            range.Start,
+            sourceSize: video.EncodedSize,
+            boundaryGopInfo: boundary);
+        var plan = new ExportPlan(
+            [segment],
+            video.EncodedSize,
+            destinationPath,
+            new ExportPreset(
+                "local-boundary-gop",
+                "Local Boundary-GOP",
+                video.CodecName == "vp9" ? ".webm" : ".mp4",
+                video.CodecName == "vp9" ? ExportContainer.WebM : ExportContainer.Mp4,
+                video.CodecName == "vp9" ? VideoCodecFamily.Vp9 : VideoCodecFamily.H264,
+                audioPlans.IsEmpty
+                    ? AudioCodecFamily.None
+                    : video.CodecName == "vp9" ? AudioCodecFamily.Opus : AudioCodecFamily.Aac,
+                requiresEvenDimensions: true,
+                frameRate: frameRate,
+                videoBitRateBitsPerSecond: video.BitRateBitsPerSecond),
+            sequenceTimelineStart: range.Start,
+            sequenceDuration: range.Duration,
+            strategy: ExportStrategy.BoundaryGop);
+        var phases = new List<string>();
+        var progress = new InlineProgress(update => phases.Add(update.Phase));
+
+        try
+        {
+            await new FfmpegExportRenderer(ffmpegPath, ffprobePath).RenderAsync(plan, progress);
+            var rendered = await mediaProbe.ProbeAsync(destinationPath);
+
+            Assert.Equal(video.CodecName, Assert.Single(rendered.VideoStreams).CodecName, ignoreCase: true);
+            Assert.Contains(phases, phase => phase.Contains("Boundary-GOP validated", StringComparison.Ordinal));
+            Assert.DoesNotContain(phases, phase => phase.Contains("encoding exactly", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(destinationPath);
+        }
+    }
+
+    private sealed class InlineProgress(Action<ExportProgress> report) : IProgress<ExportProgress>
+    {
+        public void Report(ExportProgress value) => report(value);
+    }
 }
