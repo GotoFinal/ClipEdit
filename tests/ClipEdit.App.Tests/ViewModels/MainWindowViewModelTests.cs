@@ -1080,6 +1080,19 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("custom-export-clip.mkv", viewModel.GetSuggestedExportFileName());
     }
 
+    [Theory]
+    [InlineData(ExportContainer.Mp4)]
+    [InlineData(ExportContainer.WebM)]
+    [InlineData(ExportContainer.Matroska)]
+    public void Custom_export_offers_av1_in_video_containers(ExportContainer container)
+    {
+        using var viewModel = new MainWindowViewModel(new StubProbe());
+
+        viewModel.CustomExportContainer = ExportContainerChoice.FromValue(container);
+
+        Assert.Contains(VideoCodecChoice.Av1, viewModel.CustomVideoCodecChoices);
+    }
+
     [Fact]
     public void Named_custom_export_presets_can_be_saved_loaded_and_deleted()
     {

@@ -43,16 +43,24 @@ public static class MatchInputExportPresetResolver
         var containerMatched = sourceContainer is not null && container == sourceContainer;
         if (container == ExportContainer.WebM)
         {
-            videoMatched &= videoCodec == VideoCodecFamily.Vp9;
+            var supportedVideo = videoCodec is VideoCodecFamily.Vp9 or VideoCodecFamily.Av1;
+            videoMatched &= supportedVideo;
             audioMatched &= audio is null || audioCodec == AudioCodecFamily.Opus;
-            videoCodec = VideoCodecFamily.Vp9;
+            if (!supportedVideo)
+            {
+                videoCodec = VideoCodecFamily.Vp9;
+            }
             audioCodec = AudioCodecFamily.Opus;
         }
         else if (container == ExportContainer.Mp4)
         {
-            videoMatched &= videoCodec == VideoCodecFamily.H264;
+            var supportedVideo = videoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Av1;
+            videoMatched &= supportedVideo;
             audioMatched &= audio is null || audioCodec == AudioCodecFamily.Aac;
-            videoCodec = VideoCodecFamily.H264;
+            if (!supportedVideo)
+            {
+                videoCodec = VideoCodecFamily.H264;
+            }
             audioCodec = AudioCodecFamily.Aac;
         }
 
@@ -146,6 +154,11 @@ public static class MatchInputExportPresetResolver
             codec = VideoCodecFamily.Vp9;
             return true;
         }
+        if (string.Equals(codecName, "av1", StringComparison.OrdinalIgnoreCase))
+        {
+            codec = VideoCodecFamily.Av1;
+            return true;
+        }
 
         codec = default;
         return false;
@@ -200,17 +213,19 @@ public static class MatchInputExportPresetResolver
             return ExportContainer.Matroska;
         }
         if (sourceContainer == ExportContainer.Mp4 &&
-            videoCodec == VideoCodecFamily.H264 && audioCodec == AudioCodecFamily.Aac)
+            videoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Av1 &&
+            audioCodec == AudioCodecFamily.Aac)
         {
             return ExportContainer.Mp4;
         }
         if (sourceContainer == ExportContainer.WebM &&
-            videoCodec == VideoCodecFamily.Vp9 && audioCodec == AudioCodecFamily.Opus)
+            videoCodec is VideoCodecFamily.Vp9 or VideoCodecFamily.Av1 &&
+            audioCodec == AudioCodecFamily.Opus)
         {
             return ExportContainer.WebM;
         }
 
-        return videoCodec == VideoCodecFamily.Vp9
+        return videoCodec is VideoCodecFamily.Vp9 or VideoCodecFamily.Av1
             ? ExportContainer.WebM
             : ExportContainer.Mp4;
     }
@@ -254,6 +269,7 @@ public static class MatchInputExportPresetResolver
     {
         VideoCodecFamily.H264 => "H.264",
         VideoCodecFamily.Vp9 => "VP9",
+        VideoCodecFamily.Av1 => "AV1",
         _ => throw new ArgumentOutOfRangeException(nameof(codec)),
     };
 

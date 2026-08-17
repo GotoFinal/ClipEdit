@@ -14,6 +14,7 @@ public enum VideoCodecFamily
 {
     H264,
     Vp9,
+    Av1,
     Gif,
 }
 

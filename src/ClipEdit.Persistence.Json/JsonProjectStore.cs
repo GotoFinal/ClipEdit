@@ -254,13 +254,13 @@ public sealed class JsonProjectStore : IProjectStore
         settings.CustomContainer switch
         {
             ExportContainer.Mp4 =>
-                settings.CustomVideoCodec == VideoCodecFamily.H264 &&
+                settings.CustomVideoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Av1 &&
                 settings.CustomAudioCodec is AudioCodecFamily.Aac or AudioCodecFamily.None,
             ExportContainer.WebM =>
-                settings.CustomVideoCodec == VideoCodecFamily.Vp9 &&
+                settings.CustomVideoCodec is VideoCodecFamily.Vp9 or VideoCodecFamily.Av1 &&
                 settings.CustomAudioCodec is AudioCodecFamily.Opus or AudioCodecFamily.None,
             ExportContainer.Matroska =>
-                settings.CustomVideoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Vp9 &&
+                settings.CustomVideoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Vp9 or VideoCodecFamily.Av1 &&
                 settings.CustomAudioCodec is AudioCodecFamily.Aac or AudioCodecFamily.Opus or AudioCodecFamily.None,
             ExportContainer.Gif =>
                 settings.CustomVideoCodec == VideoCodecFamily.Gif &&

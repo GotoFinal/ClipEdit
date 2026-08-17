@@ -558,6 +558,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         VideoCodecFamily.H264 => string.Equals(codecName, "h264", StringComparison.OrdinalIgnoreCase),
         VideoCodecFamily.Vp9 => string.Equals(codecName, "vp9", StringComparison.OrdinalIgnoreCase),
+        VideoCodecFamily.Av1 => string.Equals(codecName, "av1", StringComparison.OrdinalIgnoreCase),
         _ => false,
     };
 

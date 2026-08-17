@@ -71,6 +71,27 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(AudioCodecFamily.Opus, normalized.CustomAudioCodec);
     }
 
+    [Theory]
+    [InlineData(ExportContainer.Mp4, AudioCodecFamily.Aac)]
+    [InlineData(ExportContainer.WebM, AudioCodecFamily.Opus)]
+    [InlineData(ExportContainer.Matroska, AudioCodecFamily.None)]
+    public void Av1_is_preserved_for_supported_custom_containers(
+        ExportContainer container,
+        AudioCodecFamily audioCodec)
+    {
+        var settings = ExportPreferences.Default with
+        {
+            CustomContainer = container,
+            CustomVideoCodec = VideoCodecFamily.Av1,
+            CustomAudioCodec = audioCodec,
+        };
+
+        var normalized = settings.Normalize();
+
+        Assert.Equal(VideoCodecFamily.Av1, normalized.CustomVideoCodec);
+        Assert.Equal(audioCodec, normalized.CustomAudioCodec);
+    }
+
     [Fact]
     public void View_model_applies_the_last_used_export_configuration()
     {

@@ -912,6 +912,34 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Equal(expectedCrf, ValueAfter(arguments, "-crf"));
     }
 
+    [Fact]
+    public void Av1_uses_libaom_constant_quality_and_parallel_encoding_options()
+    {
+        var av1 = new ExportPreset(
+            "av1-webm",
+            "AV1 WebM",
+            ".webm",
+            ExportContainer.WebM,
+            VideoCodecFamily.Av1,
+            AudioCodecFamily.Opus,
+            requiresEvenDimensions: true);
+        var plan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.webm"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
+            av1);
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal("libaom-av1", ValueAfter(arguments, "-c:v"));
+        Assert.Equal("30", ValueAfter(arguments, "-crf"));
+        Assert.Equal("0", ValueAfter(arguments, "-b:v"));
+        Assert.Equal("6", ValueAfter(arguments, "-cpu-used"));
+        Assert.Equal("1", ValueAfter(arguments, "-row-mt"));
+        Assert.Equal("webm", ValueAfter(arguments, "-f"));
+    }
+
     private static string TestPath(string windowsPath)
     {
         if (OperatingSystem.IsWindows())

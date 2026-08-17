@@ -924,6 +924,10 @@ internal static class FfmpegExportArguments
             [
                 "-c:v", "libvpx-vp9", "-crf", MapQualityAroundDefault(quality, 50, 30, 20).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-row-mt", "1", "-pix_fmt", videoPixelFormat,
             ],
+            VideoCodecFamily.Av1 =>
+            [
+                "-c:v", "libaom-av1", "-crf", MapQualityAroundDefault(quality, 55, 30, 18).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-cpu-used", "6", "-row-mt", "1", "-pix_fmt", videoPixelFormat,
+            ],
             VideoCodecFamily.Gif => ["-c:v", "gif", "-loop", "0"],
             _ => throw new ExportPlanException($"Unsupported video codec family: {plan.Preset.VideoCodec}."),
         };

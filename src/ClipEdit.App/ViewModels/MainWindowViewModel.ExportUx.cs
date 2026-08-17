@@ -359,7 +359,8 @@ public sealed partial class MainWindowViewModel
             var decision = ResolveExportStrategyDecision(slices, preset);
             if (decision.Strategy is ExportStrategy.StreamCopy or ExportStrategy.ConcatStreamCopy ||
                 (!SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.H264) &&
-                 !SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.Vp9)))
+                 !SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.Vp9) &&
+                 !SourceVideoCodecMatches(video.CodecName, VideoCodecFamily.Av1)))
             {
                 return false;
             }

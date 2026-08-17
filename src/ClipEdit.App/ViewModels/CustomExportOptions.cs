@@ -26,12 +26,14 @@ public sealed record VideoCodecChoice(VideoCodecFamily Value, string DisplayName
 {
     public static VideoCodecChoice H264 { get; } = new(VideoCodecFamily.H264, "H.264");
     public static VideoCodecChoice Vp9 { get; } = new(VideoCodecFamily.Vp9, "VP9");
+    public static VideoCodecChoice Av1 { get; } = new(VideoCodecFamily.Av1, "AV1");
     public static VideoCodecChoice Gif { get; } = new(VideoCodecFamily.Gif, "GIF");
 
     public static VideoCodecChoice FromValue(VideoCodecFamily value) => value switch
     {
         VideoCodecFamily.H264 => H264,
         VideoCodecFamily.Vp9 => Vp9,
+        VideoCodecFamily.Av1 => Av1,
         VideoCodecFamily.Gif => Gif,
         _ => H264,
     };
@@ -80,7 +82,8 @@ public sealed partial class MainWindowViewModel
 
     public IReadOnlyList<ExportContainerChoice> CustomExportContainerChoices => ExportContainerChoice.All;
 
-    public ObservableCollection<VideoCodecChoice> CustomVideoCodecChoices { get; } = [VideoCodecChoice.H264];
+    public ObservableCollection<VideoCodecChoice> CustomVideoCodecChoices { get; } =
+        [VideoCodecChoice.H264, VideoCodecChoice.Av1];
 
     public ObservableCollection<AudioCodecChoice> CustomAudioCodecChoices { get; } =
         [AudioCodecChoice.Aac, AudioCodecChoice.None];
@@ -407,9 +410,9 @@ public sealed partial class MainWindowViewModel
     {
         IReadOnlyList<VideoCodecChoice> videoChoices = CustomExportContainer.Value switch
         {
-            ExportContainer.Mp4 => [VideoCodecChoice.H264],
-            ExportContainer.WebM => [VideoCodecChoice.Vp9],
-            ExportContainer.Matroska => [VideoCodecChoice.H264, VideoCodecChoice.Vp9],
+            ExportContainer.Mp4 => [VideoCodecChoice.H264, VideoCodecChoice.Av1],
+            ExportContainer.WebM => [VideoCodecChoice.Vp9, VideoCodecChoice.Av1],
+            ExportContainer.Matroska => [VideoCodecChoice.H264, VideoCodecChoice.Vp9, VideoCodecChoice.Av1],
             ExportContainer.Gif => [VideoCodecChoice.Gif],
             _ => [VideoCodecChoice.H264],
         };

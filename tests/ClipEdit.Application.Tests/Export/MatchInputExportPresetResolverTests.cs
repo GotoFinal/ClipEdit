@@ -46,6 +46,29 @@ public sealed class MatchInputExportPresetResolverTests
         Assert.Equal(".webm", resolution.Preset.FileExtension);
     }
 
+    [Theory]
+    [InlineData("source.webm", ExportContainer.WebM, AudioCodecFamily.Opus, ".webm")]
+    [InlineData("source.mp4", ExportContainer.Mp4, AudioCodecFamily.Aac, ".mp4")]
+    public void Av1_preserves_a_compatible_source_container_and_audio(
+        string fileName,
+        ExportContainer expectedContainer,
+        AudioCodecFamily expectedAudio,
+        string expectedExtension)
+    {
+        var resolution = MatchInputExportPresetResolver.Resolve(CreateProbe(
+            fileName,
+            "av1",
+            expectedAudio == AudioCodecFamily.Opus ? "opus" : "aac",
+            videoBitRate: 3_000_000,
+            audioBitRate: 160_000));
+
+        Assert.False(resolution.UsedFallback);
+        Assert.Equal(expectedContainer, resolution.Preset.Container);
+        Assert.Equal(VideoCodecFamily.Av1, resolution.Preset.VideoCodec);
+        Assert.Equal(expectedAudio, resolution.Preset.AudioCodec);
+        Assert.Equal(expectedExtension, resolution.Preset.FileExtension);
+    }
+
     [Fact]
     public void Matroska_keeps_the_container_and_explains_an_unsupported_audio_fallback()
     {
