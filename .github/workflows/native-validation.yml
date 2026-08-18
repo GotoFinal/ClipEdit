@@ -6,7 +6,6 @@ on:
     paths:
       - "eng/native/native-dependencies.json"
       - "eng/Build-WindowsSharedMediaStack.ps1"
-      - "eng/Export-WindowsCorrespondingSource.ps1"
       - "eng/Prepare-ReleasePayload.ps1"
       - "eng/Prepare-LinuxReleasePayload.sh"
       - "eng/Install-LinuxBuildDependencies.sh"
@@ -49,19 +48,11 @@ jobs:
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: ./eng/Build-WindowsSharedMediaStack.ps1
-      - name: Restore corresponding-source cache
-        uses: actions/cache@v5
-        with:
-          path: packages/native/source-cache/win-x64
-          key: windows-native-sources-v2-${{ hashFiles('eng/native/native-dependencies.json', 'eng/Export-WindowsCorrespondingSource.ps1') }}
-          restore-keys: windows-native-sources-v2-
-      - name: Assemble payload and export corresponding source
+      - name: Assemble payload
         shell: pwsh
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
-        run: |
-          ./eng/Prepare-ReleasePayload.ps1 -RuntimeId win-x64
-          ./eng/Export-WindowsCorrespondingSource.ps1
+        run: ./eng/Prepare-ReleasePayload.ps1 -RuntimeId win-x64
 
   linux:
     name: Build Linux native payload
@@ -70,7 +61,6 @@ jobs:
     timeout-minutes: 350
     env:
       CLIPEDIT_LINUX_NATIVE_BUILD_ROOT: ${{ github.workspace }}/.native-cache/linux-x64
-      CLIPEDIT_ENABLE_SOURCE_REPOSITORIES: "1"
     steps:
       - name: Free runner disk space
         run: |

@@ -67,12 +67,3 @@ jobs:
       - name: Validate native dependency locks
         shell: pwsh
         run: ./eng/Test-NativeDependencies.ps1
-      - name: Validate release compliance assembly
-        shell: pwsh
-        run: >-
-          ./eng/Build-Release.ps1
-          -RuntimeId linux-x64
-          -Version 0.0.0-ci
-          -ManagedDeployment FrameworkDependent
-          -MediaDependencyMode System
-          -GenerateCompliance

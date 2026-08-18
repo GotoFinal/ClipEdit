@@ -157,19 +157,11 @@ jobs:
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: ./eng/Build-WindowsSharedMediaStack.ps1
-      - name: Restore corresponding-source cache
-        uses: actions/cache@v5
-        with:
-          path: packages/native/source-cache/win-x64
-          key: windows-native-sources-v2-${{ hashFiles('eng/native/native-dependencies.json', 'eng/Export-WindowsCorrespondingSource.ps1') }}
-          restore-keys: windows-native-sources-v2-
-      - name: Assemble native payload and corresponding source
+      - name: Assemble native payload
         shell: pwsh
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
-        run: |
-          ./eng/Prepare-ReleasePayload.ps1 -RuntimeId win-x64
-          ./eng/Export-WindowsCorrespondingSource.ps1
+        run: ./eng/Prepare-ReleasePayload.ps1 -RuntimeId win-x64
       - name: Build release candidate
         shell: pwsh
         run: |
@@ -177,8 +169,7 @@ jobs:
             -RuntimeId win-x64 `
             -Version "$env:VERSION" `
             -ManagedDeployment SelfContained `
-            -SkipPayloadPreparation `
-            -GenerateCompliance
+            -SkipPayloadPreparation
       - name: Upload Windows release assets
         shell: bash
         env:
@@ -203,7 +194,6 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
       TAG: ${{ needs.prepare.outputs.tag }}
       CLIPEDIT_LINUX_NATIVE_BUILD_ROOT: ${{ github.workspace }}/.native-cache/linux-x64
-      CLIPEDIT_ENABLE_SOURCE_REPOSITORIES: "1"
     steps:
       - name: Free runner disk space
         run: |
@@ -227,11 +217,9 @@ jobs:
       - name: Install native build dependencies
         run: ./eng/Install-LinuxBuildDependencies.sh
       - run: dotnet restore ClipEdit.sln
-      - name: Assemble native payload and corresponding source
+      - name: Assemble native payload
         shell: pwsh
-        run: |
-          ./eng/Prepare-ReleasePayload.ps1 -RuntimeId linux-x64
-          ./eng/Export-LinuxCorrespondingSource.ps1
+        run: ./eng/Prepare-ReleasePayload.ps1 -RuntimeId linux-x64
       - name: Build portable release candidate
         shell: pwsh
         run: |
@@ -239,8 +227,7 @@ jobs:
             -RuntimeId linux-x64 `
             -Version "$env:VERSION" `
             -ManagedDeployment SelfContained `
-            -SkipPayloadPreparation `
-            -GenerateCompliance
+            -SkipPayloadPreparation
       - name: Build system-dependencies release candidate
         shell: pwsh
         run: |
@@ -249,8 +236,7 @@ jobs:
             -Version "$env:VERSION" `
             -ManagedDeployment FrameworkDependent `
             -MediaDependencyMode System `
-            -SkipPayloadPreparation `
-            -GenerateCompliance
+            -SkipPayloadPreparation
       - name: Upload Linux release assets
         shell: bash
         env:
