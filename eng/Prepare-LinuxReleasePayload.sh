@@ -64,7 +64,7 @@ readonly mpv_build_revision mpv_revision ffmpeg_revision ffmpeg_version
 readonly libplacebo_revision libass_revision meson_version mpv_client_api libmpv_build_file
 
 required_packages=(
-    alsa fontconfig freetype2 fribidi gnutls harfbuzz libpulse opus vpx x264
+    alsa aom fontconfig freetype2 fribidi gnutls harfbuzz libpulse opus vorbisenc vpx x264 x265
 )
 missing_packages=()
 for package_name in "${required_packages[@]}"; do
@@ -130,7 +130,7 @@ expected_revisions="$(printf '%s\n' \
     "libplacebo=$libplacebo_revision" \
     "libass=$libass_revision" \
     "meson=$meson_version" \
-    "recipe=linux-hdr-v1")"
+    "recipe=linux-custom-codecs-v2")"
 
 ffmpeg_binary="$mpv_build_root/build_libs/bin/ffmpeg"
 ffprobe_binary="$mpv_build_root/build_libs/bin/ffprobe"
@@ -165,10 +165,13 @@ if [[ "$actual_revisions" != "$expected_revisions" || \
         scripts/libass-build -j"$(nproc)"
 
         scripts/ffmpeg-config \
+            --enable-libaom \
             --enable-libx264 \
+            --enable-libx265 \
             --enable-libvpx \
             --enable-libzimg \
-            --enable-libopus
+            --enable-libopus \
+            --enable-libvorbis
         scripts/ffmpeg-build -j"$(nproc)"
 
         scripts/mpv-config \
@@ -210,7 +213,7 @@ if ! "$ffmpeg_binary" -version | head -n 1 | grep -E "^ffmpeg version n?${escape
     exit 1
 fi
 encoders="$($ffmpeg_binary -hide_banner -encoders 2>&1)"
-for encoder in libx264 libvpx-vp9 aac libopus; do
+for encoder in libaom-av1 libx264 libx265 libvpx libvpx-vp9 aac libopus libvorbis flac; do
     if ! grep -E "[[:space:]]${encoder}[[:space:]]" <<<"$encoders" >/dev/null; then
         echo "The Linux FFmpeg binary is missing encoder $encoder." >&2
         exit 1

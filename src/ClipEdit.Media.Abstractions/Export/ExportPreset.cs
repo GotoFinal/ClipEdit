@@ -4,25 +4,29 @@ namespace ClipEdit.Media.Export;
 
 public enum ExportContainer
 {
-    Mp4,
-    WebM,
-    Matroska,
-    Gif,
+    Mp4 = 0,
+    WebM = 1,
+    Matroska = 2,
+    Gif = 3,
 }
 
 public enum VideoCodecFamily
 {
-    H264,
-    Vp9,
-    Av1,
-    Gif,
+    H264 = 0,
+    Vp9 = 1,
+    Av1 = 2,
+    Gif = 3,
+    Hevc = 4,
+    Vp8 = 5,
 }
 
 public enum AudioCodecFamily
 {
-    None,
-    Aac,
-    Opus,
+    None = 0,
+    Aac = 1,
+    Opus = 2,
+    Vorbis = 3,
+    Flac = 4,
 }
 
 public enum ExportParameterMode

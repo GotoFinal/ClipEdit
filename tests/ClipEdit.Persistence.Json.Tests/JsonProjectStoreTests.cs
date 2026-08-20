@@ -1,4 +1,5 @@
 using ClipEdit.Application.Projects;
+using ClipEdit.Media.Export;
 using System.Text.Json.Nodes;
 
 namespace ClipEdit.Persistence.Json.Tests;
@@ -20,6 +21,37 @@ public sealed class JsonProjectStoreTests
 
             Assert.Equivalent(document, loaded, strict: true);
             Assert.Contains("sourcePath", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Save_and_load_preserves_extended_custom_codecs()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-codecs-{Guid.NewGuid():N}.clipedit");
+        var document = CreateDocument() with
+        {
+            ExportSettings = new ProjectExportSettingsDocument(
+                62,
+                47,
+                18,
+                ExportContainer.Matroska,
+                VideoCodecFamily.Hevc,
+                AudioCodecFamily.Flac),
+        };
+
+        try
+        {
+            var store = new JsonProjectStore();
+            await store.SaveAsync(path, document);
+
+            var loaded = await store.LoadAsync(path);
+
+            Assert.Equal(VideoCodecFamily.Hevc, loaded.ExportSettings!.CustomVideoCodec);
+            Assert.Equal(AudioCodecFamily.Flac, loaded.ExportSettings.CustomAudioCodec);
         }
         finally
         {

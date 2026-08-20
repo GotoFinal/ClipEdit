@@ -81,12 +81,15 @@
         "pcm_s16le"
       ],
       "encoders": [
+        "libaom-av1",
         "libx264",
         "libx265",
+        "libvpx",
         "libvpx-vp9",
         "libsvtav1",
         "aac",
         "libopus",
+        "libvorbis",
         "gif",
         "prores_ks",
         "ffv1",

@@ -488,7 +488,7 @@ public sealed record ExportPlan
     private static ExportVideoColorInfo? ResolveSingleSourceOutputColorInfo(
         ExportPreset preset,
         ExportVideoColorInfo? colorInfo) =>
-        preset.VideoCodec != VideoCodecFamily.Gif && colorInfo?.CanPreserveHdr == true
+        CanPreserveHdr(preset.VideoCodec) && colorInfo?.CanPreserveHdr == true
             ? colorInfo
             : null;
 
@@ -496,7 +496,8 @@ public sealed record ExportPlan
         ExportPreset preset,
         ImmutableArray<ExportVideoSegmentPlan> segments)
     {
-        if (preset.VideoCodec == VideoCodecFamily.Gif || segments[0].VideoColorInfo is not { CanPreserveHdr: true } first)
+        if (!CanPreserveHdr(preset.VideoCodec) ||
+            segments[0].VideoColorInfo is not { CanPreserveHdr: true } first)
         {
             return null;
         }
@@ -505,6 +506,9 @@ public sealed record ExportPlan
             ? first
             : null;
     }
+
+    private static bool CanPreserveHdr(VideoCodecFamily codec) =>
+        codec is not VideoCodecFamily.Gif and not VideoCodecFamily.Vp8;
 }
 
 public sealed record ExportVideoSegmentPlan

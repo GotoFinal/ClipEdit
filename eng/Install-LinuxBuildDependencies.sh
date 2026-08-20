@@ -46,6 +46,7 @@ fi
     ca-certificates \
     dpkg-dev \
     git \
+    libaom-dev \
     libasound2-dev \
     libfontconfig1-dev \
     libfreetype6-dev \
@@ -55,9 +56,11 @@ fi
     libice6 \
     libopus-dev \
     libpulse-dev \
+    libvorbis-dev \
     libsm6 \
     libvpx-dev \
     libx264-dev \
+    libx265-dev \
     libzimg-dev \
     libtool \
     nasm \

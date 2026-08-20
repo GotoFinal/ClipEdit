@@ -1019,6 +1019,18 @@ internal static class FfmpegExportArguments
                 videoEncoder,
                 videoPixelFormat,
                 targetVideoBitRate),
+            VideoCodecFamily.Hevc =>
+            [
+                "-c:v", "libx265", "-preset", GetX264Preset(plan.EncodingSettings.EncodingSpeed),
+                "-crf", MapQualityAroundDefault(quality, 40, 24, 18).ToString(CultureInfo.InvariantCulture),
+                "-pix_fmt", videoPixelFormat,
+            ],
+            VideoCodecFamily.Vp8 =>
+            [
+                "-c:v", "libvpx", "-crf", MapQualityAroundDefault(quality, 50, 28, 16).ToString(CultureInfo.InvariantCulture),
+                "-b:v", "0", "-deadline", "good", "-cpu-used", GetVp9CpuUsed(plan.EncodingSettings.EncodingSpeed),
+                "-pix_fmt", "yuv420p",
+            ],
             VideoCodecFamily.Vp9 =>
             [
                 "-c:v", "libvpx-vp9", "-crf", MapQualityAroundDefault(quality, 50, 30, 20).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-deadline", "good", "-cpu-used", GetVp9CpuUsed(plan.EncodingSettings.EncodingSpeed), "-row-mt", "1", "-pix_fmt", videoPixelFormat,
@@ -1056,6 +1068,11 @@ internal static class FfmpegExportArguments
 
         if (plan.Preset.Container == ExportContainer.Mp4)
         {
+            if (plan.Preset.VideoCodec == VideoCodecFamily.Hevc)
+            {
+                arguments.Add("-tag:v");
+                arguments.Add("hvc1");
+            }
             arguments.Add("-movflags");
             arguments.Add("+faststart");
         }
@@ -1276,6 +1293,8 @@ internal static class FfmpegExportArguments
         {
             AudioCodecFamily.Aac => ["-c:a", "aac", "-b:a", audioBitRate],
             AudioCodecFamily.Opus => ["-c:a", "libopus", "-b:a", audioBitRate],
+            AudioCodecFamily.Vorbis => ["-c:a", "libvorbis", "-b:a", audioBitRate],
+            AudioCodecFamily.Flac => ["-c:a", "flac"],
             _ => throw new ExportPlanException($"Unsupported audio codec family: {plan.Preset.AudioCodec}."),
         };
     }

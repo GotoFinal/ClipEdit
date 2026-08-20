@@ -25,6 +25,8 @@ public sealed record ExportContainerChoice(
 public sealed record VideoCodecChoice(VideoCodecFamily Value, string DisplayName)
 {
     public static VideoCodecChoice H264 { get; } = new(VideoCodecFamily.H264, "H.264");
+    public static VideoCodecChoice Hevc { get; } = new(VideoCodecFamily.Hevc, "H.265 / HEVC");
+    public static VideoCodecChoice Vp8 { get; } = new(VideoCodecFamily.Vp8, "VP8");
     public static VideoCodecChoice Vp9 { get; } = new(VideoCodecFamily.Vp9, "VP9");
     public static VideoCodecChoice Av1 { get; } = new(VideoCodecFamily.Av1, "AV1");
     public static VideoCodecChoice Gif { get; } = new(VideoCodecFamily.Gif, "GIF");
@@ -32,6 +34,8 @@ public sealed record VideoCodecChoice(VideoCodecFamily Value, string DisplayName
     public static VideoCodecChoice FromValue(VideoCodecFamily value) => value switch
     {
         VideoCodecFamily.H264 => H264,
+        VideoCodecFamily.Hevc => Hevc,
+        VideoCodecFamily.Vp8 => Vp8,
         VideoCodecFamily.Vp9 => Vp9,
         VideoCodecFamily.Av1 => Av1,
         VideoCodecFamily.Gif => Gif,
@@ -43,12 +47,16 @@ public sealed record AudioCodecChoice(AudioCodecFamily Value, string DisplayName
 {
     public static AudioCodecChoice Aac { get; } = new(AudioCodecFamily.Aac, "AAC");
     public static AudioCodecChoice Opus { get; } = new(AudioCodecFamily.Opus, "Opus");
+    public static AudioCodecChoice Vorbis { get; } = new(AudioCodecFamily.Vorbis, "Vorbis");
+    public static AudioCodecChoice Flac { get; } = new(AudioCodecFamily.Flac, "FLAC");
     public static AudioCodecChoice None { get; } = new(AudioCodecFamily.None, "No audio");
 
     public static AudioCodecChoice FromValue(AudioCodecFamily value) => value switch
     {
         AudioCodecFamily.Aac => Aac,
         AudioCodecFamily.Opus => Opus,
+        AudioCodecFamily.Vorbis => Vorbis,
+        AudioCodecFamily.Flac => Flac,
         AudioCodecFamily.None => None,
         _ => Aac,
     };
@@ -86,7 +94,7 @@ public sealed partial class MainWindowViewModel
     public IReadOnlyList<ExportContainerChoice> CustomExportContainerChoices => ExportContainerChoice.All;
 
     public ObservableCollection<VideoCodecChoice> CustomVideoCodecChoices { get; } =
-        [VideoCodecChoice.H264, VideoCodecChoice.Av1];
+        [VideoCodecChoice.H264, VideoCodecChoice.Hevc, VideoCodecChoice.Av1];
 
     public ObservableCollection<AudioCodecChoice> CustomAudioCodecChoices { get; } =
         [AudioCodecChoice.Aac, AudioCodecChoice.None];
@@ -427,17 +435,31 @@ public sealed partial class MainWindowViewModel
     {
         IReadOnlyList<VideoCodecChoice> videoChoices = CustomExportContainer.Value switch
         {
-            ExportContainer.Mp4 => [VideoCodecChoice.H264, VideoCodecChoice.Av1],
-            ExportContainer.WebM => [VideoCodecChoice.Vp9, VideoCodecChoice.Av1],
-            ExportContainer.Matroska => [VideoCodecChoice.H264, VideoCodecChoice.Vp9, VideoCodecChoice.Av1],
+            ExportContainer.Mp4 => [VideoCodecChoice.H264, VideoCodecChoice.Hevc, VideoCodecChoice.Av1],
+            ExportContainer.WebM => [VideoCodecChoice.Vp8, VideoCodecChoice.Vp9, VideoCodecChoice.Av1],
+            ExportContainer.Matroska =>
+            [
+                VideoCodecChoice.H264,
+                VideoCodecChoice.Hevc,
+                VideoCodecChoice.Vp8,
+                VideoCodecChoice.Vp9,
+                VideoCodecChoice.Av1,
+            ],
             ExportContainer.Gif => [VideoCodecChoice.Gif],
             _ => [VideoCodecChoice.H264],
         };
         IReadOnlyList<AudioCodecChoice> audioChoices = CustomExportContainer.Value switch
         {
             ExportContainer.Mp4 => [AudioCodecChoice.Aac, AudioCodecChoice.None],
-            ExportContainer.WebM => [AudioCodecChoice.Opus, AudioCodecChoice.None],
-            ExportContainer.Matroska => [AudioCodecChoice.Aac, AudioCodecChoice.Opus, AudioCodecChoice.None],
+            ExportContainer.WebM => [AudioCodecChoice.Opus, AudioCodecChoice.Vorbis, AudioCodecChoice.None],
+            ExportContainer.Matroska =>
+            [
+                AudioCodecChoice.Aac,
+                AudioCodecChoice.Opus,
+                AudioCodecChoice.Vorbis,
+                AudioCodecChoice.Flac,
+                AudioCodecChoice.None,
+            ],
             ExportContainer.Gif => [AudioCodecChoice.None],
             _ => [AudioCodecChoice.Aac, AudioCodecChoice.None],
         };

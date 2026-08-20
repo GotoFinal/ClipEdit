@@ -1099,6 +1099,30 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void Custom_export_offers_only_compatible_extended_codecs()
+    {
+        using var viewModel = new MainWindowViewModel(new StubProbe());
+
+        viewModel.CustomExportContainer = ExportContainerChoice.Mp4;
+        Assert.Contains(VideoCodecChoice.Hevc, viewModel.CustomVideoCodecChoices);
+        Assert.DoesNotContain(VideoCodecChoice.Vp8, viewModel.CustomVideoCodecChoices);
+        Assert.DoesNotContain(AudioCodecChoice.Vorbis, viewModel.CustomAudioCodecChoices);
+        Assert.DoesNotContain(AudioCodecChoice.Flac, viewModel.CustomAudioCodecChoices);
+
+        viewModel.CustomExportContainer = ExportContainerChoice.WebM;
+        Assert.Contains(VideoCodecChoice.Vp8, viewModel.CustomVideoCodecChoices);
+        Assert.Contains(AudioCodecChoice.Vorbis, viewModel.CustomAudioCodecChoices);
+        Assert.DoesNotContain(VideoCodecChoice.Hevc, viewModel.CustomVideoCodecChoices);
+        Assert.DoesNotContain(AudioCodecChoice.Flac, viewModel.CustomAudioCodecChoices);
+
+        viewModel.CustomExportContainer = ExportContainerChoice.Matroska;
+        Assert.Contains(VideoCodecChoice.Hevc, viewModel.CustomVideoCodecChoices);
+        Assert.Contains(VideoCodecChoice.Vp8, viewModel.CustomVideoCodecChoices);
+        Assert.Contains(AudioCodecChoice.Vorbis, viewModel.CustomAudioCodecChoices);
+        Assert.Contains(AudioCodecChoice.Flac, viewModel.CustomAudioCodecChoices);
+    }
+
+    [Fact]
     public void Named_custom_export_presets_can_be_saved_loaded_and_deleted()
     {
         using var viewModel = new MainWindowViewModel(new StubProbe());

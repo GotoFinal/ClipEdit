@@ -567,6 +567,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private static bool SourceVideoCodecMatches(string codecName, VideoCodecFamily codec) => codec switch
     {
         VideoCodecFamily.H264 => string.Equals(codecName, "h264", StringComparison.OrdinalIgnoreCase),
+        VideoCodecFamily.Hevc => string.Equals(codecName, "hevc", StringComparison.OrdinalIgnoreCase),
+        VideoCodecFamily.Vp8 => string.Equals(codecName, "vp8", StringComparison.OrdinalIgnoreCase),
         VideoCodecFamily.Vp9 => string.Equals(codecName, "vp9", StringComparison.OrdinalIgnoreCase),
         VideoCodecFamily.Av1 => string.Equals(codecName, "av1", StringComparison.OrdinalIgnoreCase),
         _ => false,
@@ -583,6 +585,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         AudioCodecFamily.Aac => string.Equals(codecName, "aac", StringComparison.OrdinalIgnoreCase),
         AudioCodecFamily.Opus => string.Equals(codecName, "opus", StringComparison.OrdinalIgnoreCase),
+        AudioCodecFamily.Vorbis => string.Equals(codecName, "vorbis", StringComparison.OrdinalIgnoreCase),
+        AudioCodecFamily.Flac => string.Equals(codecName, "flac", StringComparison.OrdinalIgnoreCase),
         _ => false,
     };
 

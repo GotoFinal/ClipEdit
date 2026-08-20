@@ -254,14 +254,16 @@ public sealed class JsonProjectStore : IProjectStore
         settings.CustomContainer switch
         {
             ExportContainer.Mp4 =>
-                settings.CustomVideoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Av1 &&
+                settings.CustomVideoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Hevc or VideoCodecFamily.Av1 &&
                 settings.CustomAudioCodec is AudioCodecFamily.Aac or AudioCodecFamily.None,
             ExportContainer.WebM =>
-                settings.CustomVideoCodec is VideoCodecFamily.Vp9 or VideoCodecFamily.Av1 &&
-                settings.CustomAudioCodec is AudioCodecFamily.Opus or AudioCodecFamily.None,
+                settings.CustomVideoCodec is VideoCodecFamily.Vp8 or VideoCodecFamily.Vp9 or VideoCodecFamily.Av1 &&
+                settings.CustomAudioCodec is AudioCodecFamily.Opus or AudioCodecFamily.Vorbis or AudioCodecFamily.None,
             ExportContainer.Matroska =>
-                settings.CustomVideoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Vp9 or VideoCodecFamily.Av1 &&
-                settings.CustomAudioCodec is AudioCodecFamily.Aac or AudioCodecFamily.Opus or AudioCodecFamily.None,
+                settings.CustomVideoCodec is VideoCodecFamily.H264 or VideoCodecFamily.Hevc or VideoCodecFamily.Vp8 or
+                    VideoCodecFamily.Vp9 or VideoCodecFamily.Av1 &&
+                settings.CustomAudioCodec is AudioCodecFamily.Aac or AudioCodecFamily.Opus or AudioCodecFamily.Vorbis or
+                    AudioCodecFamily.Flac or AudioCodecFamily.None,
             ExportContainer.Gif =>
                 settings.CustomVideoCodec == VideoCodecFamily.Gif &&
                 settings.CustomAudioCodec == AudioCodecFamily.None,

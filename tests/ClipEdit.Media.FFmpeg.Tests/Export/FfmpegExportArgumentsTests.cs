@@ -1018,6 +1018,85 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Theory]
+    [InlineData(ExportContainer.Mp4, VideoCodecFamily.Hevc, AudioCodecFamily.Aac, ".mp4", "libx265", "aac", "mp4")]
+    [InlineData(ExportContainer.WebM, VideoCodecFamily.Vp8, AudioCodecFamily.Vorbis, ".webm", "libvpx", "libvorbis", "webm")]
+    [InlineData(ExportContainer.Matroska, VideoCodecFamily.Hevc, AudioCodecFamily.Flac, ".mkv", "libx265", "flac", "matroska")]
+    public void Extended_custom_codecs_map_to_ffmpeg_encoders(
+        ExportContainer container,
+        VideoCodecFamily videoCodec,
+        AudioCodecFamily audioCodec,
+        string extension,
+        string expectedVideoEncoder,
+        string expectedAudioEncoder,
+        string expectedMuxer)
+    {
+        var preset = new ExportPreset(
+            "extended-custom",
+            "Extended custom",
+            extension,
+            container,
+            videoCodec,
+            audioCodec,
+            requiresEvenDimensions: true);
+        var plan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath($"C:\\clip{extension}"),
+            audioStreamIndex: 1,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
+            preset);
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath($"C:\\.clip.partial{extension}"));
+
+        Assert.Equal(expectedVideoEncoder, ValueAfter(arguments, "-c:v"));
+        Assert.Equal(expectedAudioEncoder, ValueAfter(arguments, "-c:a"));
+        Assert.Equal(expectedMuxer, ValueAfter(arguments, "-f"));
+        if (videoCodec == VideoCodecFamily.Hevc && container == ExportContainer.Mp4)
+        {
+            Assert.Equal("hvc1", ValueAfter(arguments, "-tag:v"));
+        }
+        if (audioCodec == AudioCodecFamily.Flac)
+        {
+            Assert.DoesNotContain("-b:a", arguments);
+        }
+    }
+
+    [Fact]
+    public void Vp8_export_tone_maps_hdr_to_supported_eight_bit_video()
+    {
+        var sourceSize = new PixelSize(1_920, 1_080);
+        var preset = new ExportPreset(
+            "vp8-webm",
+            "VP8 WebM",
+            ".webm",
+            ExportContainer.WebM,
+            VideoCodecFamily.Vp8,
+            AudioCodecFamily.None,
+            requiresEvenDimensions: true);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\hdr.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    sourceSize,
+                    CropRegion.FullFrame(sourceSize),
+                    ClipCanvasTransform.Identity,
+                    videoColorInfo: Hdr10,
+                    sourceSize: sourceSize),
+            ],
+            sourceSize,
+            TestPath("C:\\vp8.webm"),
+            preset);
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.vp8.partial"));
+        var graph = ValueAfter(arguments, "-filter_complex");
+
+        Assert.False(plan.PreservesHdr);
+        Assert.Contains("tonemap=mobius", graph);
+        Assert.Equal("yuv420p", ValueAfter(arguments, "-pix_fmt"));
+    }
+
+    [Theory]
     [InlineData(ExportEncodingSpeed.Faster, "veryfast")]
     [InlineData(ExportEncodingSpeed.Balanced, "medium")]
     [InlineData(ExportEncodingSpeed.SmallerFile, "slow")]

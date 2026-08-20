@@ -129,16 +129,24 @@ internal sealed record ExportPreferences(
         return container switch
         {
             ExportContainer.Mp4 => (container,
-                video is VideoCodecFamily.H264 or VideoCodecFamily.Av1 ? video : VideoCodecFamily.H264,
-                audio == AudioCodecFamily.None ? AudioCodecFamily.None : AudioCodecFamily.Aac),
-            ExportContainer.WebM => (container,
-                video is VideoCodecFamily.Vp9 or VideoCodecFamily.Av1 ? video : VideoCodecFamily.Vp9,
-                audio == AudioCodecFamily.None ? AudioCodecFamily.None : AudioCodecFamily.Opus),
-            ExportContainer.Matroska => (container,
-                video is VideoCodecFamily.H264 or VideoCodecFamily.Vp9 or VideoCodecFamily.Av1
+                video is VideoCodecFamily.H264 or VideoCodecFamily.Hevc or VideoCodecFamily.Av1
                     ? video
                     : VideoCodecFamily.H264,
-                audio is AudioCodecFamily.Aac or AudioCodecFamily.Opus or AudioCodecFamily.None
+                audio == AudioCodecFamily.None ? AudioCodecFamily.None : AudioCodecFamily.Aac),
+            ExportContainer.WebM => (container,
+                video is VideoCodecFamily.Vp8 or VideoCodecFamily.Vp9 or VideoCodecFamily.Av1
+                    ? video
+                    : VideoCodecFamily.Vp9,
+                audio is AudioCodecFamily.Opus or AudioCodecFamily.Vorbis or AudioCodecFamily.None
+                    ? audio
+                    : AudioCodecFamily.Opus),
+            ExportContainer.Matroska => (container,
+                video is VideoCodecFamily.H264 or VideoCodecFamily.Hevc or VideoCodecFamily.Vp8 or
+                    VideoCodecFamily.Vp9 or VideoCodecFamily.Av1
+                    ? video
+                    : VideoCodecFamily.H264,
+                audio is AudioCodecFamily.Aac or AudioCodecFamily.Opus or AudioCodecFamily.Vorbis or
+                    AudioCodecFamily.Flac or AudioCodecFamily.None
                     ? audio
                     : AudioCodecFamily.Aac),
             ExportContainer.Gif => (container, VideoCodecFamily.Gif, AudioCodecFamily.None),
