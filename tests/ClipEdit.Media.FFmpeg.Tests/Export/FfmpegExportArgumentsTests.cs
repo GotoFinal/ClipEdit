@@ -368,7 +368,9 @@ public sealed class FfmpegExportArgumentsTests
 
         Assert.Contains(TestPath("C:\\first.mkv"), arguments);
         Assert.Contains(TestPath("C:\\second.mkv"), arguments);
-        Assert.Contains("[0:0]trim=start=2:end=5,setpts=PTS-STARTPTS,crop=1080:1080:420:0,scale=1080:1080", graph);
+        AssertInputSeek(arguments, TestPath("C:\\first.mkv"), "2", "3");
+        AssertInputSeek(arguments, TestPath("C:\\second.mkv"), null, "4");
+        Assert.Contains("[0:0]trim=start=0:end=3,setpts=PTS-STARTPTS,crop=1080:1080:420:0,scale=1080:1080", graph);
         Assert.Contains("[1:2]trim=start=0:end=4,setpts=PTS-STARTPTS,crop=1680:2160:1080:0,scale=1080:1080", graph);
         Assert.Contains("[vseg0][aseg0][vseg1][aseg1]concat=n=2:v=1:a=1[vbase][abase]", graph);
         Assert.Contains("[vbase]format=yuv420p,setsar=1[vout]", graph);
@@ -913,6 +915,45 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Fact]
+    public void Sequence_input_seek_rebases_embedded_audio_masks_to_the_bounded_input()
+    {
+        var sourceDuration = new MediaTime(20, 1);
+        var sourceRange = new MediaRange(new MediaTime(10, 1), new MediaTime(15, 1));
+        var audioEdit = new SourceEdit(sourceDuration)
+            .Remove(new MediaRange(new MediaTime(11, 1), new MediaTime(12, 1)));
+        var canvas = new PixelSize(1_280, 720);
+        var segment = new ExportVideoSegmentPlan(
+            TestPath("C:\\source.mkv"),
+            0,
+            sourceRange,
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity,
+            [new ExportAudioTrackPlan(1, 0, audioEdit)],
+            MediaTime.Zero,
+            sourceSize: canvas);
+        var plan = new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\clip.mp4"),
+            Mp4Compatible,
+            sequenceDuration: sourceRange.Duration);
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        AssertInputSeek(arguments, segment.SourcePath, "10", "5");
+        Assert.Contains("[0:0]trim=start=0:end=5", graph);
+        Assert.Contains(
+            "[0:1]aeval='if(gt(gte(t,0)*lt(t,1)+gte(t,2)*lt(t,5),0),val(ch),0)':c=same," +
+            "apad,atrim=start=0:end=5",
+            graph);
+        Assert.Contains("[vseg0]null[vbase]", graph);
+        Assert.Contains("[aseg0]anull[abase]", graph);
+        Assert.DoesNotContain("concat=n=1", graph);
+    }
+
+    [Fact]
     public void Av1_uses_libaom_constant_quality_and_parallel_encoding_options()
     {
         var av1 = new ExportPreset(
@@ -964,6 +1005,28 @@ public sealed class FfmpegExportArgumentsTests
         var index = arguments.ToList().IndexOf(option);
         Assert.True(index >= 0 && index + 1 < arguments.Count);
         return arguments[index + 1];
+    }
+
+    private static void AssertInputSeek(
+        IReadOnlyList<string> arguments,
+        string sourcePath,
+        string? expectedSeek,
+        string expectedDuration)
+    {
+        var inputIndex = arguments.ToList().IndexOf(sourcePath);
+        Assert.True(inputIndex >= 3);
+        Assert.Equal("-i", arguments[inputIndex - 1]);
+        Assert.Equal(expectedDuration, arguments[inputIndex - 2]);
+        Assert.Equal("-t", arguments[inputIndex - 3]);
+        if (expectedSeek is null)
+        {
+            Assert.True(inputIndex < 5 || arguments[inputIndex - 5] != "-ss");
+            return;
+        }
+
+        Assert.True(inputIndex >= 5);
+        Assert.Equal(expectedSeek, arguments[inputIndex - 4]);
+        Assert.Equal("-ss", arguments[inputIndex - 5]);
     }
 
     private static ExportPlan CreatePlan(

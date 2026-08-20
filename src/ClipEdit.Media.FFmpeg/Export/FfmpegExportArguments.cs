@@ -53,6 +53,13 @@ internal static class FfmpegExportArguments
         {
             foreach (var segment in plan.VideoSegments)
             {
+                if (segment.SourceRange.Start > MediaTime.Zero)
+                {
+                    arguments.Add("-ss");
+                    arguments.Add(FormatTime(segment.SourceRange.Start));
+                }
+                arguments.Add("-t");
+                arguments.Add(FormatTime(segment.SourceRange.Duration));
                 arguments.Add("-i");
                 arguments.Add(segment.SourcePath);
             }
@@ -375,7 +382,7 @@ internal static class FfmpegExportArguments
             {
                 filters.Add(
                     $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
-                    $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                    $"trim=start=0:end={FormatTime(range.Duration)}," +
                     $"{CreateVideoSpeedFilter(segment.PlaybackSpeed)}," +
                     inputColorConversion +
                     $"crop={segment.Crop.Width}:{segment.Crop.Height}:{segment.Crop.X}:{segment.Crop.Y}," +
@@ -399,8 +406,8 @@ internal static class FfmpegExportArguments
                 var track = segment.AudioTracks[trackIndex];
                 filters.Add(
                     $"[{segmentIndex}:{track.StreamIndex}]" +
-                    CreateRangeMask(track) +
-                    $"apad,atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                    CreateRangeMask(track, range) +
+                    $"apad,atrim=start=0:end={FormatTime(range.Duration)}," +
                     $"asetpts=PTS-STARTPTS,{CreateAudioSpeedFilter(segment.PlaybackSpeed)},aresample=48000," +
                     "aformat=sample_fmts=fltp:channel_layouts=stereo," +
                     $"volume={FormatGain(track.GainDb)}dB[seg{segmentIndex}a{trackIndex}]");
@@ -441,7 +448,16 @@ internal static class FfmpegExportArguments
             AddGap(sequenceEnd - sequenceCursor);
         }
 
-        if (hasEmbeddedAudio)
+        if (sequenceInputs.Count == 1 && hasEmbeddedAudio)
+        {
+            filters.Add($"[{sequenceInputs[0].Video}]null[vbase]");
+            filters.Add($"[{sequenceInputs[0].Audio}]anull[abase]");
+        }
+        else if (sequenceInputs.Count == 1)
+        {
+            filters.Add($"[{sequenceInputs[0].Video}]null[vbase]");
+        }
+        else if (hasEmbeddedAudio)
         {
             filters.Add(
                 string.Concat(sequenceInputs.Select(input => $"[{input.Video}][{input.Audio}]")) +
@@ -541,7 +557,7 @@ internal static class FfmpegExportArguments
         var transform = segment.CanvasTransform;
         var inputPreparation =
             $"[{segmentIndex}:{segment.VideoStreamIndex}]" +
-            $"trim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+            $"trim=start=0:end={FormatTime(range.Duration)}," +
             $"{CreateVideoSpeedFilter(segment.PlaybackSpeed)}," +
             inputColorConversion;
         var mirroring =
@@ -1099,6 +1115,49 @@ internal static class FfmpegExportArguments
                 $"gte(t,{FormatTime(range.Start)})*lt(t,{FormatTime(range.End)})"));
         return $"aeval='if(gt({keptExpression},0),val(ch),0)':c=same,";
     }
+
+    private static string CreateRangeMask(
+        ExportAudioTrackPlan track,
+        MediaRange inputSourceRange)
+    {
+        var audioEdit = track.AudioEdit;
+        if (audioEdit is null || audioEdit.IsUnedited)
+        {
+            return string.Empty;
+        }
+
+        var localRanges = audioEdit.KeptRanges
+            .Where(range =>
+                range.End > inputSourceRange.Start &&
+                range.Start < inputSourceRange.End)
+            .Select(range => new MediaRange(
+                Max(range.Start, inputSourceRange.Start),
+                Min(range.End, inputSourceRange.End)))
+            .Select(range => new MediaRange(
+                range.Start - inputSourceRange.Start,
+                range.End - inputSourceRange.Start))
+            .ToArray();
+        if (localRanges.Length == 0)
+        {
+            return "aeval='0':c=same,";
+        }
+        if (localRanges.Length == 1 &&
+            localRanges[0].Start == MediaTime.Zero &&
+            localRanges[0].End == inputSourceRange.Duration)
+        {
+            return string.Empty;
+        }
+
+        var keptExpression = string.Join(
+            '+',
+            localRanges.Select(range =>
+                $"gte(t,{FormatTime(range.Start)})*lt(t,{FormatTime(range.End)})"));
+        return $"aeval='if(gt({keptExpression},0),val(ch),0)':c=same,";
+    }
+
+    private static MediaTime Min(MediaTime left, MediaTime right) => left <= right ? left : right;
+
+    private static MediaTime Max(MediaTime left, MediaTime right) => left >= right ? left : right;
 
     private static void AddSequenceVideoOutputFilters(
         ICollection<string> filters,
