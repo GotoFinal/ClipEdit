@@ -42,7 +42,7 @@ public sealed record ExportGpuChoice(
 {
     public static ExportGpuChoice Automatic { get; } = new(null, "Auto");
 
-    public static IReadOnlyList<ExportGpuChoice> All { get; } =
+    public static IReadOnlyList<ExportGpuChoice> Defaults { get; } =
     [
         Automatic,
         .. Enumerable.Range(
@@ -52,8 +52,14 @@ public sealed record ExportGpuChoice(
             .Select(index => new ExportGpuChoice(index, $"GPU {index}")),
     ];
 
-    public static ExportGpuChoice FromValue(int? deviceIndex) =>
-        All.FirstOrDefault(choice => choice.DeviceIndex == deviceIndex) ?? Automatic;
+    public string MenuText => DeviceIndex is { } deviceIndex && !DisplayName.StartsWith("GPU ", StringComparison.Ordinal)
+        ? $"{DisplayName} (GPU {deviceIndex})"
+        : DisplayName;
+
+    public static ExportGpuChoice FromValue(
+        int? deviceIndex,
+        IReadOnlyList<ExportGpuChoice>? choices = null) =>
+        (choices ?? Defaults).FirstOrDefault(choice => choice.DeviceIndex == deviceIndex) ?? Automatic;
 }
 
 public sealed partial class MainWindowViewModel
@@ -63,16 +69,21 @@ public sealed partial class MainWindowViewModel
     private ExportVideoEncoderChoice? _selectedExportVideoEncoder;
     private ExportVideoEncoder _preferredExportVideoEncoder = ExportEncodingSettings.DefaultVideoEncoder;
     private ExportVideoEncoder _automaticExportVideoEncoder = ExportVideoEncoder.Software;
+    private IReadOnlyList<ExportGpuChoice> _exportGpuChoices = ExportGpuChoice.Defaults;
     private IExportHardwareCapabilityProbe? _exportHardwareCapabilityProbe;
+    private IExportHardwareDeviceProbe? _exportHardwareDeviceProbe;
     private VideoCodecFamily? _exportHardwareProbeCodec;
     private int? _exportHardwareProbeDeviceIndex;
     private CancellationTokenSource? _exportHardwareProbeCancellation;
+    private CancellationTokenSource? _exportGpuProbeCancellation;
     private bool _isExportHardwareProbeRunning;
+    private bool _isExportGpuProbeRunning;
+    private string _exportGpuProbeStatus = string.Empty;
 
     public IReadOnlyList<ExportVideoEncoderChoice> ExportVideoEncoderChoices =>
         _exportVideoEncoderChoices;
 
-    public IReadOnlyList<ExportGpuChoice> ExportGpuChoices => ExportGpuChoice.All;
+    public IReadOnlyList<ExportGpuChoice> ExportGpuChoices => _exportGpuChoices;
 
     public ExportGpuChoice SelectedExportGpu
     {
@@ -96,6 +107,26 @@ public sealed partial class MainWindowViewModel
         ? $"Use FFmpeg device index {deviceIndex} for Vulkan decode and supported encoders. " +
           "NVENC, QSV and VA-API honor it; AMF requires Auto GPU."
         : "Let each FFmpeg decoder and encoder choose its default device.";
+
+    public bool IsExportGpuProbeRunning
+    {
+        get => _isExportGpuProbeRunning;
+        private set => SetProperty(ref _isExportGpuProbeRunning, value);
+    }
+
+    public string ExportGpuProbeStatus
+    {
+        get => _exportGpuProbeStatus;
+        private set
+        {
+            if (SetProperty(ref _exportGpuProbeStatus, value))
+            {
+                OnPropertyChanged(nameof(HasExportGpuProbeStatus));
+            }
+        }
+    }
+
+    public bool HasExportGpuProbeStatus => !string.IsNullOrWhiteSpace(ExportGpuProbeStatus);
 
     public ExportVideoEncoderChoice SelectedExportVideoEncoder
     {
@@ -179,6 +210,7 @@ public sealed partial class MainWindowViewModel
         _exportHardwareProbeCancellation?.Dispose();
         _exportHardwareProbeCancellation = null;
         _exportHardwareCapabilityProbe = probe;
+        ConfigureExportHardwareDeviceProbe(probe as IExportHardwareDeviceProbe);
         _exportHardwareProbeCodec = null;
         _exportHardwareProbeDeviceIndex = null;
 
@@ -191,6 +223,96 @@ public sealed partial class MainWindowViewModel
         }
 
         RefreshExportHardwareCapabilityProbe();
+    }
+
+    internal void ConfigureExportHardwareDeviceProbe(IExportHardwareDeviceProbe? probe)
+    {
+        _exportGpuProbeCancellation?.Cancel();
+        _exportGpuProbeCancellation?.Dispose();
+        _exportGpuProbeCancellation = null;
+        _exportHardwareDeviceProbe = probe;
+        ReplaceExportGpuChoices([]);
+        ExportGpuProbeStatus = string.Empty;
+        IsExportGpuProbeRunning = false;
+    }
+
+    public async Task RefreshExportGpuDevicesAsync()
+    {
+        if (IsExportGpuProbeRunning)
+        {
+            return;
+        }
+        if (_exportHardwareDeviceProbe is null)
+        {
+            ExportGpuProbeStatus = "GPU detection requires FFmpeg with Vulkan support.";
+            return;
+        }
+
+        _exportGpuProbeCancellation?.Cancel();
+        _exportGpuProbeCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _exportGpuProbeCancellation = cancellation;
+        IsExportGpuProbeRunning = true;
+        ExportGpuProbeStatus = "Detecting GPUs...";
+        try
+        {
+            var devices = await _exportHardwareDeviceProbe
+                .ProbeHardwareDevicesAsync(cancellation.Token);
+            if (cancellation.IsCancellationRequested ||
+                !ReferenceEquals(_exportGpuProbeCancellation, cancellation))
+            {
+                return;
+            }
+
+            ReplaceExportGpuChoices(devices);
+            ExportGpuProbeStatus = devices.Count == 0
+                ? "FFmpeg did not report any named GPU devices."
+                : string.Empty;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            if (!cancellation.IsCancellationRequested)
+            {
+                ExportGpuProbeStatus = $"GPU detection failed: {exception.Message}";
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_exportGpuProbeCancellation, cancellation))
+            {
+                IsExportGpuProbeRunning = false;
+            }
+        }
+    }
+
+    private void ReplaceExportGpuChoices(IReadOnlyList<ExportHardwareDevice> devices)
+    {
+        var choices = devices.Count == 0
+            ? ExportGpuChoice.Defaults.ToList()
+            : new List<ExportGpuChoice> { ExportGpuChoice.Automatic };
+        if (devices.Count > 0)
+        {
+            choices.AddRange(devices
+                .Where(device => device.DeviceIndex is >= ExportEncodingSettings.MinimumHardwareDeviceIndex and
+                    <= ExportEncodingSettings.MaximumHardwareDeviceIndex)
+                .OrderBy(device => device.DeviceIndex)
+                .Select(device => new ExportGpuChoice(device.DeviceIndex, device.DisplayName)));
+        }
+        if (PreferredHardwareDeviceIndex is { } selectedDeviceIndex &&
+            choices.All(choice => choice.DeviceIndex != selectedDeviceIndex))
+        {
+            choices.Add(new ExportGpuChoice(selectedDeviceIndex, $"GPU {selectedDeviceIndex} (not detected)"));
+        }
+
+        _exportGpuChoices = choices;
+        _selectedExportGpu = ExportGpuChoice.FromValue(PreferredHardwareDeviceIndex, choices);
+        OnPropertyChanged(nameof(ExportGpuChoices));
+        OnPropertyChanged(nameof(SelectedExportGpu));
+        OnPropertyChanged(nameof(ExportGpuDescription));
     }
 
     private void RefreshExportHardwareCapabilityProbe()
@@ -364,7 +486,11 @@ public sealed partial class MainWindowViewModel
         _exportHardwareProbeCancellation?.Cancel();
         _exportHardwareProbeCancellation?.Dispose();
         _exportHardwareProbeCancellation = null;
+        _exportGpuProbeCancellation?.Cancel();
+        _exportGpuProbeCancellation?.Dispose();
+        _exportGpuProbeCancellation = null;
         _exportHardwareCapabilityProbe = null;
+        _exportHardwareDeviceProbe = null;
     }
 
     private string CurrentExportVideoCodecLabel => GetEffectiveExportPreset().VideoCodec switch

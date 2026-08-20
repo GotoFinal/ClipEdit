@@ -9,7 +9,10 @@ using DiagnosticProcess = System.Diagnostics.Process;
 
 namespace ClipEdit.Media.FFmpeg.Export;
 
-public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapabilityProbe
+public sealed class FfmpegExportRenderer :
+    IExportRenderer,
+    IExportHardwareCapabilityProbe,
+    IExportHardwareDeviceProbe
 {
     private const int MaximumDiagnosticCharacters = 256 * 1024;
     private readonly string _executablePath;
@@ -44,6 +47,10 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
         int? hardwareDeviceIndex = null,
         CancellationToken cancellationToken = default) =>
         _hardwareCapabilityProbe.ProbeAsync(videoCodec, hardwareDeviceIndex, cancellationToken);
+
+    public Task<IReadOnlyList<ExportHardwareDevice>> ProbeHardwareDevicesAsync(
+        CancellationToken cancellationToken = default) =>
+        _hardwareCapabilityProbe.ProbeHardwareDevicesAsync(cancellationToken);
 
     public async Task<ExportResult> RenderAsync(
         ExportPlan plan,

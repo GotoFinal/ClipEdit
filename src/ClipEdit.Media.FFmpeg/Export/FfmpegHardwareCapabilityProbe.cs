@@ -1,16 +1,27 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using ClipEdit.Media.Export;
 using DiagnosticProcess = System.Diagnostics.Process;
 
 namespace ClipEdit.Media.FFmpeg.Export;
 
-public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityProbe
+public sealed class FfmpegHardwareCapabilityProbe :
+    IExportHardwareCapabilityProbe,
+    IExportHardwareDeviceProbe
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(8);
     private static readonly ConcurrentDictionary<string, Lazy<Task<ExportHardwareCapabilities>>> Cache =
         new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, Lazy<Task<IReadOnlyList<ExportHardwareDevice>>>>
+        DeviceCache = new(StringComparer.Ordinal);
+    private static readonly Regex VulkanDeviceLine = new(
+        @"\]\s+(?<index>\d+):\s+(?<name>.+?)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex VulkanDeviceSuffix = new(
+        @"\s+\((?:discrete|integrated|virtual|cpu|other)\)\s+\(0x[0-9a-f]+\)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private readonly string _executablePath;
     private readonly string _cacheKey;
@@ -51,6 +62,103 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
                 () => ProbeAllAsync(videoCodec, hardwareDeviceIndex),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value;
         return task.WaitAsync(cancellationToken);
+    }
+
+    public Task<IReadOnlyList<ExportHardwareDevice>> ProbeHardwareDevicesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var task = DeviceCache.GetOrAdd(
+            _cacheKey,
+            _ => new Lazy<Task<IReadOnlyList<ExportHardwareDevice>>>(
+                ProbeHardwareDevicesCoreAsync,
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+        return task.WaitAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ExportHardwareDevice>> ProbeHardwareDevicesCoreAsync()
+    {
+        using var process = new DiagnosticProcess
+        {
+            StartInfo = CreateStartInfo(
+            [
+                "-hide_banner", "-nostdin", "-loglevel", "verbose",
+                "-init_hw_device", "vulkan=list",
+                "-f", "lavfi", "-i", "nullsrc=s=16x16:d=0.01",
+                "-frames:v", "1", "-f", "null", "-",
+            ]),
+        };
+        try
+        {
+            if (!process.Start())
+            {
+                return [];
+            }
+
+            var standardOutput = process.StandardOutput.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
+            using var timeout = new CancellationTokenSource(ProbeTimeout);
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                TryKill(process);
+                await WaitForExitAsync(process).ConfigureAwait(false);
+            }
+
+            await standardOutput.ConfigureAwait(false);
+            return ParseVulkanDevices(await standardError.ConfigureAwait(false));
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception)
+        {
+            TryKill(process);
+            return [];
+        }
+    }
+
+    internal static IReadOnlyList<ExportHardwareDevice> ParseVulkanDevices(string diagnostics)
+    {
+        if (string.IsNullOrWhiteSpace(diagnostics))
+        {
+            return [];
+        }
+
+        var devices = new Dictionary<int, ExportHardwareDevice>();
+        var isReadingDeviceList = false;
+        foreach (var line in diagnostics.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (line.Contains("GPU listing:", StringComparison.Ordinal))
+            {
+                isReadingDeviceList = true;
+                continue;
+            }
+            if (!isReadingDeviceList)
+            {
+                continue;
+            }
+            if (line.Contains("Device ", StringComparison.Ordinal) &&
+                line.Contains(" selected:", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            var match = VulkanDeviceLine.Match(line);
+            if (!match.Success || !int.TryParse(match.Groups["index"].Value, out var deviceIndex))
+            {
+                continue;
+            }
+
+            var displayName = VulkanDeviceSuffix.Replace(match.Groups["name"].Value.Trim(), string.Empty);
+            if (!string.IsNullOrWhiteSpace(displayName))
+            {
+                devices[deviceIndex] = new ExportHardwareDevice(deviceIndex, displayName);
+            }
+        }
+
+        return devices.Values.OrderBy(device => device.DeviceIndex).ToArray();
     }
 
     private async Task<ExportHardwareCapabilities> ProbeAllAsync(

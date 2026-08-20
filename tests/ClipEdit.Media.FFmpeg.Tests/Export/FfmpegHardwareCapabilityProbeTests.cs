@@ -71,6 +71,28 @@ public sealed class FfmpegHardwareCapabilityProbeTests
     }
 
     [Fact]
+    public void Vulkan_device_listing_is_parsed_into_named_gpu_choices_only()
+    {
+        var diagnostics = """
+            [Vulkan @ abc] GPU listing:
+            [Vulkan @ abc]     0: NVIDIA GeForce RTX 5090 (discrete) (0x2b85)
+            [Vulkan @ abc]     1: Intel(R) Arc(TM) Graphics (integrated) (0x7d55)
+            [Vulkan @ abc] Device 0 selected: NVIDIA GeForce RTX 5090 (discrete) (0x2b85)
+            [Vulkan @ abc] Queue families:
+            [Vulkan @ abc]     0: graphics compute transfer (queues: 16)
+            """;
+
+        var devices = FfmpegHardwareCapabilityProbe.ParseVulkanDevices(diagnostics);
+
+        Assert.Equal(
+            [
+                new ExportHardwareDevice(0, "NVIDIA GeForce RTX 5090"),
+                new ExportHardwareDevice(1, "Intel(R) Arc(TM) Graphics"),
+            ],
+            devices);
+    }
+
+    [Fact]
     public async Task Probe_results_are_cached_for_the_same_executable_fingerprint()
     {
         var firstProbe = new FfmpegHardwareCapabilityProbe(Environment.ProcessPath!);

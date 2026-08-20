@@ -668,6 +668,26 @@ public sealed partial class MainWindow : Window
         ViewModel?.ResetRecoveryRetentionSettings();
     }
 
+    private async void HardwareSettingsExpander_Expanded(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is { } viewModel)
+        {
+            await viewModel.RefreshExportGpuDevicesAsync();
+        }
+    }
+
+    private async void RefreshGpuDevices_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (ViewModel is { } viewModel)
+        {
+            await viewModel.RefreshExportGpuDevicesAsync();
+        }
+    }
+
     private void RegisterProjectFileAssociation_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

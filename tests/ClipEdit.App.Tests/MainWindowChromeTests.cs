@@ -138,23 +138,28 @@ public sealed class MainWindowChromeTests
         var interaction = window.FindControl<Expander>("InteractionSettingsExpander");
         var recovery = window.FindControl<Expander>("RecoverySettingsExpander");
         var experimental = window.FindControl<Expander>("ExperimentalSettingsExpander");
+        var hardware = window.FindControl<Expander>("HardwareSettingsExpander");
         var mediaRuntime = window.FindControl<Expander>("MediaRuntimeSettingsExpander");
         var updates = window.FindControl<Expander>("UpdateSettingsExpander");
         var retentionDays = window.FindControl<NumericUpDown>("RecoveryRetentionDaysInput");
         var maximumFiles = window.FindControl<NumericUpDown>("MaximumRecoveryFilesInput");
         var boundaryGop = window.FindControl<CheckBox>("BoundaryGopRenderingCheckBox");
+        var preferredGpu = window.FindControl<ComboBox>("PreferredGpuComboBox");
 
         Assert.NotNull(interaction);
         Assert.NotNull(recovery);
         Assert.NotNull(experimental);
+        Assert.NotNull(hardware);
         Assert.NotNull(mediaRuntime);
         Assert.NotNull(updates);
         Assert.NotNull(retentionDays);
         Assert.NotNull(maximumFiles);
         Assert.NotNull(boundaryGop);
+        Assert.NotNull(preferredGpu);
         Assert.True(interaction.IsExpanded);
         Assert.False(recovery.IsExpanded);
         Assert.False(experimental.IsExpanded);
+        Assert.False(hardware.IsExpanded);
         Assert.False(mediaRuntime.IsExpanded);
         Assert.False(updates.IsExpanded);
         Assert.Equal(365, retentionDays.Maximum);
@@ -202,15 +207,7 @@ public sealed class MainWindowChromeTests
             Assert.Same(viewModel.SelectedExportVideoEncoder, encoder.SelectedItem);
             Assert.Contains(encoder.SelectedItem, viewModel.ExportVideoEncoderChoices);
         }
-        var gpu = window.FindControl<ComboBox>("ExportGpuComboBox");
-        Assert.NotNull(gpu);
-        Assert.Same(viewModel.SelectedExportGpu, gpu.SelectedItem);
-
-        viewModel.SelectedExportGpu = ExportGpuChoice.FromValue(2);
-        Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
-
-        Assert.Same(viewModel.SelectedExportGpu, gpu.SelectedItem);
-        Assert.Equal(2, ((ExportGpuChoice)gpu.SelectedItem!).DeviceIndex);
+        Assert.Null(window.FindControl<ComboBox>("ExportGpuComboBox"));
         exportHost.Close();
         window.Close();
     }

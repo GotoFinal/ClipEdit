@@ -65,8 +65,6 @@ internal sealed record ExportPreferences(
                 preset.Quality is >= 1 and <= 100 &&
                 preset.VideoBitRateKbps is >= ExportEncodingSettings.MinimumVideoBitRateKbps and
                     <= ExportEncodingSettings.MaximumVideoBitRateKbps &&
-                preset.HardwareDeviceIndex is null or >= ExportEncodingSettings.MinimumHardwareDeviceIndex and
-                    <= ExportEncodingSettings.MaximumHardwareDeviceIndex &&
                 preset.GifFrameRate is >= 1 and <= 60 &&
                 preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
                     <= ExportEncodingSettings.MaximumPlaybackSpeedPercent &&

@@ -156,6 +156,29 @@ public sealed class HardwareExportViewModelTests
         Assert.Contains("NVENC, QSV and VA-API", viewModel.ExportGpuDescription);
     }
 
+    [Fact]
+    public async Task Hardware_settings_replace_numeric_gpu_choices_with_detected_names()
+    {
+        using var viewModel = new MainWindowViewModel(mediaProbe: null)
+        {
+            SelectedExportGpu = ExportGpuChoice.FromValue(0),
+        };
+        viewModel.ConfigureExportHardwareDeviceProbe(new DeviceProbe(
+        [
+            new ExportHardwareDevice(0, "NVIDIA GeForce RTX 5090"),
+            new ExportHardwareDevice(1, "Intel Arc Graphics"),
+        ]));
+
+        await viewModel.RefreshExportGpuDevicesAsync();
+
+        Assert.Equal(
+            ["Auto", "NVIDIA GeForce RTX 5090 (GPU 0)", "Intel Arc Graphics (GPU 1)"],
+            viewModel.ExportGpuChoices.Select(choice => choice.MenuText));
+        Assert.Equal(0, viewModel.PreferredHardwareDeviceIndex);
+        Assert.Equal("NVIDIA GeForce RTX 5090", viewModel.SelectedExportGpu.DisplayName);
+        Assert.False(viewModel.HasExportGpuProbeStatus);
+    }
+
     private static ExportHardwareCapabilities Capabilities(
         VideoCodecFamily videoCodec,
         ExportVideoEncoder hardwareEncoder) =>
@@ -203,5 +226,13 @@ public sealed class HardwareExportViewModelTests
             RequestedDeviceIndices.Add(hardwareDeviceIndex);
             return Task.FromResult(capabilities[videoCodec]);
         }
+    }
+
+    private sealed class DeviceProbe(IReadOnlyList<ExportHardwareDevice> devices)
+        : IExportHardwareDeviceProbe
+    {
+        public Task<IReadOnlyList<ExportHardwareDevice>> ProbeHardwareDevicesAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(devices);
     }
 }

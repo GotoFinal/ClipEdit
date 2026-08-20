@@ -69,3 +69,13 @@ public interface IExportHardwareCapabilityProbe
         int? hardwareDeviceIndex = null,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ExportHardwareDevice(
+    int DeviceIndex,
+    string DisplayName);
+
+public interface IExportHardwareDeviceProbe
+{
+    Task<IReadOnlyList<ExportHardwareDevice>> ProbeHardwareDevicesAsync(
+        CancellationToken cancellationToken = default);
+}
