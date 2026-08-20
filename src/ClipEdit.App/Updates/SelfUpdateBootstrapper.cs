@@ -53,6 +53,9 @@ internal static class SelfUpdateBootstrapper
             return false;
         }
 
+#if DEBUG
+        return true;
+#else
         if (string.Equals(
                 Environment.GetEnvironmentVariable("CLIPEDIT_ALLOW_SELF_UPDATE"),
                 "1",
@@ -66,6 +69,7 @@ internal static class SelfUpdateBootstrapper
             ? null
             : Path.Combine(directory, $"{Path.GetFileNameWithoutExtension(processPath)}.dll");
         return managedSidecar is not null && !File.Exists(managedSidecar);
+#endif
     }
 
     public static void Launch(StagedUpdate update)
