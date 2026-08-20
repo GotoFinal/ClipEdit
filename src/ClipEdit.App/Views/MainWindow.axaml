@@ -369,16 +369,18 @@
         </Border>
 
         <StackPanel x:Name="ExportControls" Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" chrome:WindowDecorationProperties.ElementRole="User">
-          <Button
-              x:Name="UpdateButton"
-              Height="30"
-              Padding="9,4"
-              Classes="primary command-bar"
-              Click="Update_Click"
-              Content="{Binding Updates.UpdateActionText}"
-              IsEnabled="{Binding Updates.CanApplyUpdate}"
-              IsVisible="{Binding Updates.ShowUpdateButton}"
-              ToolTip.Tip="{Binding Updates.UpdateToolTip}" />
+          <Panel x:Name="ToolbarUpdateHost" IsVisible="{Binding ShowQuickWorkspace}">
+            <Button
+                x:Name="UpdateButton"
+                Height="30"
+                Padding="9,4"
+                Classes="primary command-bar"
+                Click="Update_Click"
+                Content="{Binding Updates.UpdateActionText}"
+                IsEnabled="{Binding Updates.CanApplyUpdate}"
+                IsVisible="{Binding Updates.ShowUpdateButton}"
+                ToolTip.Tip="{Binding Updates.UpdateToolTip}" />
+          </Panel>
           <ComboBox
               Width="154"
               Height="30"
@@ -1059,6 +1061,18 @@
                     Click="OpenMedia_Click"
                     Content="Open media"
                     IsEnabled="{Binding IsImportAvailable}" />
+
+                <Button
+                    x:Name="WelcomeUpdateButton"
+                    Margin="0,4,0,0"
+                    HorizontalAlignment="Center"
+                    Padding="14,7"
+                    Classes="primary"
+                    Click="Update_Click"
+                    Content="{Binding Updates.UpdateActionText}"
+                    IsEnabled="{Binding Updates.CanApplyUpdate}"
+                    IsVisible="{Binding Updates.ShowUpdateButton}"
+                    ToolTip.Tip="{Binding Updates.UpdateToolTip}" />
 
               </StackPanel>
             </Border>
@@ -1833,13 +1847,24 @@
                       MaxWidth="285"
                       Text="{Binding Updates.StatusText}"
                       TextWrapping="Wrap" />
-                  <Button
-                      HorizontalAlignment="Left"
-                      Padding="8,4"
-                      Classes="secondary"
-                      Click="CheckForUpdates_Click"
-                      Content="{Binding Updates.CheckButtonText}"
-                      IsEnabled="{Binding Updates.CanCheckForUpdates}" />
+                  <StackPanel x:Name="UpdateSettingsActionButtons" HorizontalAlignment="Left" Orientation="Horizontal" Spacing="6">
+                    <Button
+                        x:Name="CheckForUpdatesButton"
+                        Padding="8,4"
+                        Classes="secondary"
+                        Click="CheckForUpdates_Click"
+                        Content="{Binding Updates.CheckButtonText}"
+                        IsEnabled="{Binding Updates.CanCheckForUpdates}" />
+                    <Button
+                        x:Name="SettingsUpdateButton"
+                        Padding="8,4"
+                        Classes="primary"
+                        Click="Update_Click"
+                        Content="{Binding Updates.UpdateActionText}"
+                        IsEnabled="{Binding Updates.CanApplyUpdate}"
+                        IsVisible="{Binding Updates.ShowUpdateButton}"
+                        ToolTip.Tip="{Binding Updates.UpdateToolTip}" />
+                  </StackPanel>
                     </StackPanel>
                   </Expander>
                 </StackPanel>

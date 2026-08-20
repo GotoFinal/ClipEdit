@@ -96,14 +96,30 @@ public sealed class MainWindowChromeTests
             DataContext = new MainWindowViewModel(mediaProbe: null),
         };
         var updateButton = window.FindControl<Button>("UpdateButton");
+        var toolbarUpdateHost = window.FindControl<Panel>("ToolbarUpdateHost");
+        var welcomeUpdateButton = window.FindControl<Button>("WelcomeUpdateButton");
+        var settingsUpdateButton = window.FindControl<Button>("SettingsUpdateButton");
+        var settingsActionButtons = window.FindControl<StackPanel>("UpdateSettingsActionButtons");
+        var checkForUpdatesButton = window.FindControl<Button>("CheckForUpdatesButton");
         var automaticChecks = window.FindControl<CheckBox>("AutomaticUpdateChecksCheckBox");
         var includeBeta = window.FindControl<CheckBox>("IncludeBetaVersionsCheckBox");
 
         Assert.NotNull(updateButton);
+        Assert.NotNull(toolbarUpdateHost);
+        Assert.NotNull(welcomeUpdateButton);
+        Assert.NotNull(settingsUpdateButton);
+        Assert.NotNull(settingsActionButtons);
+        Assert.NotNull(checkForUpdatesButton);
         Assert.NotNull(automaticChecks);
         Assert.NotNull(includeBeta);
         Assert.False(includeBeta.IsChecked);
+        Assert.False(toolbarUpdateHost.IsVisible);
         Assert.False(updateButton.IsVisible);
+        Assert.False(welcomeUpdateButton.IsVisible);
+        Assert.Equal(Orientation.Horizontal, settingsActionButtons.Orientation);
+        Assert.Equal(2, settingsActionButtons.Children.Count);
+        Assert.Same(checkForUpdatesButton, settingsActionButtons.Children[0]);
+        Assert.Same(settingsUpdateButton, settingsActionButtons.Children[1]);
 
         window.Close();
     }
