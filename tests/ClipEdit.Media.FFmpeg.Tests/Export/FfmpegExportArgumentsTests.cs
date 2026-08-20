@@ -75,6 +75,42 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Fact]
+    public void Mp4_edit_list_trim_seeks_without_accurate_decode_and_copies_selected_streams()
+    {
+        var sourceDuration = new MediaTime(60, 1);
+        var range = new MediaRange(new MediaTime(37996, 1000), new MediaTime(88504, 1000));
+        var canvas = new PixelSize(1_920, 1_080);
+        var segment = new ExportVideoSegmentPlan(
+            TestPath("C:\\source.mp4"),
+            0,
+            range,
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity,
+            [new ExportAudioTrackPlan(1, 0, new SourceEdit(sourceDuration))],
+            MediaTime.Zero);
+        var plan = new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\trimmed.mp4"),
+            Mp4Compatible,
+            sequenceDuration: range.Duration,
+            strategy: ExportStrategy.EditListStreamCopy);
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.trimmed.partial"));
+
+        Assert.Equal("37.996", ValueAfter(arguments, "-ss"));
+        var argumentList = arguments.ToList();
+        Assert.True(argumentList.IndexOf("-noaccurate_seek") < argumentList.IndexOf("-i"));
+        Assert.Equal("50.508", ValueAfter(arguments, "-t"));
+        Assert.Contains("0:0", arguments);
+        Assert.Contains("0:1", arguments);
+        Assert.Equal("copy", ValueAfter(arguments, "-c"));
+        Assert.DoesNotContain("-filter_complex", arguments);
+        Assert.Equal("mp4", ValueAfter(arguments, "-f"));
+    }
+
+    [Fact]
     public void Audio_only_edit_copies_video_and_filters_only_audio()
     {
         var duration = new MediaTime(10, 1);

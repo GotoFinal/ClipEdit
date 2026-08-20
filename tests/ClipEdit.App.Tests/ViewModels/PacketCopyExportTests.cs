@@ -77,8 +77,9 @@ public sealed class PacketCopyExportTests
         viewModel.SequenceSelectionStartSeconds = 5;
         viewModel.SequenceSelectionEndSeconds = 30;
 
-        Assert.False(viewModel.IsPacketCopyExport);
-        Assert.Contains("Trimmed clips still require encoding", viewModel.ExportMethodDetails);
+        Assert.True(viewModel.IsPacketCopyExport);
+        Assert.Equal("Fast MP4 packet trim", viewModel.ExportMethodTitle);
+        Assert.Contains("MP4 timestamps hide", viewModel.ExportMethodDetails);
     }
 
     [Fact]

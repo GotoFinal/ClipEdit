@@ -19,6 +19,10 @@ internal static class FfmpegExportArguments
         {
             return CreateStreamCopy(plan, temporaryOutputPath);
         }
+        if (plan.Strategy == ExportStrategy.EditListStreamCopy)
+        {
+            return CreateEditListStreamCopy(plan, temporaryOutputPath);
+        }
         if (plan.Strategy == ExportStrategy.VideoStreamCopy)
         {
             return CreateVideoStreamCopy(plan, temporaryOutputPath);
@@ -153,6 +157,59 @@ internal static class FfmpegExportArguments
         }
         arguments.Add("-f");
         arguments.Add(GetMuxer(plan.Preset.Container));
+        arguments.Add(temporaryOutputPath);
+        return arguments;
+    }
+
+    private static IReadOnlyList<string> CreateEditListStreamCopy(
+        ExportPlan plan,
+        string temporaryOutputPath)
+    {
+        var segment = plan.VideoSegments.Single();
+        var arguments = new List<string>
+        {
+            "-hide_banner",
+            "-nostdin",
+            "-n",
+            "-loglevel",
+            "warning",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+        };
+        if (segment.SourceRange.Start > MediaTime.Zero)
+        {
+            arguments.Add("-ss");
+            arguments.Add(FormatTime(segment.SourceRange.Start));
+            arguments.Add("-noaccurate_seek");
+        }
+        arguments.Add("-i");
+        arguments.Add(segment.SourcePath);
+        arguments.Add("-t");
+        arguments.Add(FormatTime(segment.SourceRange.Duration));
+        arguments.Add("-map");
+        arguments.Add($"0:{segment.VideoStreamIndex}");
+        if (plan.Preset.SupportsAudio && segment.AudioTracks.Length == 1)
+        {
+            arguments.Add("-map");
+            arguments.Add($"0:{segment.AudioTracks[0].StreamIndex}");
+        }
+        else
+        {
+            arguments.Add("-an");
+        }
+        arguments.Add("-c");
+        arguments.Add("copy");
+        arguments.Add("-map_metadata");
+        arguments.Add("-1");
+        arguments.Add("-map_chapters");
+        arguments.Add("-1");
+        arguments.Add("-metadata:s:v:0");
+        arguments.Add("rotate=0");
+        arguments.Add("-movflags");
+        arguments.Add("+faststart");
+        arguments.Add("-f");
+        arguments.Add("mp4");
         arguments.Add(temporaryOutputPath);
         return arguments;
     }

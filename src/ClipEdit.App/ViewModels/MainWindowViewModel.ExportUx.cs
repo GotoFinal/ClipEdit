@@ -267,7 +267,7 @@ public sealed partial class MainWindowViewModel
             var slices = GetSequenceExportSlices();
             var preset = ResolveSelectedExportPreset(slices);
             return ResolveExportStrategyDecision(slices, preset).Strategy is
-                ExportStrategy.StreamCopy or ExportStrategy.ConcatStreamCopy;
+                ExportStrategy.StreamCopy or ExportStrategy.EditListStreamCopy or ExportStrategy.ConcatStreamCopy;
         }
     }
 
@@ -303,6 +303,7 @@ public sealed partial class MainWindowViewModel
             return ResolveExportStrategyDecision(slices, preset).Strategy switch
             {
                 ExportStrategy.StreamCopy => "Fast packet copy",
+                ExportStrategy.EditListStreamCopy => "Fast MP4 packet trim",
                 ExportStrategy.ConcatStreamCopy => "Fast packet copy",
                 ExportStrategy.VideoStreamCopy => "Fast video copy",
                 ExportStrategy.BoundaryGop => "Experimental Boundary-GOP",
@@ -322,6 +323,8 @@ public sealed partial class MainWindowViewModel
             {
                 ExportStrategy.StreamCopy =>
                     "Compressed video and eligible audio will be remuxed without filters or quality loss.",
+                ExportStrategy.EditListStreamCopy =>
+                    "Video and unchanged audio will be copied without re-encoding. MP4 timestamps hide the required decode preroll so the requested visible range is preserved; players that ignore MP4 edit lists may expose preroll.",
                 ExportStrategy.ConcatStreamCopy =>
                     "Complete compatible clips will be joined without decoding or quality loss.",
                 ExportStrategy.VideoStreamCopy =>
@@ -402,6 +405,8 @@ public sealed partial class MainWindowViewModel
         {
             ExportStrategy.StreamCopy =>
                 "Source-matching settings applied; export will use fast packet copy",
+            ExportStrategy.EditListStreamCopy =>
+                "Source-matching settings applied; export will use fast MP4 packet trim",
             ExportStrategy.ConcatStreamCopy =>
                 "Source-matching settings applied; compatible clips will be joined without encoding",
             ExportStrategy.VideoStreamCopy =>

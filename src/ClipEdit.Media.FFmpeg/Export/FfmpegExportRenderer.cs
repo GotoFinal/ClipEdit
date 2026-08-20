@@ -99,7 +99,9 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         {
             StartProcess(process);
             var activePhase = !forceExactTranscode &&
-                              (plan.Strategy is ExportStrategy.StreamCopy or ExportStrategy.ConcatStreamCopy)
+                              (plan.Strategy is ExportStrategy.StreamCopy or
+                                  ExportStrategy.EditListStreamCopy or
+                                  ExportStrategy.ConcatStreamCopy)
                 ? "Copying"
                 : "Encoding";
             progress?.Report(new ExportProgress(0, activePhase, TimeSpan.Zero));

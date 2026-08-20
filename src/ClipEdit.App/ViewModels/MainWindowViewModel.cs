@@ -356,6 +356,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         var blockers = PacketCopyBlocker.None;
         var reasons = new List<string>();
+        var forceEditListStreamCopy = false;
         var forceVideoStreamCopy = false;
         var forceBoundaryGop = false;
 
@@ -371,6 +372,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             {
                 return forceBoundaryGop
                     ? PacketCopyDecision.BoundaryGop(blockers, reasons)
+                    : forceEditListStreamCopy
+                        ? PacketCopyDecision.CopyEditListTrim(reasons)
                     : forceVideoStreamCopy
                         ? PacketCopyDecision.CopyVideo(blockers, reasons)
                         : PacketCopyDecision.Copy;
@@ -383,6 +386,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 PacketCopyBlocker.AudioEdit |
                 PacketCopyBlocker.AudioCodec;
             if ((blockers & ~audioOnlyBlockers) != PacketCopyBlocker.None)
+            {
+                return PacketCopyDecision.Transcode(blockers, reasons);
+            }
+
+            if (forceEditListStreamCopy && !forceVideoStreamCopy)
             {
                 return PacketCopyDecision.Transcode(blockers, reasons);
             }
@@ -447,16 +455,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         var streamCopyInfo = CreateSegmentStreamCopyInfo(slice, preset);
         if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration) &&
-            CanCopyTrimmedVideoPackets(slice, preset, streamCopyInfo))
-        {
-            forceVideoStreamCopy = true;
-            reasons.Add("Video boundaries are indexed keyframes; audio is rebuilt for exact timing.");
-        }
-        else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration) &&
-                 CreateBoundaryGopRenderInfo(slice, preset) is not null)
+            CreateBoundaryGopRenderInfo(slice, preset) is not null)
         {
             forceBoundaryGop = true;
             reasons.Add("Only the cut GOPs will be encoded; untouched middle GOPs will be copied and the candidate validated.");
+        }
+        else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration) &&
+                 IsMp4EditListPacketTrimSupported(preset, video.CodecName))
+        {
+            forceEditListStreamCopy = true;
+            forceVideoStreamCopy = CanCopyTrimmedVideoPackets(slice, preset, streamCopyInfo);
+            reasons.Add("MP4 edit-list trim will hide decode preroll while video and unchanged audio packets are copied.");
+        }
+        else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration) &&
+                 CanCopyTrimmedVideoPackets(slice, preset, streamCopyInfo))
+        {
+            forceVideoStreamCopy = true;
+            reasons.Add("Video boundaries are indexed keyframes; audio is rebuilt for exact timing.");
         }
         else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
         {
@@ -561,6 +576,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         VideoCodecFamily.Av1 => string.Equals(codecName, "av1", StringComparison.OrdinalIgnoreCase),
         _ => false,
     };
+
+    private static bool IsMp4EditListPacketTrimSupported(
+        ExportPreset preset,
+        string sourceVideoCodec) =>
+        preset.Container == ExportContainer.Mp4 &&
+        preset.VideoCodec == VideoCodecFamily.H264 &&
+        string.Equals(sourceVideoCodec, "h264", StringComparison.OrdinalIgnoreCase);
 
     private static bool SourceAudioCodecMatches(string codecName, AudioCodecFamily codec) => codec switch
     {
@@ -1120,6 +1142,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             var strategy = ResolveExportStrategy(slices, preset) switch
             {
                 ExportStrategy.StreamCopy => "packet copy · no re-encode",
+                ExportStrategy.EditListStreamCopy => "MP4 packet trim · no re-encode",
                 ExportStrategy.ConcatStreamCopy => "packet-copy join · no re-encode",
                 ExportStrategy.VideoStreamCopy => "video copy · audio re-encode",
                 ExportStrategy.BoundaryGop => "experimental Boundary-GOP · validated",
@@ -5125,6 +5148,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             ExportStrategy.ConcatStreamCopy,
             PacketCopyBlocker.None,
             []);
+
+        public static PacketCopyDecision CopyEditListTrim(IEnumerable<string> reasons) => new(
+            ExportStrategy.EditListStreamCopy,
+            PacketCopyBlocker.None,
+            reasons.ToImmutableArray());
 
         public static PacketCopyDecision CopyVideo(
             PacketCopyBlocker blockers,

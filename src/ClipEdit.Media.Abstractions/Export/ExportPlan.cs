@@ -9,6 +9,7 @@ public enum ExportStrategy
 {
     ExactTranscode,
     StreamCopy,
+    EditListStreamCopy,
     VideoStreamCopy,
     ConcatStreamCopy,
     BoundaryGop,
@@ -318,6 +319,11 @@ public sealed record ExportPlan
             ValidateBoundaryGop(segments, resolvedDuration);
             return;
         }
+        if (strategy == ExportStrategy.EditListStreamCopy)
+        {
+            ValidateEditListStreamCopy(segments, externalTracks, resolvedDuration);
+            return;
+        }
         if (strategy is not (ExportStrategy.StreamCopy or ExportStrategy.VideoStreamCopy))
         {
             return;
@@ -359,6 +365,38 @@ public sealed record ExportPlan
                 strategy == ExportStrategy.StreamCopy
                     ? "Packet-copy export requires one complete, untransformed, untrimmed source clip with unchanged audio."
                     : "Video-copy export requires one complete clip or a verified keyframe-aligned trim without visual transforms.");
+        }
+    }
+
+    private void ValidateEditListStreamCopy(
+        ImmutableArray<ExportVideoSegmentPlan> segments,
+        ImmutableArray<ExportAudioTrackPlan> externalTracks,
+        MediaTime resolvedDuration)
+    {
+        var segment = segments.Length == 1 ? segments[0] : null;
+        var hasUnchangedAudio = segment?.AudioTracks.Length switch
+        {
+            0 => true,
+            1 => Math.Abs(segment.AudioTracks[0].GainDb) < 0.000_001 &&
+                 segment.AudioTracks[0].AudioEdit is { IsUnedited: true },
+            _ => false,
+        };
+        if (segment is null ||
+            Preset.Container != ExportContainer.Mp4 ||
+            Preset.VideoCodec != VideoCodecFamily.H264 ||
+            segment.IsCompleteSource ||
+            !externalTracks.IsEmpty ||
+            !hasUnchangedAudio ||
+            segment.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent ||
+            segment.TimelineStart != SequenceTimelineStart ||
+            segment.TimelineDuration != resolvedDuration ||
+            segment.CanvasTransform != ClipCanvasTransform.Identity ||
+            segment.CanvasCrop != CropRegion.FullFrame(segment.CanvasSize) ||
+            EncodingSettings.ScalePercent != ExportEncodingSettings.DefaultScalePercent ||
+            EncodingSettings.PlaybackSpeedPercent != ExportEncodingSettings.DefaultPlaybackSpeedPercent)
+        {
+            throw new ExportPlanException(
+                "MP4 edit-list packet trim requires one trimmed H.264 clip with unchanged video, audio, size, and speed.");
         }
     }
 
