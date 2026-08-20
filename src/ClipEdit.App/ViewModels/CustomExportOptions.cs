@@ -483,13 +483,18 @@ public sealed partial class MainWindowViewModel
         _isNormalizingCustomCodecChoices = true;
         try
         {
+            // Add the next selections before changing SelectedItem, then remove
+            // obsolete options only after the controls can select the new items.
+            AddMissingChoices(CustomVideoCodecChoices, videoChoices);
+            AddMissingChoices(CustomAudioCodecChoices, audioChoices);
             _customVideoCodec = nextVideo;
             _customAudioCodec = nextAudio;
-            ReplaceChoices(CustomVideoCodecChoices, videoChoices);
-            ReplaceChoices(CustomAudioCodecChoices, audioChoices);
+            OnPropertyChanged(nameof(CustomVideoCodec));
+            OnPropertyChanged(nameof(CustomAudioCodec));
+            ReconcileChoices(CustomVideoCodecChoices, videoChoices);
+            ReconcileChoices(CustomAudioCodecChoices, audioChoices);
 
-            // Collection replacement can clear ComboBox.SelectedItem even when
-            // the same choice remains valid. Always republish both selections.
+            // Reordering may make a selector reevaluate its current index.
             OnPropertyChanged(nameof(CustomVideoCodec));
             OnPropertyChanged(nameof(CustomAudioCodec));
         }
@@ -514,12 +519,38 @@ public sealed partial class MainWindowViewModel
         MarkProjectDirty();
     }
 
-    private static void ReplaceChoices<T>(ObservableCollection<T> target, IEnumerable<T> choices)
+    private static void AddMissingChoices<T>(
+        ObservableCollection<T> target,
+        IReadOnlyList<T> desired)
     {
-        target.Clear();
-        foreach (var choice in choices)
+        foreach (var choice in desired)
         {
-            target.Add(choice);
+            if (!target.Contains(choice))
+            {
+                target.Add(choice);
+            }
+        }
+    }
+
+    private static void ReconcileChoices<T>(
+        ObservableCollection<T> target,
+        IReadOnlyList<T> desired)
+    {
+        for (var index = target.Count - 1; index >= 0; index--)
+        {
+            if (!desired.Contains(target[index]))
+            {
+                target.RemoveAt(index);
+            }
+        }
+
+        for (var desiredIndex = 0; desiredIndex < desired.Count; desiredIndex++)
+        {
+            var currentIndex = target.IndexOf(desired[desiredIndex]);
+            if (currentIndex != desiredIndex)
+            {
+                target.Move(currentIndex, desiredIndex);
+            }
         }
     }
 

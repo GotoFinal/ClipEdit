@@ -507,6 +507,7 @@
                             IsVisible="{Binding !IsGifExport}">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Encoder" />
                           <ComboBox
+                              x:Name="ExportVideoEncoderComboBox"
                               Grid.Column="1"
                               ItemsSource="{Binding ExportVideoEncoderChoices}"
                               SelectedItem="{Binding SelectedExportVideoEncoder}"
@@ -676,7 +677,13 @@
                                 </ComboBox.ItemTemplate>
                               </ComboBox>
                               <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Video codec" />
-                              <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding CustomVideoCodecChoices}" SelectedItem="{Binding CustomVideoCodec}">
+                              <ComboBox
+                                  x:Name="CustomVideoCodecComboBox"
+                                  Grid.Row="1"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding CustomVideoCodecChoices}"
+                                  SelectedItem="{Binding CustomVideoCodec, Mode=OneWay}"
+                                  SelectionChanged="CustomVideoCodec_SelectionChanged">
                                 <ComboBox.ItemTemplate>
                                   <DataTemplate x:DataType="vm:VideoCodecChoice">
                                     <TextBlock Text="{Binding DisplayName}" />
@@ -684,7 +691,13 @@
                                 </ComboBox.ItemTemplate>
                               </ComboBox>
                               <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Audio codec" />
-                              <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding CustomAudioCodecChoices}" SelectedItem="{Binding CustomAudioCodec}">
+                              <ComboBox
+                                  x:Name="CustomAudioCodecComboBox"
+                                  Grid.Row="2"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding CustomAudioCodecChoices}"
+                                  SelectedItem="{Binding CustomAudioCodec, Mode=OneWay}"
+                                  SelectionChanged="CustomAudioCodec_SelectionChanged">
                                 <ComboBox.ItemTemplate>
                                   <DataTemplate x:DataType="vm:AudioCodecChoice">
                                     <TextBlock Text="{Binding DisplayName}" />

@@ -50,6 +50,30 @@ public sealed partial class MainWindow : Window
             : ["*.so", "*.so.*"],
     };
 
+    private void CustomVideoCodec_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox
+            {
+                DataContext: MainWindowViewModel viewModel,
+                SelectedItem: VideoCodecChoice choice,
+            } && !ReferenceEquals(viewModel.CustomVideoCodec, choice))
+        {
+            viewModel.CustomVideoCodec = choice;
+        }
+    }
+
+    private void CustomAudioCodec_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox
+            {
+                DataContext: MainWindowViewModel viewModel,
+                SelectedItem: AudioCodecChoice choice,
+            } && !ReferenceEquals(viewModel.CustomAudioCodec, choice))
+        {
+            viewModel.CustomAudioCodec = choice;
+        }
+    }
+
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly IProjectFileAssociationService? _projectFileAssociationService;
     private readonly Action? _markProjectFileAssociationPromptShown;

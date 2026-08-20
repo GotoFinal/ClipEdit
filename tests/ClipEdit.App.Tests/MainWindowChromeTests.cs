@@ -6,10 +6,12 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Layout;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using ClipEdit.Application.Export;
 using ClipEdit.App.Views;
 using ClipEdit.App.Platform;
 using ClipEdit.App.ViewModels;
+using ClipEdit.Media.Export;
 
 namespace ClipEdit.App.Tests;
 
@@ -161,6 +163,96 @@ public sealed class MainWindowChromeTests
         Assert.Equal(20, viewModel.MaximumRecoveryFiles);
         Assert.False(boundaryGop.IsChecked);
 
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Encoder_combo_keeps_a_visible_selection_when_the_codec_probe_updates_options()
+    {
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+        };
+        var exportHost = HostExportSettings(window, viewModel);
+        var encoder = window.FindControl<ComboBox>("ExportVideoEncoderComboBox");
+        Assert.NotNull(encoder);
+        Assert.Same(viewModel.SelectedExportVideoEncoder, encoder.SelectedItem);
+        var originalItemsSource = encoder.ItemsSource;
+        var originalChoices = viewModel.ExportVideoEncoderChoices.ToArray();
+
+        viewModel.ConfigureExportHardwareCapabilityProbe(new SoftwareCodecProbe());
+        viewModel.SelectedExportPreset = BuiltInExportPresets.Custom;
+        foreach (var codec in new[]
+                 {
+                     VideoCodecChoice.Hevc,
+                     VideoCodecChoice.Av1,
+                     VideoCodecChoice.H264,
+                 })
+        {
+            viewModel.CustomVideoCodec = codec;
+
+            Assert.Same(originalItemsSource, encoder.ItemsSource);
+            Assert.Equal(originalChoices.Length, viewModel.ExportVideoEncoderChoices.Count);
+            for (var index = 0; index < originalChoices.Length; index++)
+            {
+                Assert.Same(originalChoices[index], viewModel.ExportVideoEncoderChoices[index]);
+            }
+            Assert.NotNull(encoder.SelectedItem);
+            Assert.Same(viewModel.SelectedExportVideoEncoder, encoder.SelectedItem);
+            Assert.Contains(encoder.SelectedItem, viewModel.ExportVideoEncoderChoices);
+        }
+        exportHost.Close();
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Dependent_codec_combos_keep_visible_selections_when_container_changes()
+    {
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+        };
+        var exportHost = HostExportSettings(window, viewModel);
+        var videoCodec = window.FindControl<ComboBox>("CustomVideoCodecComboBox");
+        var audioCodec = window.FindControl<ComboBox>("CustomAudioCodecComboBox");
+        Assert.NotNull(videoCodec);
+        Assert.NotNull(audioCodec);
+
+        foreach (var container in new[]
+                 {
+                     ExportContainerChoice.WebM,
+                     ExportContainerChoice.Matroska,
+                     ExportContainerChoice.Gif,
+                     ExportContainerChoice.Mp4,
+                 })
+        {
+            viewModel.CustomExportContainer = container;
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+
+            Assert.True(
+                videoCodec.SelectedItem is not null,
+                $"{container.DisplayName}: video SelectedValue={videoCodec.SelectedValue ?? "<null>"}, " +
+                $"view-model value={viewModel.CustomVideoCodec.Value}, " +
+                $"items={string.Join(",", viewModel.CustomVideoCodecChoices.Select(choice => choice.Value))}");
+            Assert.True(
+                audioCodec.SelectedItem is not null,
+                $"{container.DisplayName}: audio SelectedValue={audioCodec.SelectedValue ?? "<null>"}, " +
+                $"view-model value={viewModel.CustomAudioCodec.Value}, " +
+                $"items={string.Join(",", viewModel.CustomAudioCodecChoices.Select(choice => choice.Value))}");
+            Assert.Same(viewModel.CustomVideoCodec, videoCodec.SelectedItem);
+            Assert.Same(viewModel.CustomAudioCodec, audioCodec.SelectedItem);
+            if (container == ExportContainerChoice.Matroska)
+            {
+                videoCodec.SelectedItem = VideoCodecChoice.Vp9;
+                audioCodec.SelectedItem = AudioCodecChoice.Flac;
+                Assert.Same(VideoCodecChoice.Vp9, viewModel.CustomVideoCodec);
+                Assert.Same(AudioCodecChoice.Flac, viewModel.CustomAudioCodec);
+            }
+        }
+
+        exportHost.Close();
         window.Close();
     }
 
@@ -518,6 +610,22 @@ public sealed class MainWindowChromeTests
         Assert.Equal(expected, WindowDecorationProperties.GetElementRole(button));
     }
 
+    private static Window HostExportSettings(MainWindow window, MainWindowViewModel viewModel)
+    {
+        var button = window.FindControl<Button>("ExportSettingsButton");
+        Assert.NotNull(button);
+        var flyout = Assert.IsType<Flyout>(button.Flyout);
+        var content = Assert.IsAssignableFrom<Control>(flyout.Content);
+        flyout.Content = null;
+        var host = new Window
+        {
+            DataContext = viewModel,
+            Content = content,
+        };
+        host.Show();
+        return host;
+    }
+
     private sealed class FakeProjectFileAssociationService : IProjectFileAssociationService
     {
         public int RegisterCount { get; private set; }
@@ -527,5 +635,21 @@ public sealed class MainWindowChromeTests
             RegisterCount++;
             return new ProjectFileAssociationResult(true, "Association registered for this test");
         }
+    }
+
+    private sealed class SoftwareCodecProbe : IExportHardwareCapabilityProbe
+    {
+        public Task<ExportHardwareCapabilities> ProbeAsync(
+            VideoCodecFamily videoCodec,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ExportHardwareCapabilities(
+            [
+                new(
+                    ExportVideoEncoder.Software,
+                    videoCodec == VideoCodecFamily.Av1 ? "Software (libaom-av1)" : "Software",
+                    true,
+                    "Available",
+                    VideoCodec: videoCodec),
+            ]));
     }
 }

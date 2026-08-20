@@ -117,33 +117,21 @@ public sealed class HardwareExportViewModelTests
     }
 
     [Fact]
-    public void Codec_probe_updates_never_publish_a_selection_outside_the_new_choices()
+    public void Codec_probe_updates_keep_the_choice_collection_and_items_stable()
     {
         using var viewModel = new MainWindowViewModel(mediaProbe: null);
-        var observedChoicesRefresh = false;
-        viewModel.PropertyChanged += (_, args) =>
-        {
-            if (args.PropertyName != nameof(MainWindowViewModel.ExportVideoEncoderChoices))
-            {
-                return;
-            }
-
-            observedChoicesRefresh = true;
-            Assert.Contains(
-                viewModel.SelectedExportVideoEncoder,
-                viewModel.ExportVideoEncoderChoices);
-
-            // Simulate the transient null write produced by a two-way ComboBox
-            // while it replaces ItemsSource.
-            var expectedSelection = viewModel.SelectedExportVideoEncoder;
-            viewModel.SelectedExportVideoEncoder = null!;
-            Assert.Same(expectedSelection, viewModel.SelectedExportVideoEncoder);
-        };
+        var originalChoices = viewModel.ExportVideoEncoderChoices;
+        var originalItems = originalChoices.ToArray();
 
         viewModel.ConfigureExportHardwareCapabilityProbe(new StubProbe(
             Capabilities(VideoCodecFamily.H264, ExportVideoEncoder.NvidiaNvenc)));
 
-        Assert.True(observedChoicesRefresh);
+        Assert.Same(originalChoices, viewModel.ExportVideoEncoderChoices);
+        Assert.Equal(originalItems.Length, viewModel.ExportVideoEncoderChoices.Count);
+        for (var index = 0; index < originalItems.Length; index++)
+        {
+            Assert.Same(originalItems[index], viewModel.ExportVideoEncoderChoices[index]);
+        }
         Assert.Contains(
             viewModel.SelectedExportVideoEncoder,
             viewModel.ExportVideoEncoderChoices);
