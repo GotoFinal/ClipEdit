@@ -1123,6 +1123,41 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void Changing_custom_container_cannot_clear_dependent_codec_selections()
+    {
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        var transientVideoWrites = 0;
+        var transientAudioWrites = 0;
+        viewModel.CustomVideoCodecChoices.CollectionChanged += (_, _) =>
+        {
+            transientVideoWrites++;
+            viewModel.CustomVideoCodec = null!;
+        };
+        viewModel.CustomAudioCodecChoices.CollectionChanged += (_, _) =>
+        {
+            transientAudioWrites++;
+            viewModel.CustomAudioCodec = null!;
+        };
+
+        foreach (var container in new[]
+                 {
+                     ExportContainerChoice.WebM,
+                     ExportContainerChoice.Matroska,
+                     ExportContainerChoice.Gif,
+                     ExportContainerChoice.Mp4,
+                 })
+        {
+            viewModel.CustomExportContainer = container;
+
+            Assert.Contains(viewModel.CustomVideoCodec, viewModel.CustomVideoCodecChoices);
+            Assert.Contains(viewModel.CustomAudioCodec, viewModel.CustomAudioCodecChoices);
+        }
+
+        Assert.True(transientVideoWrites > 0);
+        Assert.True(transientAudioWrites > 0);
+    }
+
+    [Fact]
     public void Named_custom_export_presets_can_be_saved_loaded_and_deleted()
     {
         using var viewModel = new MainWindowViewModel(new StubProbe());

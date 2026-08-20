@@ -88,6 +88,7 @@ public sealed partial class MainWindowViewModel
     private string _customPresetName = string.Empty;
     private SavedExportPresetViewModel? _selectedSavedExportPreset;
     private bool _isApplyingCustomExportSettings;
+    private bool _isNormalizingCustomCodecChoices;
 
     public event EventHandler? SavedExportPresetsChanged;
 
@@ -124,6 +125,11 @@ public sealed partial class MainWindowViewModel
         get => _customVideoCodec;
         set
         {
+            if (_isNormalizingCustomCodecChoices)
+            {
+                return;
+            }
+
             var next = value ?? CustomVideoCodecChoices.First();
             if (SetProperty(ref _customVideoCodec, next))
             {
@@ -137,6 +143,11 @@ public sealed partial class MainWindowViewModel
         get => _customAudioCodec;
         set
         {
+            if (_isNormalizingCustomCodecChoices)
+            {
+                return;
+            }
+
             var next = value ?? CustomAudioCodecChoices.First();
             if (SetProperty(ref _customAudioCodec, next))
             {
@@ -464,21 +475,27 @@ public sealed partial class MainWindowViewModel
             _ => [AudioCodecChoice.Aac, AudioCodecChoice.None],
         };
 
-        ReplaceChoices(CustomVideoCodecChoices, videoChoices);
-        ReplaceChoices(CustomAudioCodecChoices, audioChoices);
-        var nextVideo = CustomVideoCodecChoices.FirstOrDefault(choice => choice.Value == _customVideoCodec.Value) ??
-                        CustomVideoCodecChoices.First();
-        var nextAudio = CustomAudioCodecChoices.FirstOrDefault(choice => choice.Value == _customAudioCodec.Value) ??
-                        CustomAudioCodecChoices.First();
-        if (!ReferenceEquals(_customVideoCodec, nextVideo))
+        var nextVideo = videoChoices.FirstOrDefault(choice => choice.Value == _customVideoCodec.Value) ??
+                        videoChoices[0];
+        var nextAudio = audioChoices.FirstOrDefault(choice => choice.Value == _customAudioCodec.Value) ??
+                        audioChoices[0];
+
+        _isNormalizingCustomCodecChoices = true;
+        try
         {
             _customVideoCodec = nextVideo;
-            OnPropertyChanged(nameof(CustomVideoCodec));
-        }
-        if (!ReferenceEquals(_customAudioCodec, nextAudio))
-        {
             _customAudioCodec = nextAudio;
+            ReplaceChoices(CustomVideoCodecChoices, videoChoices);
+            ReplaceChoices(CustomAudioCodecChoices, audioChoices);
+
+            // Collection replacement can clear ComboBox.SelectedItem even when
+            // the same choice remains valid. Always republish both selections.
+            OnPropertyChanged(nameof(CustomVideoCodec));
             OnPropertyChanged(nameof(CustomAudioCodec));
+        }
+        finally
+        {
+            _isNormalizingCustomCodecChoices = false;
         }
 
         OnPropertyChanged(nameof(CustomCanSetFrameRate));
