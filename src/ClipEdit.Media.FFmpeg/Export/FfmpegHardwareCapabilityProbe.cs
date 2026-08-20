@@ -36,6 +36,7 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
 
     public Task<ExportHardwareCapabilities> ProbeAsync(
         VideoCodecFamily videoCodec,
+        int? hardwareDeviceIndex = null,
         CancellationToken cancellationToken = default)
     {
         if (videoCodec == VideoCodecFamily.Gif)
@@ -43,20 +44,33 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
             return Task.FromResult(new ExportHardwareCapabilities([]));
         }
 
-        var cacheKey = $"{_cacheKey}|{videoCodec}";
+        var cacheKey = $"{_cacheKey}|{videoCodec}|{hardwareDeviceIndex?.ToString() ?? "auto"}";
         var task = Cache.GetOrAdd(
             cacheKey,
             _ => new Lazy<Task<ExportHardwareCapabilities>>(
-                () => ProbeAllAsync(videoCodec),
+                () => ProbeAllAsync(videoCodec, hardwareDeviceIndex),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value;
         return task.WaitAsync(cancellationToken);
     }
 
-    private async Task<ExportHardwareCapabilities> ProbeAllAsync(VideoCodecFamily videoCodec)
+    private async Task<ExportHardwareCapabilities> ProbeAllAsync(
+        VideoCodecFamily videoCodec,
+        int? hardwareDeviceIndex)
     {
         var capabilities = new List<ExportVideoEncoderCapability>();
-        foreach (var probe in CreateProbes(videoCodec))
+        foreach (var probe in CreateProbes(videoCodec, hardwareDeviceIndex))
         {
+            if (hardwareDeviceIndex is not null && probe.Encoder == ExportVideoEncoder.AmdAmf)
+            {
+                capabilities.Add(new ExportVideoEncoderCapability(
+                    probe.Encoder,
+                    probe.DisplayName,
+                    false,
+                    "Unavailable · FFmpeg AMF cannot select an exact adapter; use Auto GPU.",
+                    VideoCodec: probe.VideoCodec));
+                continue;
+            }
+
             capabilities.Add(await ProbeEncoderAsync(probe).ConfigureAwait(false));
         }
 
@@ -140,7 +154,9 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
         return startInfo;
     }
 
-    internal static IReadOnlyList<EncoderProbe> CreateProbes(VideoCodecFamily videoCodec)
+    internal static IReadOnlyList<EncoderProbe> CreateProbes(
+        VideoCodecFamily videoCodec,
+        int? hardwareDeviceIndex = null)
     {
         var probes = new List<EncoderProbe> { CreateSoftwareProbe(videoCodec) };
         foreach (var backend in new[]
@@ -153,15 +169,15 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
         {
             if (TryGetEncoderName(videoCodec, backend, out var encoderName))
             {
-                probes.Add(CreateHardwareProbe(videoCodec, backend, encoderName));
+                probes.Add(CreateHardwareProbe(videoCodec, backend, encoderName, hardwareDeviceIndex));
             }
         }
 
         return probes;
     }
 
-    internal static IReadOnlyList<EncoderProbe> CreateH264Probes() =>
-        CreateProbes(VideoCodecFamily.H264)
+    internal static IReadOnlyList<EncoderProbe> CreateH264Probes(int? hardwareDeviceIndex = null) =>
+        CreateProbes(VideoCodecFamily.H264, hardwareDeviceIndex)
             .Where(probe => probe.Encoder != ExportVideoEncoder.Software)
             .ToArray();
 
@@ -187,7 +203,8 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
     private static EncoderProbe CreateHardwareProbe(
         VideoCodecFamily videoCodec,
         ExportVideoEncoder backend,
-        string encoderName)
+        string encoderName,
+        int? hardwareDeviceIndex)
     {
         var displayName = backend switch
         {
@@ -202,9 +219,7 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
             displayName,
             encoderName,
             videoCodec,
-            backend == ExportVideoEncoder.Vaapi
-                ? VaapiProbeArguments(encoderName, videoCodec)
-                : CommonProbeArguments(encoderName, videoCodec));
+            HardwareProbeArguments(backend, encoderName, videoCodec, hardwareDeviceIndex));
     }
 
     private static bool TryGetEncoderName(
@@ -252,15 +267,51 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
         return arguments;
     }
 
+    private static IReadOnlyList<string> HardwareProbeArguments(
+        ExportVideoEncoder backend,
+        string encoder,
+        VideoCodecFamily videoCodec,
+        int? hardwareDeviceIndex)
+    {
+        if (backend == ExportVideoEncoder.Vaapi)
+        {
+            return VaapiProbeArguments(encoder, videoCodec, hardwareDeviceIndex);
+        }
+
+        var arguments = CommonProbeArguments(encoder, videoCodec).ToList();
+        if (hardwareDeviceIndex is not { } deviceIndex)
+        {
+            return arguments;
+        }
+
+        switch (backend)
+        {
+            case ExportVideoEncoder.NvidiaNvenc:
+                InsertBeforeOutput(arguments, "-gpu", deviceIndex.ToString());
+                break;
+            case ExportVideoEncoder.IntelQuickSync:
+                arguments.InsertRange(4, ["-qsv_device", deviceIndex.ToString()]);
+                break;
+            case ExportVideoEncoder.AmdAmf:
+                // FFmpeg's AMF encoders do not expose a stable adapter-index option.
+                break;
+        }
+
+        return arguments;
+    }
+
     private static IReadOnlyList<string> VaapiProbeArguments(
         string encoder,
-        VideoCodecFamily videoCodec)
+        VideoCodecFamily videoCodec,
+        int? hardwareDeviceIndex)
     {
         var (source, frames) = ProbeWorkload(videoCodec);
         return
         [
             "-hide_banner", "-nostdin", "-loglevel", "error",
-            "-init_hw_device", "vaapi=clipeditva",
+            "-init_hw_device", hardwareDeviceIndex is { } deviceIndex
+                ? $"vaapi=clipeditva:{deviceIndex}"
+                : "vaapi=clipeditva",
             "-filter_hw_device", "clipeditva",
             "-f", "lavfi", "-i", source,
             "-frames:v", frames, "-an",
@@ -268,6 +319,18 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
             "-c:v", encoder,
             "-f", "null", "-",
         ];
+    }
+
+    private static void InsertBeforeOutput(List<string> arguments, string option, string value)
+    {
+        var outputIndex = arguments.FindLastIndex(argument => argument == "-");
+        if (outputIndex < 0)
+        {
+            outputIndex = arguments.Count;
+        }
+
+        arguments.Insert(outputIndex, option);
+        arguments.Insert(outputIndex + 1, value);
     }
 
     private static (string Source, string Frames) ProbeWorkload(VideoCodecFamily videoCodec) =>

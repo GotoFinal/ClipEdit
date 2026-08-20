@@ -34,6 +34,8 @@ public sealed record ExportEncodingSettings
     public const int DefaultVideoBitRateKbps = 6_000;
     public const int MinimumVideoBitRateKbps = 100;
     public const int MaximumVideoBitRateKbps = 1_000_000;
+    public const int MinimumHardwareDeviceIndex = 0;
+    public const int MaximumHardwareDeviceIndex = 15;
     public const int DefaultScalePercent = 100;
     public const int DefaultGifFrameRate = 15;
     public const int MinimumPlaybackSpeedPercent = 1;
@@ -55,7 +57,8 @@ public sealed record ExportEncodingSettings
         ExportEncodingSpeed encodingSpeed = DefaultEncodingSpeed,
         ExportHardwareAcceleration hardwareAcceleration = DefaultHardwareAcceleration,
         ExportVideoEncoder videoEncoder = DefaultVideoEncoder,
-        int videoBitRateKbps = DefaultVideoBitRateKbps)
+        int videoBitRateKbps = DefaultVideoBitRateKbps,
+        int? hardwareDeviceIndex = null)
     {
         if (quality is < 1 or > 100)
         {
@@ -93,6 +96,10 @@ public sealed record ExportEncodingSettings
         {
             throw new ArgumentOutOfRangeException(nameof(videoBitRateKbps));
         }
+        if (hardwareDeviceIndex is < MinimumHardwareDeviceIndex or > MaximumHardwareDeviceIndex)
+        {
+            throw new ArgumentOutOfRangeException(nameof(hardwareDeviceIndex));
+        }
 
         Quality = quality;
         ScalePercent = scalePercent;
@@ -103,6 +110,7 @@ public sealed record ExportEncodingSettings
         HardwareAcceleration = hardwareAcceleration;
         VideoEncoder = videoEncoder;
         VideoBitRateKbps = videoBitRateKbps;
+        HardwareDeviceIndex = hardwareDeviceIndex;
     }
 
     public int Quality { get; }
@@ -122,6 +130,8 @@ public sealed record ExportEncodingSettings
     public ExportVideoEncoder VideoEncoder { get; }
 
     public int VideoBitRateKbps { get; }
+
+    public int? HardwareDeviceIndex { get; }
 
     public long VideoBitRateBitsPerSecond => VideoBitRateKbps * 1_000L;
 

@@ -202,6 +202,15 @@ public sealed class MainWindowChromeTests
             Assert.Same(viewModel.SelectedExportVideoEncoder, encoder.SelectedItem);
             Assert.Contains(encoder.SelectedItem, viewModel.ExportVideoEncoderChoices);
         }
+        var gpu = window.FindControl<ComboBox>("ExportGpuComboBox");
+        Assert.NotNull(gpu);
+        Assert.Same(viewModel.SelectedExportGpu, gpu.SelectedItem);
+
+        viewModel.SelectedExportGpu = ExportGpuChoice.FromValue(2);
+        Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+
+        Assert.Same(viewModel.SelectedExportGpu, gpu.SelectedItem);
+        Assert.Equal(2, ((ExportGpuChoice)gpu.SelectedItem!).DeviceIndex);
         exportHost.Close();
         window.Close();
     }
@@ -653,6 +662,7 @@ public sealed class MainWindowChromeTests
     {
         public Task<ExportHardwareCapabilities> ProbeAsync(
             VideoCodecFamily videoCodec,
+            int? hardwareDeviceIndex = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new ExportHardwareCapabilities(
             [

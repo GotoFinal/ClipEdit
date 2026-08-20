@@ -66,5 +66,6 @@ public interface IExportHardwareCapabilityProbe
 {
     Task<ExportHardwareCapabilities> ProbeAsync(
         VideoCodecFamily videoCodec,
+        int? hardwareDeviceIndex = null,
         CancellationToken cancellationToken = default);
 }

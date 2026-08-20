@@ -36,6 +36,26 @@ public sealed class ExportVideoEncoderChoice(
     }
 }
 
+public sealed record ExportGpuChoice(
+    int? DeviceIndex,
+    string DisplayName)
+{
+    public static ExportGpuChoice Automatic { get; } = new(null, "Auto");
+
+    public static IReadOnlyList<ExportGpuChoice> All { get; } =
+    [
+        Automatic,
+        .. Enumerable.Range(
+                ExportEncodingSettings.MinimumHardwareDeviceIndex,
+                ExportEncodingSettings.MaximumHardwareDeviceIndex -
+                ExportEncodingSettings.MinimumHardwareDeviceIndex + 1)
+            .Select(index => new ExportGpuChoice(index, $"GPU {index}")),
+    ];
+
+    public static ExportGpuChoice FromValue(int? deviceIndex) =>
+        All.FirstOrDefault(choice => choice.DeviceIndex == deviceIndex) ?? Automatic;
+}
+
 public sealed partial class MainWindowViewModel
 {
     private readonly IReadOnlyList<ExportVideoEncoderChoice> _exportVideoEncoderChoices =
@@ -45,11 +65,37 @@ public sealed partial class MainWindowViewModel
     private ExportVideoEncoder _automaticExportVideoEncoder = ExportVideoEncoder.Software;
     private IExportHardwareCapabilityProbe? _exportHardwareCapabilityProbe;
     private VideoCodecFamily? _exportHardwareProbeCodec;
+    private int? _exportHardwareProbeDeviceIndex;
     private CancellationTokenSource? _exportHardwareProbeCancellation;
     private bool _isExportHardwareProbeRunning;
 
     public IReadOnlyList<ExportVideoEncoderChoice> ExportVideoEncoderChoices =>
         _exportVideoEncoderChoices;
+
+    public IReadOnlyList<ExportGpuChoice> ExportGpuChoices => ExportGpuChoice.All;
+
+    public ExportGpuChoice SelectedExportGpu
+    {
+        get => _selectedExportGpu;
+        set
+        {
+            var next = value ?? ExportGpuChoice.Automatic;
+            if (SetProperty(ref _selectedExportGpu, next))
+            {
+                OnPropertyChanged(nameof(PreferredHardwareDeviceIndex));
+                OnPropertyChanged(nameof(ExportGpuDescription));
+                RefreshExportHardwareCapabilityProbe();
+                RaiseExportStateChanged();
+            }
+        }
+    }
+
+    public int? PreferredHardwareDeviceIndex => SelectedExportGpu.DeviceIndex;
+
+    public string ExportGpuDescription => PreferredHardwareDeviceIndex is { } deviceIndex
+        ? $"Use FFmpeg device index {deviceIndex} for Vulkan decode and supported encoders. " +
+          "NVENC, QSV and VA-API honor it; AMF requires Auto GPU."
+        : "Let each FFmpeg decoder and encoder choose its default device.";
 
     public ExportVideoEncoderChoice SelectedExportVideoEncoder
     {
@@ -134,6 +180,7 @@ public sealed partial class MainWindowViewModel
         _exportHardwareProbeCancellation = null;
         _exportHardwareCapabilityProbe = probe;
         _exportHardwareProbeCodec = null;
+        _exportHardwareProbeDeviceIndex = null;
 
         if (probe is null)
         {
@@ -158,7 +205,9 @@ public sealed partial class MainWindowViewModel
             IsExportHardwareProbeRunning = false;
             return;
         }
-        if (_exportHardwareProbeCodec == videoCodec)
+        var hardwareDeviceIndex = PreferredHardwareDeviceIndex;
+        if (_exportHardwareProbeCodec == videoCodec &&
+            _exportHardwareProbeDeviceIndex == hardwareDeviceIndex)
         {
             return;
         }
@@ -167,6 +216,7 @@ public sealed partial class MainWindowViewModel
         _exportHardwareProbeCancellation?.Dispose();
         _exportHardwareProbeCancellation = null;
         _exportHardwareProbeCodec = videoCodec;
+        _exportHardwareProbeDeviceIndex = hardwareDeviceIndex;
         if (_exportHardwareCapabilityProbe is null)
         {
             ApplyExportHardwareCapabilities(null, videoCodec);
@@ -179,17 +229,19 @@ public sealed partial class MainWindowViewModel
         ObserveExportHardwareCapabilitiesAsync(
             _exportHardwareCapabilityProbe,
             videoCodec,
+            hardwareDeviceIndex,
             cancellation);
     }
 
     private async void ObserveExportHardwareCapabilitiesAsync(
         IExportHardwareCapabilityProbe probe,
         VideoCodecFamily videoCodec,
+        int? hardwareDeviceIndex,
         CancellationTokenSource request)
     {
         try
         {
-            var capabilities = await probe.ProbeAsync(videoCodec, request.Token);
+            var capabilities = await probe.ProbeAsync(videoCodec, hardwareDeviceIndex, request.Token);
             if (!request.IsCancellationRequested && ReferenceEquals(_exportHardwareProbeCancellation, request))
             {
                 ApplyExportHardwareCapabilities(capabilities, videoCodec);

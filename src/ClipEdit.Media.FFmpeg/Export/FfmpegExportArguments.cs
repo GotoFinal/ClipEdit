@@ -55,7 +55,12 @@ internal static class FfmpegExportArguments
             "-nostats",
         };
         var videoEncoder = ResolveVideoEncoder(plan, videoEncoderOverride);
-        AddHardwareEncoderGlobalArguments(arguments, videoEncoder);
+        var hardwareAcceleration = hardwareAccelerationOverride ?? plan.EncodingSettings.HardwareAcceleration;
+        AddHardwareDeviceGlobalArguments(
+            arguments,
+            hardwareAcceleration,
+            videoEncoder,
+            plan.EncodingSettings.HardwareDeviceIndex);
 
         if (plan.IsSequence)
         {
@@ -63,7 +68,8 @@ internal static class FfmpegExportArguments
             {
                 AddHardwareDecodeInputArguments(
                     arguments,
-                    hardwareAccelerationOverride ?? plan.EncodingSettings.HardwareAcceleration);
+                    hardwareAcceleration,
+                    plan.EncodingSettings.HardwareDeviceIndex);
                 if (segment.SourceRange.Start > MediaTime.Zero)
                 {
                     arguments.Add("-ss");
@@ -85,7 +91,8 @@ internal static class FfmpegExportArguments
         {
             AddHardwareDecodeInputArguments(
                 arguments,
-                hardwareAccelerationOverride ?? plan.EncodingSettings.HardwareAcceleration);
+                hardwareAcceleration,
+                plan.EncodingSettings.HardwareDeviceIndex);
             arguments.Add("-i");
             arguments.Add(plan.SourcePath);
 
@@ -1084,7 +1091,10 @@ internal static class FfmpegExportArguments
         {
             requested = ExportVideoEncoder.Software;
         }
-        return requested == ExportVideoEncoder.Software || plan.PreservesHdr ||
+        return requested == ExportVideoEncoder.Software ||
+               (requested == ExportVideoEncoder.AmdAmf &&
+                plan.EncodingSettings.HardwareDeviceIndex is not null) ||
+               plan.PreservesHdr ||
                !TryGetHardwareEncoderName(plan.Preset.VideoCodec, requested, out _)
             ? ExportVideoEncoder.Software
             : requested;
@@ -1100,7 +1110,7 @@ internal static class FfmpegExportArguments
         var qualityText = MapQualityAroundDefault(quality, 40, 23, 16)
             .ToString(CultureInfo.InvariantCulture);
         var bitRateText = targetVideoBitRate?.ToString(CultureInfo.InvariantCulture);
-        return videoEncoder switch
+        var arguments = videoEncoder switch
         {
             ExportVideoEncoder.Software => bitRateText is null
                 ?
@@ -1157,6 +1167,8 @@ internal static class FfmpegExportArguments
                 : ["-c:v", "h264_vaapi", "-b:v", bitRateText],
             _ => throw new ExportPlanException($"Unsupported H.264 encoder: {videoEncoder}."),
         };
+        AddNvencDeviceArgument(arguments, videoEncoder, plan.EncodingSettings.HardwareDeviceIndex);
+        return arguments;
     }
 
     private static List<string> CreateHevcPresetArguments(
@@ -1288,7 +1300,7 @@ internal static class FfmpegExportArguments
         // exposed by the supported FFmpeg backends top out at 51.
         var qualityText = Math.Clamp(quality, 1, 51).ToString(CultureInfo.InvariantCulture);
         var bitRateText = targetVideoBitRate?.ToString(CultureInfo.InvariantCulture);
-        return videoEncoder switch
+        List<string> arguments = videoEncoder switch
         {
             ExportVideoEncoder.NvidiaNvenc => bitRateText is null
                 ?
@@ -1330,6 +1342,21 @@ internal static class FfmpegExportArguments
                 : ["-c:v", encoderName, "-b:v", bitRateText],
             _ => throw new ExportPlanException($"Unsupported hardware encoder: {videoEncoder}."),
         };
+        AddNvencDeviceArgument(arguments, videoEncoder, plan.EncodingSettings.HardwareDeviceIndex);
+        return arguments;
+    }
+
+    private static void AddNvencDeviceArgument(
+        ICollection<string> arguments,
+        ExportVideoEncoder videoEncoder,
+        int? hardwareDeviceIndex)
+    {
+        if (videoEncoder == ExportVideoEncoder.NvidiaNvenc &&
+            hardwareDeviceIndex is { } deviceIndex)
+        {
+            arguments.Add("-gpu");
+            arguments.Add(deviceIndex.ToString(CultureInfo.InvariantCulture));
+        }
     }
 
     private static void AddSoftwareRateControl(
@@ -1409,24 +1436,43 @@ internal static class FfmpegExportArguments
         return encoderName.Length > 0;
     }
 
-    private static void AddHardwareEncoderGlobalArguments(
+    private static void AddHardwareDeviceGlobalArguments(
         ICollection<string> arguments,
-        ExportVideoEncoder videoEncoder)
+        ExportHardwareAcceleration hardwareAcceleration,
+        ExportVideoEncoder videoEncoder,
+        int? hardwareDeviceIndex)
     {
+        if (hardwareAcceleration == ExportHardwareAcceleration.Vulkan &&
+            hardwareDeviceIndex is { } vulkanDeviceIndex)
+        {
+            arguments.Add("-init_hw_device");
+            arguments.Add($"vulkan=clipeditvk:{vulkanDeviceIndex.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        if (videoEncoder == ExportVideoEncoder.IntelQuickSync &&
+            hardwareDeviceIndex is { } quickSyncDeviceIndex)
+        {
+            arguments.Add("-qsv_device");
+            arguments.Add(quickSyncDeviceIndex.ToString(CultureInfo.InvariantCulture));
+        }
+
         if (videoEncoder != ExportVideoEncoder.Vaapi)
         {
             return;
         }
 
         arguments.Add("-init_hw_device");
-        arguments.Add("vaapi=clipeditva");
+        arguments.Add(hardwareDeviceIndex is { } vaapiDeviceIndex
+            ? $"vaapi=clipeditva:{vaapiDeviceIndex.ToString(CultureInfo.InvariantCulture)}"
+            : "vaapi=clipeditva");
         arguments.Add("-filter_hw_device");
         arguments.Add("clipeditva");
     }
 
     private static void AddHardwareDecodeInputArguments(
         ICollection<string> arguments,
-        ExportHardwareAcceleration hardwareAcceleration)
+        ExportHardwareAcceleration hardwareAcceleration,
+        int? hardwareDeviceIndex)
     {
         switch (hardwareAcceleration)
         {
@@ -1439,6 +1485,11 @@ internal static class FfmpegExportArguments
             case ExportHardwareAcceleration.Vulkan:
                 arguments.Add("-hwaccel");
                 arguments.Add("vulkan");
+                if (hardwareDeviceIndex is not null)
+                {
+                    arguments.Add("-hwaccel_device");
+                    arguments.Add("clipeditvk");
+                }
                 return;
             default:
                 throw new ExportPlanException(

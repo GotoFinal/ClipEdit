@@ -41,8 +41,9 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
 
     public Task<ExportHardwareCapabilities> ProbeAsync(
         VideoCodecFamily videoCodec,
+        int? hardwareDeviceIndex = null,
         CancellationToken cancellationToken = default) =>
-        _hardwareCapabilityProbe.ProbeAsync(videoCodec, cancellationToken);
+        _hardwareCapabilityProbe.ProbeAsync(videoCodec, hardwareDeviceIndex, cancellationToken);
 
     public async Task<ExportResult> RenderAsync(
         ExportPlan plan,

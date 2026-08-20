@@ -502,7 +502,7 @@
                           </ComboBox>
                         </Grid>
                         <Grid
-                            ColumnDefinitions="Auto,*"
+                            ColumnDefinitions="Auto,*,Auto,96"
                             ColumnSpacing="7"
                             IsVisible="{Binding !IsGifExport}">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Encoder" />
@@ -515,6 +515,19 @@
                             <ComboBox.ItemTemplate>
                               <DataTemplate x:DataType="vm:ExportVideoEncoderChoice">
                                 <TextBlock Text="{Binding MenuText}" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                          <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="GPU" />
+                          <ComboBox
+                              x:Name="ExportGpuComboBox"
+                              Grid.Column="3"
+                              ItemsSource="{Binding ExportGpuChoices}"
+                              SelectedItem="{Binding SelectedExportGpu}"
+                              ToolTip.Tip="{Binding ExportGpuDescription}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:ExportGpuChoice">
+                                <TextBlock Text="{Binding DisplayName}" />
                               </DataTemplate>
                             </ComboBox.ItemTemplate>
                           </ComboBox>

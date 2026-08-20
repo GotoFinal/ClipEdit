@@ -1409,6 +1409,91 @@ public sealed class FfmpegExportArgumentsTests
         AssertInputSeek(arguments, TestPath("C:\\second.mkv"), null, "4");
     }
 
+    [Fact]
+    public void Preferred_gpu_targets_vulkan_decode_and_nvenc_encode()
+    {
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(
+                hardwareAcceleration: ExportHardwareAcceleration.Vulkan,
+                videoEncoder: ExportVideoEncoder.NvidiaNvenc,
+                hardwareDeviceIndex: 2));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal("vulkan=clipeditvk:2", ValueAfter(arguments, "-init_hw_device"));
+        Assert.Equal("vulkan", ValueAfter(arguments, "-hwaccel"));
+        Assert.Equal("clipeditvk", ValueAfter(arguments, "-hwaccel_device"));
+        Assert.Equal("2", ValueAfter(arguments, "-gpu"));
+    }
+
+    [Theory]
+    [InlineData(ExportVideoEncoder.IntelQuickSync, "-qsv_device", "3")]
+    [InlineData(ExportVideoEncoder.Vaapi, "-init_hw_device", "vaapi=clipeditva:3")]
+    public void Preferred_gpu_targets_supported_encoder_backends(
+        ExportVideoEncoder encoder,
+        string expectedOption,
+        string expectedValue)
+    {
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(
+                videoEncoder: encoder,
+                hardwareDeviceIndex: 3));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal(expectedValue, ValueAfter(arguments, expectedOption));
+    }
+
+    [Fact]
+    public void Exact_gpu_does_not_silently_encode_with_amf_on_its_default_adapter()
+    {
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(
+                videoEncoder: ExportVideoEncoder.AmdAmf,
+                hardwareDeviceIndex: 1));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal("libx264", ValueAfter(arguments, "-c:v"));
+        Assert.DoesNotContain("h264_amf", arguments);
+    }
+
     private static string TestPath(string windowsPath)
     {
         if (OperatingSystem.IsWindows())

@@ -137,6 +137,25 @@ public sealed class HardwareExportViewModelTests
             viewModel.ExportVideoEncoderChoices);
     }
 
+    [Fact]
+    public void Changing_preferred_gpu_reprobes_the_same_codec_for_that_device()
+    {
+        var probe = new CodecProbe(new Dictionary<VideoCodecFamily, ExportHardwareCapabilities>
+        {
+            [VideoCodecFamily.H264] = Capabilities(
+                VideoCodecFamily.H264,
+                ExportVideoEncoder.NvidiaNvenc),
+        });
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        viewModel.ConfigureExportHardwareCapabilityProbe(probe);
+
+        viewModel.SelectedExportGpu = ExportGpuChoice.FromValue(3);
+
+        Assert.Equal([null, 3], probe.RequestedDeviceIndices);
+        Assert.Equal(3, viewModel.PreferredHardwareDeviceIndex);
+        Assert.Contains("NVENC, QSV and VA-API", viewModel.ExportGpuDescription);
+    }
+
     private static ExportHardwareCapabilities Capabilities(
         VideoCodecFamily videoCodec,
         ExportVideoEncoder hardwareEncoder) =>
@@ -162,6 +181,7 @@ public sealed class HardwareExportViewModelTests
     {
         public Task<ExportHardwareCapabilities> ProbeAsync(
             VideoCodecFamily videoCodec,
+            int? hardwareDeviceIndex = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(capabilities);
     }
@@ -172,11 +192,15 @@ public sealed class HardwareExportViewModelTests
     {
         public List<VideoCodecFamily> RequestedCodecs { get; } = [];
 
+        public List<int?> RequestedDeviceIndices { get; } = [];
+
         public Task<ExportHardwareCapabilities> ProbeAsync(
             VideoCodecFamily videoCodec,
+            int? hardwareDeviceIndex = null,
             CancellationToken cancellationToken = default)
         {
             RequestedCodecs.Add(videoCodec);
+            RequestedDeviceIndices.Add(hardwareDeviceIndex);
             return Task.FromResult(capabilities[videoCodec]);
         }
     }

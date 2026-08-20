@@ -578,7 +578,8 @@ public sealed partial class MainWindowViewModel
         ExportEncodingSpeed,
         ExportHardwareAcceleration,
         EffectiveExportVideoEncoder,
-        ExportVideoBitRateKbps);
+        ExportVideoBitRateKbps,
+        PreferredHardwareDeviceIndex);
 
     private void ResetTransientExportAdjustments()
     {

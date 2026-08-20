@@ -55,6 +55,22 @@ public sealed class FfmpegHardwareCapabilityProbeTests
     }
 
     [Fact]
+    public void Preferred_gpu_is_used_by_backend_capability_tests_when_supported()
+    {
+        var probes = FfmpegHardwareCapabilityProbe.CreateH264Probes(2);
+
+        var nvenc = probes.Single(probe => probe.Encoder == ExportVideoEncoder.NvidiaNvenc);
+        var qsv = probes.Single(probe => probe.Encoder == ExportVideoEncoder.IntelQuickSync);
+        var amf = probes.Single(probe => probe.Encoder == ExportVideoEncoder.AmdAmf);
+        var vaapi = probes.Single(probe => probe.Encoder == ExportVideoEncoder.Vaapi);
+
+        Assert.Equal("2", ValueAfter(nvenc.Arguments, "-gpu"));
+        Assert.Equal("2", ValueAfter(qsv.Arguments, "-qsv_device"));
+        Assert.DoesNotContain("-gpu", amf.Arguments);
+        Assert.Equal("vaapi=clipeditva:2", ValueAfter(vaapi.Arguments, "-init_hw_device"));
+    }
+
+    [Fact]
     public async Task Probe_results_are_cached_for_the_same_executable_fingerprint()
     {
         var firstProbe = new FfmpegHardwareCapabilityProbe(Environment.ProcessPath!);
@@ -130,5 +146,12 @@ public sealed class FfmpegHardwareCapabilityProbeTests
             ExportVideoEncoder.Software,
             capabilities.FastestAvailable(VideoCodecFamily.Hevc).Encoder);
         Assert.False(capabilities.Get(ExportVideoEncoder.NvidiaNvenc, VideoCodecFamily.Hevc).IsAvailable);
+    }
+
+    private static string ValueAfter(IReadOnlyList<string> arguments, string option)
+    {
+        var index = arguments.ToList().IndexOf(option);
+        Assert.True(index >= 0 && index + 1 < arguments.Count, $"Missing {option}");
+        return arguments[index + 1];
     }
 }

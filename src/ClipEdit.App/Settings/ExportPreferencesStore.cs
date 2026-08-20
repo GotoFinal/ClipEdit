@@ -23,7 +23,8 @@ internal sealed record ExportPreferences(
     ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
     ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software,
     ExportVideoEncoder VideoEncoder = ExportEncodingSettings.DefaultVideoEncoder,
-    int VideoBitRateKbps = ExportEncodingSettings.DefaultVideoBitRateKbps)
+    int VideoBitRateKbps = ExportEncodingSettings.DefaultVideoBitRateKbps,
+    int? HardwareDeviceIndex = null)
 {
     public static ExportPreferences Default { get; } = new(
         BuiltInExportPresets.Mp4Compatible.Id,
@@ -43,7 +44,8 @@ internal sealed record ExportPreferences(
         ExportEncodingSpeed.Balanced,
         ExportHardwareAcceleration.Software,
         ExportEncodingSettings.DefaultVideoEncoder,
-        ExportEncodingSettings.DefaultVideoBitRateKbps);
+        ExportEncodingSettings.DefaultVideoBitRateKbps,
+        null);
 
     public ExportPreferences Normalize()
     {
@@ -63,6 +65,8 @@ internal sealed record ExportPreferences(
                 preset.Quality is >= 1 and <= 100 &&
                 preset.VideoBitRateKbps is >= ExportEncodingSettings.MinimumVideoBitRateKbps and
                     <= ExportEncodingSettings.MaximumVideoBitRateKbps &&
+                preset.HardwareDeviceIndex is null or >= ExportEncodingSettings.MinimumHardwareDeviceIndex and
+                    <= ExportEncodingSettings.MaximumHardwareDeviceIndex &&
                 preset.GifFrameRate is >= 1 and <= 60 &&
                 preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
                     <= ExportEncodingSettings.MaximumPlaybackSpeedPercent &&
@@ -117,6 +121,10 @@ internal sealed record ExportPreferences(
             VideoEncoder = Enum.IsDefined(VideoEncoder)
                 ? VideoEncoder
                 : Default.VideoEncoder,
+            HardwareDeviceIndex = HardwareDeviceIndex is >= ExportEncodingSettings.MinimumHardwareDeviceIndex and
+                <= ExportEncodingSettings.MaximumHardwareDeviceIndex
+                ? HardwareDeviceIndex
+                : null,
             CustomContainer = custom.Container,
             CustomVideoCodec = custom.Video,
             CustomAudioCodec = custom.Audio,

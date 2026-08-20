@@ -74,6 +74,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private ExportQualityChoice _selectedExportQuality = ExportQualityChoice.MatchSource;
     private ExportEncodingSpeedChoice _selectedExportEncodingSpeed = ExportEncodingSpeedChoice.Balanced;
     private ExportHardwareAccelerationChoice _selectedExportHardwareAcceleration = ExportHardwareAccelerationChoice.Software;
+    private ExportGpuChoice _selectedExportGpu = ExportGpuChoice.Automatic;
     private bool _rememberExportAdjustments;
     private ExportDestinationChoice _selectedExportDestination = ExportDestinationChoice.File;
     private bool _isExporting;

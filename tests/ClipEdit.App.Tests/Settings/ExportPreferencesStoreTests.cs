@@ -39,7 +39,8 @@ public sealed class ExportPreferencesStoreTests
                         18,
                         7_500,
                         ExportQualityMode.BitRate,
-                        VideoBitRateKbps: 7_500),
+                        VideoBitRateKbps: 7_500,
+                        HardwareDeviceIndex: 3),
                 ],
                 10_000,
                 true,
@@ -47,7 +48,8 @@ public sealed class ExportPreferencesStoreTests
                 ExportEncodingSpeed.Faster,
                 ExportHardwareAcceleration.Vulkan,
                 ExportVideoEncoder.NvidiaNvenc,
-                8_500);
+                8_500,
+                2);
 
             Assert.True(store.Save(settings));
             var restored = store.Load();
@@ -110,6 +112,7 @@ public sealed class ExportPreferencesStoreTests
             Assert.Equal(ExportEncodingSpeed.Balanced, restored.EncodingSpeed);
             Assert.Equal(ExportHardwareAcceleration.Software, restored.HardwareAcceleration);
             Assert.Equal(ExportVideoEncoder.Automatic, restored.VideoEncoder);
+            Assert.Null(restored.HardwareDeviceIndex);
         }
         finally
         {
@@ -182,6 +185,7 @@ public sealed class ExportPreferencesStoreTests
             EncodingSpeed = ExportEncodingSpeed.SmallerFile,
             HardwareAcceleration = ExportHardwareAcceleration.Automatic,
             VideoEncoder = ExportVideoEncoder.Software,
+            HardwareDeviceIndex = 4,
         };
 
         viewModel.ApplyExportPreferences(preferences);
@@ -202,6 +206,7 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(ExportEncodingSpeed.SmallerFile, viewModel.ExportEncodingSpeed);
         Assert.Equal(ExportHardwareAcceleration.Automatic, viewModel.ExportHardwareAcceleration);
         Assert.Equal(ExportVideoEncoder.Software, viewModel.PreferredExportVideoEncoder);
+        Assert.Equal(4, viewModel.PreferredHardwareDeviceIndex);
         Assert.Equal("Copy", viewModel.ExportActionText);
         Assert.False(viewModel.IsProjectDirty);
     }
@@ -240,6 +245,7 @@ public sealed class ExportPreferencesStoreTests
             ExportPlaybackSpeedPercent = 250,
             ExportVideoBitRateKbps = 9_500,
             SelectedExportQuality = ExportQualityChoice.Custom,
+            SelectedExportGpu = ExportGpuChoice.FromValue(5),
         };
 
         var preferences = viewModel.CreateExportPreferences();
@@ -250,6 +256,7 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(100, preferences.PlaybackSpeedPercent);
         Assert.Equal(ExportQualityMode.MatchSource, preferences.QualityMode);
         Assert.Equal(ExportEncodingSettings.DefaultVideoBitRateKbps, preferences.VideoBitRateKbps);
+        Assert.Equal(5, preferences.HardwareDeviceIndex);
     }
 
     [Fact]
