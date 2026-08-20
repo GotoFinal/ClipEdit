@@ -33,6 +33,20 @@ public sealed class FfmpegExportRendererTests
     }
 
     [Fact]
+    public void Hardware_fallback_recognizes_device_failures_but_not_unrelated_encode_errors()
+    {
+        Assert.True(FfmpegExportRenderer.IsHardwareAccelerationFailure(new ExportException(
+            ExportFailure.ToolFailed,
+            "FFmpeg export failed: Device creation failed: no capable devices found")));
+        Assert.False(FfmpegExportRenderer.IsHardwareAccelerationFailure(new ExportException(
+            ExportFailure.ToolFailed,
+            "FFmpeg export failed: No space left on device")));
+        Assert.False(FfmpegExportRenderer.IsHardwareAccelerationFailure(new ExportException(
+            ExportFailure.DestinationUnavailable,
+            "No device available")));
+    }
+
+    [Fact]
     public async Task Existing_destination_is_rejected_before_launch_and_remains_unchanged()
     {
         var sourcePath = Path.GetTempFileName();

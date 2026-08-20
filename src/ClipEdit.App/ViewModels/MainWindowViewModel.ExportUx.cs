@@ -60,6 +60,68 @@ public sealed record ExportQualityChoice(
     };
 }
 
+public sealed record ExportEncodingSpeedChoice(
+    ExportEncodingSpeed Value,
+    string DisplayName,
+    string Description)
+{
+    public static ExportEncodingSpeedChoice Faster { get; } = new(
+        ExportEncodingSpeed.Faster,
+        "Faster",
+        "Encodes faster, usually with a larger file at the same visual quality.");
+
+    public static ExportEncodingSpeedChoice Balanced { get; } = new(
+        ExportEncodingSpeed.Balanced,
+        "Balanced",
+        "Balances encoding time and compression efficiency.");
+
+    public static ExportEncodingSpeedChoice SmallerFile { get; } = new(
+        ExportEncodingSpeed.SmallerFile,
+        "Smaller file",
+        "Encodes more slowly for better compression efficiency.");
+
+    public static IReadOnlyList<ExportEncodingSpeedChoice> All { get; } =
+        [Faster, Balanced, SmallerFile];
+
+    public static ExportEncodingSpeedChoice FromValue(ExportEncodingSpeed value) => value switch
+    {
+        ExportEncodingSpeed.Faster => Faster,
+        ExportEncodingSpeed.SmallerFile => SmallerFile,
+        _ => Balanced,
+    };
+}
+
+public sealed record ExportHardwareAccelerationChoice(
+    ExportHardwareAcceleration Value,
+    string DisplayName,
+    string Description)
+{
+    public static ExportHardwareAccelerationChoice Software { get; } = new(
+        ExportHardwareAcceleration.Software,
+        "Software",
+        "Predictable CPU decoding; often fastest when export filters run on the CPU.");
+
+    public static ExportHardwareAccelerationChoice Automatic { get; } = new(
+        ExportHardwareAcceleration.Automatic,
+        "Auto",
+        "Lets FFmpeg select a hardware decoder when one is suitable.");
+
+    public static ExportHardwareAccelerationChoice Vulkan { get; } = new(
+        ExportHardwareAcceleration.Vulkan,
+        "Vulkan",
+        "Forces Vulkan decoding; can help decode-heavy sources but frame transfers can make it slower.");
+
+    public static IReadOnlyList<ExportHardwareAccelerationChoice> All { get; } =
+        [Software, Automatic, Vulkan];
+
+    public static ExportHardwareAccelerationChoice FromValue(ExportHardwareAcceleration value) => value switch
+    {
+        ExportHardwareAcceleration.Automatic => Automatic,
+        ExportHardwareAcceleration.Vulkan => Vulkan,
+        _ => Software,
+    };
+}
+
 public sealed partial class MainWindowViewModel
 {
     private static readonly double[] ExportPlaybackSpeedSnapValues =
@@ -76,6 +138,12 @@ public sealed partial class MainWindowViewModel
 
     public IReadOnlyList<ExportQualityChoice> ExportQualityChoices =>
         ExportQualityChoice.All;
+
+    public IReadOnlyList<ExportEncodingSpeedChoice> ExportEncodingSpeedChoices =>
+        ExportEncodingSpeedChoice.All;
+
+    public IReadOnlyList<ExportHardwareAccelerationChoice> ExportHardwareAccelerationChoices =>
+        ExportHardwareAccelerationChoice.All;
 
     public IReadOnlyList<double> ExportPlaybackSpeedSliderSnapValues =>
         ExportPlaybackSpeedSnapValues;
@@ -114,6 +182,46 @@ public sealed partial class MainWindowViewModel
     }
 
     public ExportQualityMode ExportQualityMode => SelectedExportQuality.Value;
+
+    public ExportEncodingSpeedChoice SelectedExportEncodingSpeed
+    {
+        get => _selectedExportEncodingSpeed;
+        set
+        {
+            var next = value ?? ExportEncodingSpeedChoice.Balanced;
+            if (SetProperty(ref _selectedExportEncodingSpeed, next))
+            {
+                OnPropertyChanged(nameof(ExportEncodingSpeed));
+                OnPropertyChanged(nameof(ExportEncodingSpeedDescription));
+                RaiseExportStateChanged();
+            }
+        }
+    }
+
+    public ExportEncodingSpeed ExportEncodingSpeed => SelectedExportEncodingSpeed.Value;
+
+    public string ExportEncodingSpeedDescription => SelectedExportEncodingSpeed.Description;
+
+    public ExportHardwareAccelerationChoice SelectedExportHardwareAcceleration
+    {
+        get => _selectedExportHardwareAcceleration;
+        set
+        {
+            var next = value ?? ExportHardwareAccelerationChoice.Software;
+            if (SetProperty(ref _selectedExportHardwareAcceleration, next))
+            {
+                OnPropertyChanged(nameof(ExportHardwareAcceleration));
+                OnPropertyChanged(nameof(ExportHardwareAccelerationDescription));
+                RaiseExportStateChanged();
+            }
+        }
+    }
+
+    public ExportHardwareAcceleration ExportHardwareAcceleration =>
+        SelectedExportHardwareAcceleration.Value;
+
+    public string ExportHardwareAccelerationDescription =>
+        SelectedExportHardwareAcceleration.Description;
 
     public bool UsesCustomExportQuality =>
         IsGifExport || ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.Custom;
@@ -254,9 +362,13 @@ public sealed partial class MainWindowViewModel
             var quality = IsGifExport || ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.Custom
                 ? $"quality {ExportQuality}%"
                 : "match input quality";
+            var performance = IsGifExport
+                ? string.Empty
+                : $" · {SelectedExportEncodingSpeed.DisplayName.ToLowerInvariant()} encode" +
+                  $" · {SelectedExportHardwareAcceleration.DisplayName} decode";
             return IsGifExport
                 ? $"{destination}{ExportOutputSizeText} · {quality} · {GifFrameRate} fps{speed}"
-                : $"{destination}{ExportOutputSizeText} · {quality}{speed}";
+                : $"{destination}{ExportOutputSizeText} · {quality}{speed}{performance}";
         }
     }
 
@@ -424,7 +536,9 @@ public sealed partial class MainWindowViewModel
         ExportScalePercent,
         GifFrameRate,
         ExportPlaybackSpeedPercent,
-        IsGifExport ? ClipEdit.Media.Export.ExportQualityMode.Custom : ExportQualityMode);
+        IsGifExport ? ClipEdit.Media.Export.ExportQualityMode.Custom : ExportQualityMode,
+        ExportEncodingSpeed,
+        ExportHardwareAcceleration);
 
     private void ResetTransientExportAdjustments()
     {

@@ -42,7 +42,9 @@ public sealed class ExportPreferencesStoreTests
                 ],
                 10_000,
                 true,
-                ExportQualityMode.Custom);
+                ExportQualityMode.Custom,
+                ExportEncodingSpeed.Faster,
+                ExportHardwareAcceleration.Vulkan);
 
             Assert.True(store.Save(settings));
             var restored = store.Load();
@@ -69,6 +71,46 @@ public sealed class ExportPreferencesStoreTests
 
         Assert.Equal(VideoCodecFamily.Vp9, normalized.CustomVideoCodec);
         Assert.Equal(AudioCodecFamily.Opus, normalized.CustomAudioCodec);
+    }
+
+    [Fact]
+    public void Older_settings_without_performance_fields_keep_safe_defaults()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"clipedit-old-export-settings-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "export-settings.json");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(
+                path,
+                """
+                {
+                  "selectedExportPresetId": "mp4-compatible",
+                  "scalePercent": 100,
+                  "quality": 75,
+                  "gifFrameRate": 15,
+                  "customContainer": 0,
+                  "customVideoCodec": 0,
+                  "customAudioCodec": 1,
+                  "customUseSourceFrameRate": true,
+                  "customFrameRate": 30,
+                  "exportDestination": 0,
+                  "savedPresets": [],
+                  "playbackSpeedPercent": 100,
+                  "rememberAdjustments": false,
+                  "qualityMode": 1
+                }
+                """);
+
+            var restored = new ExportPreferencesStore(path).Load();
+
+            Assert.Equal(ExportEncodingSpeed.Balanced, restored.EncodingSpeed);
+            Assert.Equal(ExportHardwareAcceleration.Software, restored.HardwareAcceleration);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Theory]
@@ -110,6 +152,8 @@ public sealed class ExportPreferencesStoreTests
             PlaybackSpeedPercent = 175,
             RememberAdjustments = true,
             QualityMode = ExportQualityMode.Custom,
+            EncodingSpeed = ExportEncodingSpeed.SmallerFile,
+            HardwareAcceleration = ExportHardwareAcceleration.Automatic,
         };
 
         viewModel.ApplyExportPreferences(preferences);
@@ -126,6 +170,8 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(50, viewModel.CustomFrameRate);
         Assert.Equal(ExportDestinationMode.Clipboard, viewModel.ExportDestination);
         Assert.Equal(175, viewModel.ExportPlaybackSpeedPercent);
+        Assert.Equal(ExportEncodingSpeed.SmallerFile, viewModel.ExportEncodingSpeed);
+        Assert.Equal(ExportHardwareAcceleration.Automatic, viewModel.ExportHardwareAcceleration);
         Assert.Equal("Copy", viewModel.ExportActionText);
         Assert.False(viewModel.IsProjectDirty);
     }

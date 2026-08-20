@@ -9,6 +9,20 @@ public enum ExportQualityMode
     MatchSource,
 }
 
+public enum ExportEncodingSpeed
+{
+    Balanced,
+    Faster,
+    SmallerFile,
+}
+
+public enum ExportHardwareAcceleration
+{
+    Software,
+    Automatic,
+    Vulkan,
+}
+
 /// <summary>
 /// User-controlled encoding choices that apply independently of the selected
 /// container/codec preset.
@@ -22,6 +36,8 @@ public sealed record ExportEncodingSettings
     public const int MaximumPlaybackSpeedPercent = 10_000;
     public const int DefaultPlaybackSpeedPercent = 100;
     public const ExportQualityMode DefaultQualityMode = ExportQualityMode.MatchSource;
+    public const ExportEncodingSpeed DefaultEncodingSpeed = ExportEncodingSpeed.Balanced;
+    public const ExportHardwareAcceleration DefaultHardwareAcceleration = ExportHardwareAcceleration.Software;
 
     public static ExportEncodingSettings Default { get; } = new();
 
@@ -30,7 +46,9 @@ public sealed record ExportEncodingSettings
         int scalePercent = DefaultScalePercent,
         int gifFrameRate = DefaultGifFrameRate,
         int playbackSpeedPercent = DefaultPlaybackSpeedPercent,
-        ExportQualityMode qualityMode = DefaultQualityMode)
+        ExportQualityMode qualityMode = DefaultQualityMode,
+        ExportEncodingSpeed encodingSpeed = DefaultEncodingSpeed,
+        ExportHardwareAcceleration hardwareAcceleration = DefaultHardwareAcceleration)
     {
         if (quality is < 1 or > 100)
         {
@@ -52,12 +70,22 @@ public sealed record ExportEncodingSettings
         {
             throw new ArgumentOutOfRangeException(nameof(qualityMode));
         }
+        if (!Enum.IsDefined(encodingSpeed))
+        {
+            throw new ArgumentOutOfRangeException(nameof(encodingSpeed));
+        }
+        if (!Enum.IsDefined(hardwareAcceleration))
+        {
+            throw new ArgumentOutOfRangeException(nameof(hardwareAcceleration));
+        }
 
         Quality = quality;
         ScalePercent = scalePercent;
         GifFrameRate = gifFrameRate;
         PlaybackSpeedPercent = playbackSpeedPercent;
         QualityMode = qualityMode;
+        EncodingSpeed = encodingSpeed;
+        HardwareAcceleration = hardwareAcceleration;
     }
 
     public int Quality { get; }
@@ -69,6 +97,10 @@ public sealed record ExportEncodingSettings
     public int PlaybackSpeedPercent { get; }
 
     public ExportQualityMode QualityMode { get; }
+
+    public ExportEncodingSpeed EncodingSpeed { get; }
+
+    public ExportHardwareAcceleration HardwareAcceleration { get; }
 
     public double PlaybackSpeed => PlaybackSpeedPercent / 100d;
 

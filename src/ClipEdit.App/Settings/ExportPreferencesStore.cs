@@ -19,7 +19,9 @@ internal sealed record ExportPreferences(
     IReadOnlyList<SavedExportPresetViewModel> SavedPresets,
     int PlaybackSpeedPercent = 100,
     bool RememberAdjustments = false,
-    ExportQualityMode QualityMode = ExportQualityMode.MatchSource)
+    ExportQualityMode QualityMode = ExportQualityMode.MatchSource,
+    ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
+    ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software)
 {
     public static ExportPreferences Default { get; } = new(
         BuiltInExportPresets.Mp4Compatible.Id,
@@ -35,7 +37,9 @@ internal sealed record ExportPreferences(
         [],
         100,
         false,
-        ExportQualityMode.MatchSource);
+        ExportQualityMode.MatchSource,
+        ExportEncodingSpeed.Balanced,
+        ExportHardwareAcceleration.Software);
 
     public ExportPreferences Normalize()
     {
@@ -57,6 +61,8 @@ internal sealed record ExportPreferences(
                 preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
                     <= ExportEncodingSettings.MaximumPlaybackSpeedPercent &&
                 Enum.IsDefined(preset.QualityMode) &&
+                Enum.IsDefined(preset.EncodingSpeed) &&
+                Enum.IsDefined(preset.HardwareAcceleration) &&
                 Enum.IsDefined(preset.Container) &&
                 Enum.IsDefined(preset.VideoCodec) &&
                 Enum.IsDefined(preset.AudioCodec))
@@ -91,6 +97,12 @@ internal sealed record ExportPreferences(
             QualityMode = Enum.IsDefined(QualityMode)
                 ? QualityMode
                 : Default.QualityMode,
+            EncodingSpeed = Enum.IsDefined(EncodingSpeed)
+                ? EncodingSpeed
+                : Default.EncodingSpeed,
+            HardwareAcceleration = Enum.IsDefined(HardwareAcceleration)
+                ? HardwareAcceleration
+                : Default.HardwareAcceleration,
             CustomContainer = custom.Container,
             CustomVideoCodec = custom.Video,
             CustomAudioCodec = custom.Audio,

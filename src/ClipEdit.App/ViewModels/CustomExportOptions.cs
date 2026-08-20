@@ -65,7 +65,9 @@ public sealed record SavedExportPresetViewModel(
     int Quality,
     int GifFrameRate,
     int PlaybackSpeedPercent = 100,
-    ExportQualityMode QualityMode = ExportQualityMode.Custom);
+    ExportQualityMode QualityMode = ExportQualityMode.Custom,
+    ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
+    ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software);
 
 public sealed partial class MainWindowViewModel
 {
@@ -303,6 +305,9 @@ public sealed partial class MainWindowViewModel
                 ResetTransientExportAdjustments();
             }
             SelectedExportDestination = ExportDestinationChoice.FromValue(normalized.ExportDestination);
+            SelectedExportEncodingSpeed = ExportEncodingSpeedChoice.FromValue(normalized.EncodingSpeed);
+            SelectedExportHardwareAcceleration = ExportHardwareAccelerationChoice.FromValue(
+                normalized.HardwareAcceleration);
             ReplaceSavedExportPresets(normalized.SavedPresets);
             SelectedExportPreset = ExportPresets.FirstOrDefault(preset =>
                                        preset.Id == normalized.SelectedExportPresetId) ??
@@ -332,7 +337,9 @@ public sealed partial class MainWindowViewModel
         RememberExportAdjustments,
         RememberExportAdjustments
             ? ExportQualityMode
-            : ExportEncodingSettings.DefaultQualityMode);
+            : ExportEncodingSettings.DefaultQualityMode,
+        ExportEncodingSpeed,
+        ExportHardwareAcceleration);
 
     internal void ApplyCustomExportSettings(
         ExportContainer container,
@@ -387,7 +394,9 @@ public sealed partial class MainWindowViewModel
         ExportQuality,
         GifFrameRate,
         ExportPlaybackSpeedPercent,
-        ExportQualityMode);
+        ExportQualityMode,
+        ExportEncodingSpeed,
+        ExportHardwareAcceleration);
 
     private void ApplySavedExportPreset(SavedExportPresetViewModel saved)
     {
@@ -402,6 +411,9 @@ public sealed partial class MainWindowViewModel
         GifFrameRate = saved.GifFrameRate;
         ExportPlaybackSpeedPercent = saved.PlaybackSpeedPercent;
         SelectedExportQuality = ExportQualityChoice.FromValue(saved.QualityMode);
+        SelectedExportEncodingSpeed = ExportEncodingSpeedChoice.FromValue(saved.EncodingSpeed);
+        SelectedExportHardwareAcceleration = ExportHardwareAccelerationChoice.FromValue(
+            saved.HardwareAcceleration);
         SelectedExportPreset = BuiltInExportPresets.Custom;
         CustomPresetName = saved.Name;
     }
@@ -478,6 +490,8 @@ public sealed partial class MainWindowViewModel
         preset.Quality is >= 1 and <= 100 &&
         preset.GifFrameRate is >= 1 and <= 60 &&
         Enum.IsDefined(preset.QualityMode) &&
+        Enum.IsDefined(preset.EncodingSpeed) &&
+        Enum.IsDefined(preset.HardwareAcceleration) &&
         preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
             <= ExportEncodingSettings.MaximumPlaybackSpeedPercent;
 }

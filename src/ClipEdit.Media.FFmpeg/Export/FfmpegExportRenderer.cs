@@ -58,7 +58,7 @@ public sealed class FfmpegExportRenderer : IExportRenderer
                     0,
                     "Boundary-GOP rejected · encoding exactly",
                     TimeSpan.Zero));
-                return await RenderSingleProcessAsync(
+                return await RenderSingleProcessWithHardwareFallbackAsync(
                         plan,
                         progress,
                         cancellationToken,
@@ -67,15 +67,49 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             }
         }
 
-        return await RenderSingleProcessAsync(plan, progress, cancellationToken)
+        return await RenderSingleProcessWithHardwareFallbackAsync(plan, progress, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async Task<ExportResult> RenderSingleProcessWithHardwareFallbackAsync(
+        ExportPlan plan,
+        IProgress<ExportProgress>? progress,
+        CancellationToken cancellationToken,
+        bool forceExactTranscode = false)
+    {
+        try
+        {
+            return await RenderSingleProcessAsync(
+                    plan,
+                    progress,
+                    cancellationToken,
+                    forceExactTranscode)
+                .ConfigureAwait(false);
+        }
+        catch (ExportException exception) when (
+            plan.EncodingSettings.HardwareAcceleration != ExportHardwareAcceleration.Software &&
+            IsHardwareAccelerationFailure(exception))
+        {
+            progress?.Report(new ExportProgress(
+                0,
+                "Hardware decode unavailable · retrying software",
+                TimeSpan.Zero));
+            return await RenderSingleProcessAsync(
+                    plan,
+                    progress,
+                    cancellationToken,
+                    forceExactTranscode,
+                    ExportHardwareAcceleration.Software)
+                .ConfigureAwait(false);
+        }
     }
 
     private async Task<ExportResult> RenderSingleProcessAsync(
         ExportPlan plan,
         IProgress<ExportProgress>? progress,
         CancellationToken cancellationToken,
-        bool forceExactTranscode = false)
+        bool forceExactTranscode = false,
+        ExportHardwareAcceleration? hardwareAccelerationOverride = null)
     {
         var temporaryPath = CreateTemporaryPath(plan.DestinationPath);
         var concatManifestPath = !forceExactTranscode && plan.Strategy == ExportStrategy.ConcatStreamCopy
@@ -89,8 +123,11 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         using var process = new DiagnosticProcess
         {
             StartInfo = CreateStartInfo(
-                forceExactTranscode
-                    ? FfmpegExportArguments.CreateExactTranscode(plan, temporaryPath)
+                forceExactTranscode || hardwareAccelerationOverride is not null
+                    ? FfmpegExportArguments.CreateExactTranscode(
+                        plan,
+                        temporaryPath,
+                        hardwareAccelerationOverride)
                     : FfmpegExportArguments.Create(plan, temporaryPath, concatManifestPath)),
         };
         var stopwatch = Stopwatch.StartNew();
@@ -827,6 +864,30 @@ public sealed class FfmpegExportRenderer : IExportRenderer
         {
             // A stale private partial is safer than touching an existing destination.
         }
+    }
+
+    internal static bool IsHardwareAccelerationFailure(ExportException exception)
+    {
+        if (exception.Failure != ExportFailure.ToolFailed)
+        {
+            return false;
+        }
+
+        string[] indicators =
+        [
+            "device creation failed",
+            "failed to create a vulkan device",
+            "no device available",
+            "no capable devices found",
+            "failed setup for format",
+            "failed to initialise",
+            "failed to initialize",
+            "hardware acceleration methods",
+            "impossible to convert between the formats",
+            "a hardware device reference is required",
+        ];
+        return indicators.Any(indicator =>
+            exception.Message.Contains(indicator, StringComparison.OrdinalIgnoreCase));
     }
 
     private static void TryDeleteDirectory(string path)

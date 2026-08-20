@@ -478,6 +478,44 @@
                         </Grid>
 
                         <Grid
+                            ColumnDefinitions="Auto,*,Auto,*"
+                            ColumnSpacing="7"
+                            IsVisible="{Binding !IsGifExport}">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Encode" />
+                          <ComboBox
+                              Grid.Column="1"
+                              MinWidth="92"
+                              ItemsSource="{Binding ExportEncodingSpeedChoices}"
+                              SelectedItem="{Binding SelectedExportEncodingSpeed}"
+                              ToolTip.Tip="{Binding ExportEncodingSpeedDescription}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:ExportEncodingSpeedChoice">
+                                <TextBlock Text="{Binding DisplayName}" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                          <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="Decode" />
+                          <ComboBox
+                              Grid.Column="3"
+                              MinWidth="82"
+                              ItemsSource="{Binding ExportHardwareAccelerationChoices}"
+                              SelectedItem="{Binding SelectedExportHardwareAcceleration}"
+                              ToolTip.Tip="{Binding ExportHardwareAccelerationDescription}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:ExportHardwareAccelerationChoice">
+                                <TextBlock Text="{Binding DisplayName}" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </Grid>
+                        <TextBlock
+                            Classes="muted"
+                            FontSize="10"
+                            IsVisible="{Binding !IsGifExport}"
+                            Text="Hardware decode can be slower with CPU filters; unavailable modes retry in software."
+                            TextWrapping="Wrap" />
+
+                        <Grid
                             x:Name="VideoQualityModePanel"
                             ColumnDefinitions="*,164"
                             ColumnSpacing="8"

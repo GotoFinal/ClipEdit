@@ -71,6 +71,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private int _gifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
     private int _exportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;
     private ExportQualityChoice _selectedExportQuality = ExportQualityChoice.MatchSource;
+    private ExportEncodingSpeedChoice _selectedExportEncodingSpeed = ExportEncodingSpeedChoice.Balanced;
+    private ExportHardwareAccelerationChoice _selectedExportHardwareAcceleration = ExportHardwareAccelerationChoice.Software;
     private bool _rememberExportAdjustments;
     private ExportDestinationChoice _selectedExportDestination = ExportDestinationChoice.File;
     private bool _isExporting;

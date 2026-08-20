@@ -37,7 +37,8 @@ internal static class FfmpegExportArguments
 
     internal static IReadOnlyList<string> CreateExactTranscode(
         ExportPlan plan,
-        string temporaryOutputPath)
+        string temporaryOutputPath,
+        ExportHardwareAcceleration? hardwareAccelerationOverride = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentException.ThrowIfNullOrWhiteSpace(temporaryOutputPath);
@@ -57,6 +58,9 @@ internal static class FfmpegExportArguments
         {
             foreach (var segment in plan.VideoSegments)
             {
+                AddHardwareDecodeInputArguments(
+                    arguments,
+                    hardwareAccelerationOverride ?? plan.EncodingSettings.HardwareAcceleration);
                 if (segment.SourceRange.Start > MediaTime.Zero)
                 {
                     arguments.Add("-ss");
@@ -76,6 +80,9 @@ internal static class FfmpegExportArguments
         }
         else
         {
+            AddHardwareDecodeInputArguments(
+                arguments,
+                hardwareAccelerationOverride ?? plan.EncodingSettings.HardwareAcceleration);
             arguments.Add("-i");
             arguments.Add(plan.SourcePath);
 
@@ -991,15 +998,15 @@ internal static class FfmpegExportArguments
         {
             VideoCodecFamily.H264 => new List<string>
             {
-                "-c:v", "libx264", "-preset", "medium", "-crf", MapQualityAroundDefault(quality, 36, 20, 16).ToString(CultureInfo.InvariantCulture), "-pix_fmt", videoPixelFormat,
+                "-c:v", "libx264", "-preset", GetX264Preset(plan.EncodingSettings.EncodingSpeed), "-crf", MapQualityAroundDefault(quality, 36, 20, 16).ToString(CultureInfo.InvariantCulture), "-pix_fmt", videoPixelFormat,
             },
             VideoCodecFamily.Vp9 =>
             [
-                "-c:v", "libvpx-vp9", "-crf", MapQualityAroundDefault(quality, 50, 30, 20).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-row-mt", "1", "-pix_fmt", videoPixelFormat,
+                "-c:v", "libvpx-vp9", "-crf", MapQualityAroundDefault(quality, 50, 30, 20).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-deadline", "good", "-cpu-used", GetVp9CpuUsed(plan.EncodingSettings.EncodingSpeed), "-row-mt", "1", "-pix_fmt", videoPixelFormat,
             ],
             VideoCodecFamily.Av1 =>
             [
-                "-c:v", "libaom-av1", "-crf", MapQualityAroundDefault(quality, 55, 30, 18).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-cpu-used", "6", "-row-mt", "1", "-pix_fmt", videoPixelFormat,
+                "-c:v", "libaom-av1", "-crf", MapQualityAroundDefault(quality, 55, 30, 18).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-cpu-used", GetAv1CpuUsed(plan.EncodingSettings.EncodingSpeed), "-row-mt", "1", "-pix_fmt", videoPixelFormat,
             ],
             VideoCodecFamily.Gif => ["-c:v", "gif", "-loop", "0"],
             _ => throw new ExportPlanException($"Unsupported video codec family: {plan.Preset.VideoCodec}."),
@@ -1039,6 +1046,52 @@ internal static class FfmpegExportArguments
 
         return arguments;
     }
+
+    private static void AddHardwareDecodeInputArguments(
+        ICollection<string> arguments,
+        ExportHardwareAcceleration hardwareAcceleration)
+    {
+        switch (hardwareAcceleration)
+        {
+            case ExportHardwareAcceleration.Software:
+                return;
+            case ExportHardwareAcceleration.Automatic:
+                arguments.Add("-hwaccel");
+                arguments.Add("auto");
+                return;
+            case ExportHardwareAcceleration.Vulkan:
+                arguments.Add("-hwaccel");
+                arguments.Add("vulkan");
+                return;
+            default:
+                throw new ExportPlanException(
+                    $"Unsupported hardware acceleration mode: {hardwareAcceleration}.");
+        }
+    }
+
+    private static string GetX264Preset(ExportEncodingSpeed speed) => speed switch
+    {
+        ExportEncodingSpeed.Faster => "veryfast",
+        ExportEncodingSpeed.Balanced => "medium",
+        ExportEncodingSpeed.SmallerFile => "slow",
+        _ => throw new ExportPlanException($"Unsupported encoding speed: {speed}."),
+    };
+
+    private static string GetVp9CpuUsed(ExportEncodingSpeed speed) => speed switch
+    {
+        ExportEncodingSpeed.Faster => "6",
+        ExportEncodingSpeed.Balanced => "4",
+        ExportEncodingSpeed.SmallerFile => "2",
+        _ => throw new ExportPlanException($"Unsupported encoding speed: {speed}."),
+    };
+
+    private static string GetAv1CpuUsed(ExportEncodingSpeed speed) => speed switch
+    {
+        ExportEncodingSpeed.Faster => "8",
+        ExportEncodingSpeed.Balanced => "6",
+        ExportEncodingSpeed.SmallerFile => "4",
+        _ => throw new ExportPlanException($"Unsupported encoding speed: {speed}."),
+    };
 
     internal static IEnumerable<string> CreateAudioPresetArguments(ExportPlan plan)
     {

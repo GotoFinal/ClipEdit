@@ -1017,6 +1017,71 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Equal("webm", ValueAfter(arguments, "-f"));
     }
 
+    [Theory]
+    [InlineData(ExportEncodingSpeed.Faster, "veryfast")]
+    [InlineData(ExportEncodingSpeed.Balanced, "medium")]
+    [InlineData(ExportEncodingSpeed.SmallerFile, "slow")]
+    public void H264_encoding_speed_maps_to_an_explicit_x264_preset(
+        ExportEncodingSpeed speed,
+        string expectedPreset)
+    {
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(encodingSpeed: speed));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal(expectedPreset, ValueAfter(arguments, "-preset"));
+    }
+
+    [Fact]
+    public void Vulkan_decode_is_applied_to_each_bounded_video_input_only()
+    {
+        var canvas = new PixelSize(1_280, 720);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\first.mkv"),
+                    0,
+                    new MediaRange(new MediaTime(2, 1), new MediaTime(5, 1)),
+                    canvas,
+                    CropRegion.FullFrame(canvas),
+                    ClipCanvasTransform.Identity,
+                    sourceSize: canvas),
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\second.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(4, 1)),
+                    canvas,
+                    CropRegion.FullFrame(canvas),
+                    ClipCanvasTransform.Identity,
+                    sourceSize: canvas),
+            ],
+            canvas,
+            TestPath("C:\\clip.mp4"),
+            Mp4Compatible,
+            encodingSettings: new ExportEncodingSettings(
+                hardwareAcceleration: ExportHardwareAcceleration.Vulkan));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal(2, arguments.Count(argument => argument == "-hwaccel"));
+        Assert.Equal(2, arguments.Count(argument => argument == "vulkan"));
+        AssertInputSeek(arguments, TestPath("C:\\first.mkv"), "2", "3");
+        AssertInputSeek(arguments, TestPath("C:\\second.mkv"), null, "4");
+    }
+
     private static string TestPath(string windowsPath)
     {
         if (OperatingSystem.IsWindows())
