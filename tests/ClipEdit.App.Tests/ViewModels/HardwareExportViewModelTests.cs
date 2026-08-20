@@ -1,4 +1,5 @@
 using ClipEdit.App.ViewModels;
+using ClipEdit.Application.Export;
 using ClipEdit.Media.Export;
 
 namespace ClipEdit.App.Tests.ViewModels;
@@ -41,7 +42,8 @@ public sealed class HardwareExportViewModelTests
             choice.Value == ExportVideoEncoder.AmdAmf);
         viewModel.SelectedExportVideoEncoder = unavailable;
 
-        Assert.Equal(ExportVideoEncoder.Software, viewModel.PreferredExportVideoEncoder);
+        Assert.Equal(ExportVideoEncoder.Automatic, viewModel.PreferredExportVideoEncoder);
+        Assert.Equal(ExportVideoEncoder.Software, viewModel.EffectiveExportVideoEncoder);
         Assert.Contains("no AMF device", viewModel.StatusText);
     }
 
@@ -75,11 +77,86 @@ public sealed class HardwareExportViewModelTests
         Assert.Contains("NVIDIA NVENC", viewModel.ExportVideoEncoderStatus);
     }
 
+    [Fact]
+    public void Changing_custom_codec_reprobes_and_preserves_the_preferred_backend()
+    {
+        var probe = new CodecProbe(new Dictionary<VideoCodecFamily, ExportHardwareCapabilities>
+        {
+            [VideoCodecFamily.H264] = Capabilities(
+                VideoCodecFamily.H264,
+                ExportVideoEncoder.NvidiaNvenc),
+            [VideoCodecFamily.Hevc] = Capabilities(
+                VideoCodecFamily.Hevc,
+                ExportVideoEncoder.NvidiaNvenc),
+            [VideoCodecFamily.Vp9] = Capabilities(
+                VideoCodecFamily.Vp9,
+                ExportVideoEncoder.IntelQuickSync),
+        });
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        viewModel.ConfigureExportHardwareCapabilityProbe(probe);
+        viewModel.SelectedExportVideoEncoder = viewModel.ExportVideoEncoderChoices.Single(choice =>
+            choice.Value == ExportVideoEncoder.NvidiaNvenc);
+
+        viewModel.SelectedExportPreset = BuiltInExportPresets.Custom;
+        viewModel.CustomExportContainer = ExportContainerChoice.Matroska;
+        viewModel.CustomVideoCodec = VideoCodecChoice.Hevc;
+
+        Assert.Equal(ExportVideoEncoder.NvidiaNvenc, viewModel.EffectiveExportVideoEncoder);
+        Assert.Contains(VideoCodecFamily.Hevc, probe.RequestedCodecs);
+
+        viewModel.CustomVideoCodec = VideoCodecChoice.Vp9;
+
+        Assert.Equal(ExportVideoEncoder.NvidiaNvenc, viewModel.PreferredExportVideoEncoder);
+        Assert.Equal(ExportVideoEncoder.Software, viewModel.EffectiveExportVideoEncoder);
+        Assert.False(viewModel.ExportVideoEncoderChoices.Single(choice =>
+            choice.Value == ExportVideoEncoder.NvidiaNvenc).IsAvailable);
+
+        viewModel.CustomVideoCodec = VideoCodecChoice.Hevc;
+
+        Assert.Equal(ExportVideoEncoder.NvidiaNvenc, viewModel.EffectiveExportVideoEncoder);
+    }
+
+    private static ExportHardwareCapabilities Capabilities(
+        VideoCodecFamily videoCodec,
+        ExportVideoEncoder hardwareEncoder) =>
+        new(
+        [
+            new(
+                ExportVideoEncoder.Software,
+                "Software",
+                true,
+                "Available",
+                VideoCodec: videoCodec),
+            new(
+                hardwareEncoder,
+                hardwareEncoder.ToString(),
+                true,
+                "Available",
+                TimeSpan.FromSeconds(0.2),
+                videoCodec),
+        ]);
+
     private sealed class StubProbe(ExportHardwareCapabilities capabilities)
         : IExportHardwareCapabilityProbe
     {
         public Task<ExportHardwareCapabilities> ProbeAsync(
+            VideoCodecFamily videoCodec,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(capabilities);
+    }
+
+    private sealed class CodecProbe(
+        IReadOnlyDictionary<VideoCodecFamily, ExportHardwareCapabilities> capabilities)
+        : IExportHardwareCapabilityProbe
+    {
+        public List<VideoCodecFamily> RequestedCodecs { get; } = [];
+
+        public Task<ExportHardwareCapabilities> ProbeAsync(
+            VideoCodecFamily videoCodec,
+            CancellationToken cancellationToken = default)
+        {
+            RequestedCodecs.Add(videoCodec);
+            return Task.FromResult(capabilities[videoCodec]);
+        }
     }
 }

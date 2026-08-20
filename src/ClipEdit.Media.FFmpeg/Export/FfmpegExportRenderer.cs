@@ -40,8 +40,9 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
     }
 
     public Task<ExportHardwareCapabilities> ProbeAsync(
+        VideoCodecFamily videoCodec,
         CancellationToken cancellationToken = default) =>
-        _hardwareCapabilityProbe.ProbeAsync(cancellationToken);
+        _hardwareCapabilityProbe.ProbeAsync(videoCodec, cancellationToken);
 
     public async Task<ExportResult> RenderAsync(
         ExportPlan plan,
@@ -912,6 +913,8 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
             "a hardware device reference is required",
             "error while opening encoder",
             "failed to create encoder",
+            "unknown encoder",
+            "encoder not found",
             "cannot load nvcuda",
             "cannot load libcuda",
             "no nvenc capable devices found",

@@ -31,13 +31,37 @@ public sealed class FfmpegHardwareCapabilityProbeTests
     }
 
     [Fact]
+    public void Codec_probes_cover_only_supported_backend_pairs()
+    {
+        Assert.Equal(
+            ["libx265", "hevc_nvenc", "hevc_qsv", "hevc_amf", "hevc_vaapi"],
+            FfmpegHardwareCapabilityProbe.CreateProbes(VideoCodecFamily.Hevc)
+                .Select(probe => probe.FfmpegEncoderName));
+        Assert.Equal(
+            ["libvpx", "vp8_vaapi"],
+            FfmpegHardwareCapabilityProbe.CreateProbes(VideoCodecFamily.Vp8)
+                .Select(probe => probe.FfmpegEncoderName));
+        Assert.Equal(
+            ["libvpx-vp9", "vp9_qsv", "vp9_vaapi"],
+            FfmpegHardwareCapabilityProbe.CreateProbes(VideoCodecFamily.Vp9)
+                .Select(probe => probe.FfmpegEncoderName));
+        Assert.Equal(
+            ["libaom-av1", "av1_nvenc", "av1_qsv", "av1_amf", "av1_vaapi"],
+            FfmpegHardwareCapabilityProbe.CreateProbes(VideoCodecFamily.Av1)
+                .Select(probe => probe.FfmpegEncoderName));
+        Assert.All(
+            FfmpegHardwareCapabilityProbe.CreateProbes(VideoCodecFamily.Av1),
+            probe => Assert.Equal(VideoCodecFamily.Av1, probe.VideoCodec));
+    }
+
+    [Fact]
     public async Task Probe_results_are_cached_for_the_same_executable_fingerprint()
     {
         var firstProbe = new FfmpegHardwareCapabilityProbe(Environment.ProcessPath!);
         var secondProbe = new FfmpegHardwareCapabilityProbe(Environment.ProcessPath!);
 
-        var first = await firstProbe.ProbeAsync();
-        var second = await secondProbe.ProbeAsync();
+        var first = await firstProbe.ProbeAsync(VideoCodecFamily.H264);
+        var second = await secondProbe.ProbeAsync(VideoCodecFamily.H264);
 
         Assert.Same(first, second);
         Assert.False(first.Get(ExportVideoEncoder.Software).IsAvailable);
@@ -53,7 +77,7 @@ public sealed class FfmpegHardwareCapabilityProbeTests
             await File.WriteAllBytesAsync(path, []);
             var probe = new FfmpegHardwareCapabilityProbe(path);
 
-            var capabilities = await probe.ProbeAsync();
+            var capabilities = await probe.ProbeAsync(VideoCodecFamily.H264);
 
             Assert.All(capabilities.H264Encoders, capability => Assert.False(capability.IsAvailable));
         }
@@ -76,5 +100,35 @@ public sealed class FfmpegHardwareCapabilityProbeTests
         Assert.Equal(
             ExportVideoEncoder.NvidiaNvenc,
             capabilities.FastestAvailableH264Encoder.Encoder);
+    }
+
+    [Fact]
+    public void Capability_selection_is_scoped_to_the_requested_codec()
+    {
+        var capabilities = new ExportHardwareCapabilities(
+        [
+            new(ExportVideoEncoder.Software, "Software (x264)", true, "Available"),
+            new(
+                ExportVideoEncoder.NvidiaNvenc,
+                "NVIDIA NVENC",
+                true,
+                "Available",
+                TimeSpan.FromSeconds(0.2)),
+            new(
+                ExportVideoEncoder.Software,
+                "Software (x265)",
+                true,
+                "Available",
+                TimeSpan.FromSeconds(0.8),
+                VideoCodecFamily.Hevc),
+        ]);
+
+        Assert.Equal(
+            ExportVideoEncoder.NvidiaNvenc,
+            capabilities.FastestAvailable(VideoCodecFamily.H264).Encoder);
+        Assert.Equal(
+            ExportVideoEncoder.Software,
+            capabilities.FastestAvailable(VideoCodecFamily.Hevc).Encoder);
+        Assert.False(capabilities.Get(ExportVideoEncoder.NvidiaNvenc, VideoCodecFamily.Hevc).IsAvailable);
     }
 }

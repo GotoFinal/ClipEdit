@@ -1019,26 +1019,25 @@ internal static class FfmpegExportArguments
                 videoEncoder,
                 videoPixelFormat,
                 targetVideoBitRate),
-            VideoCodecFamily.Hevc =>
-            [
-                "-c:v", "libx265", "-preset", GetX264Preset(plan.EncodingSettings.EncodingSpeed),
-                "-crf", MapQualityAroundDefault(quality, 40, 24, 18).ToString(CultureInfo.InvariantCulture),
-                "-pix_fmt", videoPixelFormat,
-            ],
-            VideoCodecFamily.Vp8 =>
-            [
-                "-c:v", "libvpx", "-crf", MapQualityAroundDefault(quality, 50, 28, 16).ToString(CultureInfo.InvariantCulture),
-                "-b:v", "0", "-deadline", "good", "-cpu-used", GetVp9CpuUsed(plan.EncodingSettings.EncodingSpeed),
-                "-pix_fmt", "yuv420p",
-            ],
-            VideoCodecFamily.Vp9 =>
-            [
-                "-c:v", "libvpx-vp9", "-crf", MapQualityAroundDefault(quality, 50, 30, 20).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-deadline", "good", "-cpu-used", GetVp9CpuUsed(plan.EncodingSettings.EncodingSpeed), "-row-mt", "1", "-pix_fmt", videoPixelFormat,
-            ],
-            VideoCodecFamily.Av1 =>
-            [
-                "-c:v", "libaom-av1", "-crf", MapQualityAroundDefault(quality, 55, 30, 18).ToString(CultureInfo.InvariantCulture), "-b:v", "0", "-cpu-used", GetAv1CpuUsed(plan.EncodingSettings.EncodingSpeed), "-row-mt", "1", "-pix_fmt", videoPixelFormat,
-            ],
+            VideoCodecFamily.Hevc => CreateHevcPresetArguments(
+                plan,
+                videoEncoder,
+                videoPixelFormat,
+                targetVideoBitRate),
+            VideoCodecFamily.Vp8 => CreateVp8PresetArguments(
+                plan,
+                videoEncoder,
+                targetVideoBitRate),
+            VideoCodecFamily.Vp9 => CreateVp9PresetArguments(
+                plan,
+                videoEncoder,
+                videoPixelFormat,
+                targetVideoBitRate),
+            VideoCodecFamily.Av1 => CreateAv1PresetArguments(
+                plan,
+                videoEncoder,
+                videoPixelFormat,
+                targetVideoBitRate),
             VideoCodecFamily.Gif => ["-c:v", "gif", "-loop", "0"],
             _ => throw new ExportPlanException($"Unsupported video codec family: {plan.Preset.VideoCodec}."),
         };
@@ -1050,13 +1049,6 @@ internal static class FfmpegExportArguments
             }
 
             AddHdrSignalArguments(arguments, plan.OutputVideoColorInfo!);
-        }
-        if (plan.Preset.VideoCodec != VideoCodecFamily.H264 && targetVideoBitRate is { } targetBitRate)
-        {
-            RemoveOption(arguments, "-crf");
-            RemoveOption(arguments, "-b:v");
-            arguments.Add("-b:v");
-            arguments.Add(targetBitRate.ToString(CultureInfo.InvariantCulture));
         }
         if (plan.Preset.FrameRate is { } frameRate)
         {
@@ -1089,9 +1081,10 @@ internal static class FfmpegExportArguments
         {
             requested = ExportVideoEncoder.Software;
         }
-        return plan.Preset.VideoCodec == VideoCodecFamily.H264 && !plan.PreservesHdr
-            ? requested
-            : ExportVideoEncoder.Software;
+        return requested == ExportVideoEncoder.Software || plan.PreservesHdr ||
+               !TryGetHardwareEncoderName(plan.Preset.VideoCodec, requested, out _)
+            ? ExportVideoEncoder.Software
+            : requested;
     }
 
     private static List<string> CreateH264PresetArguments(
@@ -1152,6 +1145,7 @@ internal static class FfmpegExportArguments
                     "-pix_fmt", "nv12",
                 ],
             ExportVideoEncoder.AmdAmf => CreateAmfPresetArguments(
+                "h264_amf",
                 plan.EncodingSettings.EncodingSpeed,
                 qualityText,
                 bitRateText),
@@ -1162,25 +1156,219 @@ internal static class FfmpegExportArguments
         };
     }
 
+    private static List<string> CreateHevcPresetArguments(
+        ExportPlan plan,
+        ExportVideoEncoder videoEncoder,
+        string videoPixelFormat,
+        long? targetVideoBitRate)
+    {
+        if (videoEncoder != ExportVideoEncoder.Software)
+        {
+            return CreateHardwarePresetArguments(
+                plan,
+                VideoCodecFamily.Hevc,
+                videoEncoder,
+                MapQualityAroundDefault(plan.EncodingSettings.Quality, 40, 24, 18),
+                targetVideoBitRate);
+        }
+
+        var arguments = new List<string>
+        {
+            "-c:v", "libx265",
+            "-preset", GetX264Preset(plan.EncodingSettings.EncodingSpeed),
+        };
+        AddSoftwareRateControl(
+            arguments,
+            MapQualityAroundDefault(plan.EncodingSettings.Quality, 40, 24, 18),
+            targetVideoBitRate);
+        arguments.AddRange(["-pix_fmt", videoPixelFormat]);
+        return arguments;
+    }
+
+    private static List<string> CreateVp8PresetArguments(
+        ExportPlan plan,
+        ExportVideoEncoder videoEncoder,
+        long? targetVideoBitRate)
+    {
+        var quality = MapQualityAroundDefault(plan.EncodingSettings.Quality, 50, 28, 16);
+        if (videoEncoder != ExportVideoEncoder.Software)
+        {
+            return CreateHardwarePresetArguments(
+                plan,
+                VideoCodecFamily.Vp8,
+                videoEncoder,
+                quality,
+                targetVideoBitRate);
+        }
+
+        var arguments = new List<string>
+        {
+            "-c:v", "libvpx",
+            "-deadline", "good",
+            "-cpu-used", GetVp9CpuUsed(plan.EncodingSettings.EncodingSpeed),
+        };
+        AddSoftwareRateControl(arguments, quality, targetVideoBitRate, zeroBitRateForCrf: true);
+        arguments.AddRange(["-pix_fmt", "yuv420p"]);
+        return arguments;
+    }
+
+    private static List<string> CreateVp9PresetArguments(
+        ExportPlan plan,
+        ExportVideoEncoder videoEncoder,
+        string videoPixelFormat,
+        long? targetVideoBitRate)
+    {
+        var quality = MapQualityAroundDefault(plan.EncodingSettings.Quality, 50, 30, 20);
+        if (videoEncoder != ExportVideoEncoder.Software)
+        {
+            return CreateHardwarePresetArguments(
+                plan,
+                VideoCodecFamily.Vp9,
+                videoEncoder,
+                quality,
+                targetVideoBitRate);
+        }
+
+        var arguments = new List<string>
+        {
+            "-c:v", "libvpx-vp9",
+            "-deadline", "good",
+            "-cpu-used", GetVp9CpuUsed(plan.EncodingSettings.EncodingSpeed),
+            "-row-mt", "1",
+        };
+        AddSoftwareRateControl(arguments, quality, targetVideoBitRate, zeroBitRateForCrf: true);
+        arguments.AddRange(["-pix_fmt", videoPixelFormat]);
+        return arguments;
+    }
+
+    private static List<string> CreateAv1PresetArguments(
+        ExportPlan plan,
+        ExportVideoEncoder videoEncoder,
+        string videoPixelFormat,
+        long? targetVideoBitRate)
+    {
+        var quality = MapQualityAroundDefault(plan.EncodingSettings.Quality, 55, 30, 18);
+        if (videoEncoder != ExportVideoEncoder.Software)
+        {
+            return CreateHardwarePresetArguments(
+                plan,
+                VideoCodecFamily.Av1,
+                videoEncoder,
+                quality,
+                targetVideoBitRate);
+        }
+
+        var arguments = new List<string>
+        {
+            "-c:v", "libaom-av1",
+            "-cpu-used", GetAv1CpuUsed(plan.EncodingSettings.EncodingSpeed),
+            "-row-mt", "1",
+        };
+        AddSoftwareRateControl(arguments, quality, targetVideoBitRate, zeroBitRateForCrf: true);
+        arguments.AddRange(["-pix_fmt", videoPixelFormat]);
+        return arguments;
+    }
+
+    private static List<string> CreateHardwarePresetArguments(
+        ExportPlan plan,
+        VideoCodecFamily videoCodec,
+        ExportVideoEncoder videoEncoder,
+        int quality,
+        long? targetVideoBitRate)
+    {
+        if (!TryGetHardwareEncoderName(videoCodec, videoEncoder, out var encoderName))
+        {
+            throw new ExportPlanException($"{videoEncoder} does not support {videoCodec} export.");
+        }
+
+        // The software AV1 scale reaches 55, while the hardware quantizer controls
+        // exposed by the supported FFmpeg backends top out at 51.
+        var qualityText = Math.Clamp(quality, 1, 51).ToString(CultureInfo.InvariantCulture);
+        var bitRateText = targetVideoBitRate?.ToString(CultureInfo.InvariantCulture);
+        return videoEncoder switch
+        {
+            ExportVideoEncoder.NvidiaNvenc => bitRateText is null
+                ?
+                [
+                    "-c:v", encoderName,
+                    "-preset", GetNvencPreset(plan.EncodingSettings.EncodingSpeed),
+                    "-rc", "vbr", "-cq", qualityText, "-b:v", "0",
+                    "-pix_fmt", "yuv420p",
+                ]
+                :
+                [
+                    "-c:v", encoderName,
+                    "-preset", GetNvencPreset(plan.EncodingSettings.EncodingSpeed),
+                    "-rc", "vbr", "-b:v", bitRateText,
+                    "-pix_fmt", "yuv420p",
+                ],
+            ExportVideoEncoder.IntelQuickSync => bitRateText is null
+                ?
+                [
+                    "-c:v", encoderName,
+                    "-preset", GetQsvPreset(plan.EncodingSettings.EncodingSpeed),
+                    "-global_quality", qualityText,
+                    "-pix_fmt", "nv12",
+                ]
+                :
+                [
+                    "-c:v", encoderName,
+                    "-preset", GetQsvPreset(plan.EncodingSettings.EncodingSpeed),
+                    "-b:v", bitRateText,
+                    "-pix_fmt", "nv12",
+                ],
+            ExportVideoEncoder.AmdAmf => CreateAmfPresetArguments(
+                encoderName,
+                plan.EncodingSettings.EncodingSpeed,
+                qualityText,
+                bitRateText),
+            ExportVideoEncoder.Vaapi => bitRateText is null
+                ? ["-c:v", encoderName, "-qp", qualityText]
+                : ["-c:v", encoderName, "-b:v", bitRateText],
+            _ => throw new ExportPlanException($"Unsupported hardware encoder: {videoEncoder}."),
+        };
+    }
+
+    private static void AddSoftwareRateControl(
+        ICollection<string> arguments,
+        int quality,
+        long? targetVideoBitRate,
+        bool zeroBitRateForCrf = false)
+    {
+        if (targetVideoBitRate is { } bitRate)
+        {
+            arguments.Add("-b:v");
+            arguments.Add(bitRate.ToString(CultureInfo.InvariantCulture));
+            return;
+        }
+
+        arguments.Add("-crf");
+        arguments.Add(quality.ToString(CultureInfo.InvariantCulture));
+        if (zeroBitRateForCrf)
+        {
+            arguments.Add("-b:v");
+            arguments.Add("0");
+        }
+    }
+
     private static List<string> CreateAmfPresetArguments(
+        string encoderName,
         ExportEncodingSpeed speed,
         string quality,
         string? bitRate)
     {
         var arguments = new List<string>
         {
-            "-c:v", "h264_amf",
+            "-c:v", encoderName,
             "-quality", GetAmfQuality(speed),
         };
         if (bitRate is null)
         {
-            arguments.AddRange(
-            [
-                "-rc", "cqp",
-                "-qp_i", quality,
-                "-qp_p", quality,
-                "-qp_b", quality,
-            ]);
+            arguments.AddRange(["-rc", "cqp", "-qp_i", quality, "-qp_p", quality]);
+            if (encoderName is "h264_amf" or "av1_amf")
+            {
+                arguments.AddRange(["-qp_b", quality]);
+            }
         }
         else
         {
@@ -1189,6 +1377,33 @@ internal static class FfmpegExportArguments
 
         arguments.AddRange(["-pix_fmt", "nv12"]);
         return arguments;
+    }
+
+    private static bool TryGetHardwareEncoderName(
+        VideoCodecFamily videoCodec,
+        ExportVideoEncoder videoEncoder,
+        out string encoderName)
+    {
+        encoderName = (videoCodec, videoEncoder) switch
+        {
+            (VideoCodecFamily.H264, ExportVideoEncoder.NvidiaNvenc) => "h264_nvenc",
+            (VideoCodecFamily.H264, ExportVideoEncoder.IntelQuickSync) => "h264_qsv",
+            (VideoCodecFamily.H264, ExportVideoEncoder.AmdAmf) => "h264_amf",
+            (VideoCodecFamily.H264, ExportVideoEncoder.Vaapi) => "h264_vaapi",
+            (VideoCodecFamily.Hevc, ExportVideoEncoder.NvidiaNvenc) => "hevc_nvenc",
+            (VideoCodecFamily.Hevc, ExportVideoEncoder.IntelQuickSync) => "hevc_qsv",
+            (VideoCodecFamily.Hevc, ExportVideoEncoder.AmdAmf) => "hevc_amf",
+            (VideoCodecFamily.Hevc, ExportVideoEncoder.Vaapi) => "hevc_vaapi",
+            (VideoCodecFamily.Vp8, ExportVideoEncoder.Vaapi) => "vp8_vaapi",
+            (VideoCodecFamily.Vp9, ExportVideoEncoder.IntelQuickSync) => "vp9_qsv",
+            (VideoCodecFamily.Vp9, ExportVideoEncoder.Vaapi) => "vp9_vaapi",
+            (VideoCodecFamily.Av1, ExportVideoEncoder.NvidiaNvenc) => "av1_nvenc",
+            (VideoCodecFamily.Av1, ExportVideoEncoder.IntelQuickSync) => "av1_qsv",
+            (VideoCodecFamily.Av1, ExportVideoEncoder.AmdAmf) => "av1_amf",
+            (VideoCodecFamily.Av1, ExportVideoEncoder.Vaapi) => "av1_vaapi",
+            _ => string.Empty,
+        };
+        return encoderName.Length > 0;
     }
 
     private static void AddHardwareEncoderGlobalArguments(
@@ -1297,18 +1512,6 @@ internal static class FfmpegExportArguments
             AudioCodecFamily.Flac => ["-c:a", "flac"],
             _ => throw new ExportPlanException($"Unsupported audio codec family: {plan.Preset.AudioCodec}."),
         };
-    }
-
-    private static void RemoveOption(List<string> arguments, string option)
-    {
-        var index = arguments.IndexOf(option);
-        if (index < 0)
-        {
-            return;
-        }
-
-        arguments.RemoveAt(index);
-        arguments.RemoveAt(index);
     }
 
     internal static string GetMuxer(ExportContainer container) => container switch

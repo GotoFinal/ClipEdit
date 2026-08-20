@@ -18,9 +18,9 @@ public sealed partial class MainWindowViewModel
         new(ExportVideoEncoder.Automatic, "Auto (timed)", false, "Checking encoder performance..."),
         new(
             ExportVideoEncoder.Software,
-            "Software (x264)",
+            "Software",
             true,
-            "Built-in software encoder; compatibility baseline."),
+            "Built-in software encoder."),
         new(ExportVideoEncoder.NvidiaNvenc, "NVIDIA NVENC", false, "Checking availability..."),
         new(ExportVideoEncoder.IntelQuickSync, "Intel Quick Sync", false, "Checking availability..."),
         new(ExportVideoEncoder.AmdAmf, "AMD AMF", false, "Checking availability..."),
@@ -33,6 +33,8 @@ public sealed partial class MainWindowViewModel
         InitialExportVideoEncoderChoices[1];
     private ExportVideoEncoder _preferredExportVideoEncoder = ExportEncodingSettings.DefaultVideoEncoder;
     private ExportVideoEncoder _automaticExportVideoEncoder = ExportVideoEncoder.Software;
+    private IExportHardwareCapabilityProbe? _exportHardwareCapabilityProbe;
+    private VideoCodecFamily? _exportHardwareProbeCodec;
     private CancellationTokenSource? _exportHardwareProbeCancellation;
     private bool _isExportHardwareProbeRunning;
 
@@ -68,9 +70,9 @@ public sealed partial class MainWindowViewModel
     public ExportVideoEncoder PreferredExportVideoEncoder => _preferredExportVideoEncoder;
 
     public ExportVideoEncoder EffectiveExportVideoEncoder =>
-        PreferredExportVideoEncoder == ExportVideoEncoder.Automatic
+        SelectedExportVideoEncoder.Value == ExportVideoEncoder.Automatic
             ? _automaticExportVideoEncoder
-            : PreferredExportVideoEncoder;
+            : SelectedExportVideoEncoder.Value;
 
     public bool IsExportHardwareProbeRunning
     {
@@ -84,14 +86,13 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    public bool SupportsHardwareVideoEncoding =>
-        !IsGifExport && GetEffectiveExportPreset().VideoCodec == VideoCodecFamily.H264;
+    public bool SupportsHardwareVideoEncoding => !IsGifExport;
 
     public string ExportVideoEncoderStatus => IsExportHardwareProbeRunning
-        ? "Testing installed hardware encoders..."
+        ? $"Testing {CurrentExportVideoCodecLabel} encoders..."
         : SupportsHardwareVideoEncoding
             ? SelectedExportVideoEncoder.Details
-            : "Hardware encoding currently applies to H.264 exports only.";
+            : "GIF export does not use a selectable video encoder.";
 
     public string ExportVideoEncoderDescription => SelectedExportVideoEncoder.Details;
 
@@ -121,29 +122,67 @@ public sealed partial class MainWindowViewModel
         _exportHardwareProbeCancellation?.Cancel();
         _exportHardwareProbeCancellation?.Dispose();
         _exportHardwareProbeCancellation = null;
+        _exportHardwareCapabilityProbe = probe;
+        _exportHardwareProbeCodec = null;
 
         if (probe is null)
         {
-            ApplyExportHardwareCapabilities(null);
+            ApplyExportHardwareCapabilities(
+                null,
+                GetEffectiveExportPreset().VideoCodec);
+            return;
+        }
+
+        RefreshExportHardwareCapabilityProbe();
+    }
+
+    private void RefreshExportHardwareCapabilityProbe()
+    {
+        var videoCodec = GetEffectiveExportPreset().VideoCodec;
+        if (videoCodec == VideoCodecFamily.Gif)
+        {
+            _exportHardwareProbeCancellation?.Cancel();
+            _exportHardwareProbeCancellation?.Dispose();
+            _exportHardwareProbeCancellation = null;
+            _exportHardwareProbeCodec = videoCodec;
+            IsExportHardwareProbeRunning = false;
+            return;
+        }
+        if (_exportHardwareProbeCodec == videoCodec)
+        {
+            return;
+        }
+
+        _exportHardwareProbeCancellation?.Cancel();
+        _exportHardwareProbeCancellation?.Dispose();
+        _exportHardwareProbeCancellation = null;
+        _exportHardwareProbeCodec = videoCodec;
+        if (_exportHardwareCapabilityProbe is null)
+        {
+            ApplyExportHardwareCapabilities(null, videoCodec);
             return;
         }
 
         var cancellation = new CancellationTokenSource();
         _exportHardwareProbeCancellation = cancellation;
         IsExportHardwareProbeRunning = true;
-        ObserveExportHardwareCapabilitiesAsync(probe, cancellation);
+        ObserveExportHardwareCapabilitiesAsync(
+            _exportHardwareCapabilityProbe,
+            videoCodec,
+            cancellation);
     }
 
     private async void ObserveExportHardwareCapabilitiesAsync(
         IExportHardwareCapabilityProbe probe,
+        VideoCodecFamily videoCodec,
         CancellationTokenSource request)
     {
         try
         {
-            var capabilities = await probe.ProbeAsync(request.Token);
+            var capabilities = await probe.ProbeAsync(videoCodec, request.Token);
             if (!request.IsCancellationRequested && ReferenceEquals(_exportHardwareProbeCancellation, request))
             {
-                ApplyExportHardwareCapabilities(capabilities);
+                ApplyExportHardwareCapabilities(capabilities, videoCodec);
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -154,7 +193,7 @@ public sealed partial class MainWindowViewModel
         {
             if (!request.IsCancellationRequested && ReferenceEquals(_exportHardwareProbeCancellation, request))
             {
-                ApplyExportHardwareCapabilities(null, exception.Message);
+                ApplyExportHardwareCapabilities(null, videoCodec, exception.Message);
             }
         }
         finally
@@ -168,6 +207,7 @@ public sealed partial class MainWindowViewModel
 
     private void ApplyExportHardwareCapabilities(
         ExportHardwareCapabilities? capabilities,
+        VideoCodecFamily videoCodec,
         string? failure = null)
     {
         _exportVideoEncoderChoices = InitialExportVideoEncoderChoices
@@ -185,7 +225,7 @@ public sealed partial class MainWindowViewModel
                         };
                     }
 
-                    var fastest = capabilities.FastestAvailableH264Encoder;
+                    var fastest = capabilities.FastestAvailable(videoCodec);
                     return new ExportVideoEncoderChoice(
                         ExportVideoEncoder.Automatic,
                         "Auto (timed)",
@@ -193,7 +233,7 @@ public sealed partial class MainWindowViewModel
                         $"Uses {fastest.DisplayName}, the fastest encoder in this runtime self-test.");
                 }
 
-                var capability = capabilities?.Get(initial.Value);
+                var capability = capabilities?.Get(initial.Value, videoCodec);
                 return capability is null
                     ? initial with
                     {
@@ -209,17 +249,13 @@ public sealed partial class MainWindowViewModel
             })
             .ToArray();
         OnPropertyChanged(nameof(ExportVideoEncoderChoices));
-        _automaticExportVideoEncoder = capabilities?.FastestAvailableH264Encoder.Encoder ??
+        _automaticExportVideoEncoder = capabilities?.FastestAvailable(videoCodec).Encoder ??
                                        ExportVideoEncoder.Software;
 
         var preferred = _exportVideoEncoderChoices.FirstOrDefault(choice =>
             choice.Value == _preferredExportVideoEncoder && choice.IsAvailable);
         _selectedExportVideoEncoder = preferred ?? _exportVideoEncoderChoices.First(choice =>
             choice.Value == ExportVideoEncoder.Software);
-        if (preferred is null)
-        {
-            _preferredExportVideoEncoder = ExportVideoEncoder.Software;
-        }
 
         OnPropertyChanged(nameof(SelectedExportVideoEncoder));
         OnPropertyChanged(nameof(PreferredExportVideoEncoder));
@@ -234,5 +270,17 @@ public sealed partial class MainWindowViewModel
         _exportHardwareProbeCancellation?.Cancel();
         _exportHardwareProbeCancellation?.Dispose();
         _exportHardwareProbeCancellation = null;
+        _exportHardwareCapabilityProbe = null;
     }
+
+    private string CurrentExportVideoCodecLabel => GetEffectiveExportPreset().VideoCodec switch
+    {
+        VideoCodecFamily.H264 => "H.264",
+        VideoCodecFamily.Hevc => "HEVC",
+        VideoCodecFamily.Vp8 => "VP8",
+        VideoCodecFamily.Vp9 => "VP9",
+        VideoCodecFamily.Av1 => "AV1",
+        VideoCodecFamily.Gif => "GIF",
+        _ => "video",
+    };
 }

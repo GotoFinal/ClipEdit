@@ -35,23 +35,27 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
     }
 
     public Task<ExportHardwareCapabilities> ProbeAsync(
+        VideoCodecFamily videoCodec,
         CancellationToken cancellationToken = default)
     {
+        if (videoCodec == VideoCodecFamily.Gif)
+        {
+            return Task.FromResult(new ExportHardwareCapabilities([]));
+        }
+
+        var cacheKey = $"{_cacheKey}|{videoCodec}";
         var task = Cache.GetOrAdd(
-            _cacheKey,
+            cacheKey,
             _ => new Lazy<Task<ExportHardwareCapabilities>>(
-                ProbeAllAsync,
+                () => ProbeAllAsync(videoCodec),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value;
         return task.WaitAsync(cancellationToken);
     }
 
-    private async Task<ExportHardwareCapabilities> ProbeAllAsync()
+    private async Task<ExportHardwareCapabilities> ProbeAllAsync(VideoCodecFamily videoCodec)
     {
-        var capabilities = new List<ExportVideoEncoderCapability>
-        {
-            await ProbeEncoderAsync(SoftwareProbe).ConfigureAwait(false),
-        };
-        foreach (var probe in CreateH264Probes())
+        var capabilities = new List<ExportVideoEncoderCapability>();
+        foreach (var probe in CreateProbes(videoCodec))
         {
             capabilities.Add(await ProbeEncoderAsync(probe).ConfigureAwait(false));
         }
@@ -102,7 +106,8 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
                     probe.DisplayName,
                     true,
                     $"Available · {probe.FfmpegEncoderName} · {stopwatch.Elapsed.TotalSeconds:0.00}s self-test",
-                    stopwatch.Elapsed)
+                    stopwatch.Elapsed,
+                    probe.VideoCodec)
                 : Unavailable(probe, CreateDiagnostic(diagnostics));
         }
         catch (Exception exception) when (
@@ -135,54 +140,159 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
         return startInfo;
     }
 
+    internal static IReadOnlyList<EncoderProbe> CreateProbes(VideoCodecFamily videoCodec)
+    {
+        var probes = new List<EncoderProbe> { CreateSoftwareProbe(videoCodec) };
+        foreach (var backend in new[]
+                 {
+                     ExportVideoEncoder.NvidiaNvenc,
+                     ExportVideoEncoder.IntelQuickSync,
+                     ExportVideoEncoder.AmdAmf,
+                     ExportVideoEncoder.Vaapi,
+                 })
+        {
+            if (TryGetEncoderName(videoCodec, backend, out var encoderName))
+            {
+                probes.Add(CreateHardwareProbe(videoCodec, backend, encoderName));
+            }
+        }
+
+        return probes;
+    }
+
     internal static IReadOnlyList<EncoderProbe> CreateH264Probes() =>
-    [
-        new(
-            ExportVideoEncoder.NvidiaNvenc,
-            "NVIDIA NVENC",
-            "h264_nvenc",
-            CommonProbeArguments("h264_nvenc")),
-        new(
-            ExportVideoEncoder.IntelQuickSync,
-            "Intel Quick Sync",
-            "h264_qsv",
-            CommonProbeArguments("h264_qsv")),
-        new(
-            ExportVideoEncoder.AmdAmf,
-            "AMD AMF",
-            "h264_amf",
-            CommonProbeArguments("h264_amf")),
-        new(
-            ExportVideoEncoder.Vaapi,
-            "VA-API",
-            "h264_vaapi",
-            [
-                "-hide_banner", "-nostdin", "-loglevel", "error",
-                "-init_hw_device", "vaapi=clipeditva",
-                "-filter_hw_device", "clipeditva",
-                "-f", "lavfi", "-i", "testsrc2=s=1920x1080:r=60:d=2",
-                "-frames:v", "120", "-an",
-                "-vf", "format=nv12,hwupload",
-                "-c:v", "h264_vaapi",
-                "-f", "null", "-",
-            ]),
-    ];
+        CreateProbes(VideoCodecFamily.H264)
+            .Where(probe => probe.Encoder != ExportVideoEncoder.Software)
+            .ToArray();
 
-    private static EncoderProbe SoftwareProbe { get; } = new(
-        ExportVideoEncoder.Software,
-        "Software (x264)",
-        "libx264",
-        CommonProbeArguments("libx264"));
+    private static EncoderProbe CreateSoftwareProbe(VideoCodecFamily videoCodec)
+    {
+        var encoderName = videoCodec switch
+        {
+            VideoCodecFamily.H264 => "libx264",
+            VideoCodecFamily.Hevc => "libx265",
+            VideoCodecFamily.Vp8 => "libvpx",
+            VideoCodecFamily.Vp9 => "libvpx-vp9",
+            VideoCodecFamily.Av1 => "libaom-av1",
+            _ => throw new ArgumentOutOfRangeException(nameof(videoCodec), videoCodec, "Unsupported probe codec."),
+        };
+        return new EncoderProbe(
+            ExportVideoEncoder.Software,
+            $"Software ({encoderName})",
+            encoderName,
+            videoCodec,
+            CommonProbeArguments(encoderName, videoCodec));
+    }
 
-    private static IReadOnlyList<string> CommonProbeArguments(string encoder) =>
-    [
-        "-hide_banner", "-nostdin", "-loglevel", "error",
-        "-f", "lavfi", "-i", "testsrc2=s=1920x1080:r=60:d=2",
-        "-frames:v", "120", "-an",
-        "-pix_fmt", "yuv420p",
-        "-c:v", encoder,
-        "-f", "null", "-",
-    ];
+    private static EncoderProbe CreateHardwareProbe(
+        VideoCodecFamily videoCodec,
+        ExportVideoEncoder backend,
+        string encoderName)
+    {
+        var displayName = backend switch
+        {
+            ExportVideoEncoder.NvidiaNvenc => "NVIDIA NVENC",
+            ExportVideoEncoder.IntelQuickSync => "Intel Quick Sync",
+            ExportVideoEncoder.AmdAmf => "AMD AMF",
+            ExportVideoEncoder.Vaapi => "VA-API",
+            _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, "Unsupported hardware backend."),
+        };
+        return new EncoderProbe(
+            backend,
+            displayName,
+            encoderName,
+            videoCodec,
+            backend == ExportVideoEncoder.Vaapi
+                ? VaapiProbeArguments(encoderName, videoCodec)
+                : CommonProbeArguments(encoderName, videoCodec));
+    }
+
+    private static bool TryGetEncoderName(
+        VideoCodecFamily codec,
+        ExportVideoEncoder backend,
+        out string encoderName)
+    {
+        encoderName = (codec, backend) switch
+        {
+            (VideoCodecFamily.H264, ExportVideoEncoder.NvidiaNvenc) => "h264_nvenc",
+            (VideoCodecFamily.H264, ExportVideoEncoder.IntelQuickSync) => "h264_qsv",
+            (VideoCodecFamily.H264, ExportVideoEncoder.AmdAmf) => "h264_amf",
+            (VideoCodecFamily.H264, ExportVideoEncoder.Vaapi) => "h264_vaapi",
+            (VideoCodecFamily.Hevc, ExportVideoEncoder.NvidiaNvenc) => "hevc_nvenc",
+            (VideoCodecFamily.Hevc, ExportVideoEncoder.IntelQuickSync) => "hevc_qsv",
+            (VideoCodecFamily.Hevc, ExportVideoEncoder.AmdAmf) => "hevc_amf",
+            (VideoCodecFamily.Hevc, ExportVideoEncoder.Vaapi) => "hevc_vaapi",
+            (VideoCodecFamily.Vp8, ExportVideoEncoder.Vaapi) => "vp8_vaapi",
+            (VideoCodecFamily.Vp9, ExportVideoEncoder.IntelQuickSync) => "vp9_qsv",
+            (VideoCodecFamily.Vp9, ExportVideoEncoder.Vaapi) => "vp9_vaapi",
+            (VideoCodecFamily.Av1, ExportVideoEncoder.NvidiaNvenc) => "av1_nvenc",
+            (VideoCodecFamily.Av1, ExportVideoEncoder.IntelQuickSync) => "av1_qsv",
+            (VideoCodecFamily.Av1, ExportVideoEncoder.AmdAmf) => "av1_amf",
+            (VideoCodecFamily.Av1, ExportVideoEncoder.Vaapi) => "av1_vaapi",
+            _ => string.Empty,
+        };
+        return encoderName.Length > 0;
+    }
+
+    private static IReadOnlyList<string> CommonProbeArguments(
+        string encoder,
+        VideoCodecFamily videoCodec)
+    {
+        var (source, frames) = ProbeWorkload(videoCodec);
+        var arguments = new List<string>
+        {
+            "-hide_banner", "-nostdin", "-loglevel", "error",
+            "-f", "lavfi", "-i", source,
+            "-frames:v", frames, "-an",
+            "-pix_fmt", "yuv420p",
+            "-c:v", encoder,
+        };
+        AddSoftwareProbeSpeed(arguments, encoder);
+        arguments.AddRange(["-f", "null", "-"]);
+        return arguments;
+    }
+
+    private static IReadOnlyList<string> VaapiProbeArguments(
+        string encoder,
+        VideoCodecFamily videoCodec)
+    {
+        var (source, frames) = ProbeWorkload(videoCodec);
+        return
+        [
+            "-hide_banner", "-nostdin", "-loglevel", "error",
+            "-init_hw_device", "vaapi=clipeditva",
+            "-filter_hw_device", "clipeditva",
+            "-f", "lavfi", "-i", source,
+            "-frames:v", frames, "-an",
+            "-vf", "format=nv12,hwupload",
+            "-c:v", encoder,
+            "-f", "null", "-",
+        ];
+    }
+
+    private static (string Source, string Frames) ProbeWorkload(VideoCodecFamily videoCodec) =>
+        videoCodec == VideoCodecFamily.H264
+            ? ("testsrc2=s=1920x1080:r=60:d=2", "120")
+            : ("testsrc2=s=640x360:r=30:d=1", "30");
+
+    private static void AddSoftwareProbeSpeed(List<string> arguments, string encoder)
+    {
+        switch (encoder)
+        {
+            case "libx264":
+            case "libx265":
+                arguments.Add("-preset");
+                arguments.Add("medium");
+                break;
+            case "libvpx":
+            case "libvpx-vp9":
+                arguments.AddRange(["-deadline", "good", "-cpu-used", "4"]);
+                break;
+            case "libaom-av1":
+                arguments.AddRange(["-cpu-used", "6"]);
+                break;
+        }
+    }
 
     private static ExportVideoEncoderCapability Unavailable(
         EncoderProbe probe,
@@ -190,7 +300,8 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
         probe.Encoder,
         probe.DisplayName,
         false,
-        string.IsNullOrWhiteSpace(details) ? "Unavailable." : $"Unavailable · {details}");
+        string.IsNullOrWhiteSpace(details) ? "Unavailable." : $"Unavailable · {details}",
+        VideoCodec: probe.VideoCodec);
 
     private static string CreateDiagnostic(string diagnostics)
     {
@@ -232,5 +343,6 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
         ExportVideoEncoder Encoder,
         string DisplayName,
         string FfmpegEncoderName,
+        VideoCodecFamily VideoCodec,
         IReadOnlyList<string> Arguments);
 }

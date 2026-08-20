@@ -1620,7 +1620,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             ExportProgress = 1;
             var usedBoundaryFallback = exportStrategy == ExportStrategy.BoundaryGop &&
                                        result.ActualStrategy == ExportStrategy.ExactTranscode;
-            var usedEncoderFallback = PreferredExportVideoEncoder != ExportVideoEncoder.Software &&
+            var usedEncoderFallback = EffectiveExportVideoEncoder != ExportVideoEncoder.Software &&
                                       result.ActualVideoEncoder == ExportVideoEncoder.Software;
             ExportPhaseText = usedBoundaryFallback
                 ? "Complete · exact fallback · 100%"
@@ -4041,6 +4041,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void RaiseExportStateChanged()
     {
+        RefreshExportHardwareCapabilityProbe();
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportAvailabilityText));
         OnPropertyChanged(nameof(HasExportBlockingIssue));

@@ -1188,7 +1188,7 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Fact]
-    public void H264_only_hardware_encoder_setting_does_not_replace_a_vp9_encoder()
+    public void Unsupported_hardware_encoder_setting_does_not_replace_a_vp9_encoder()
     {
         var vp9 = new ExportPreset(
             "vp9-test",
@@ -1219,6 +1219,129 @@ public sealed class FfmpegExportArgumentsTests
 
         Assert.Equal("libvpx-vp9", ValueAfter(arguments, "-c:v"));
         Assert.DoesNotContain("h264_nvenc", arguments);
+    }
+
+    [Theory]
+    [InlineData(VideoCodecFamily.Hevc, ExportVideoEncoder.NvidiaNvenc, ExportContainer.Mp4, "hevc_nvenc")]
+    [InlineData(VideoCodecFamily.Hevc, ExportVideoEncoder.IntelQuickSync, ExportContainer.Mp4, "hevc_qsv")]
+    [InlineData(VideoCodecFamily.Hevc, ExportVideoEncoder.AmdAmf, ExportContainer.Mp4, "hevc_amf")]
+    [InlineData(VideoCodecFamily.Vp9, ExportVideoEncoder.IntelQuickSync, ExportContainer.WebM, "vp9_qsv")]
+    [InlineData(VideoCodecFamily.Av1, ExportVideoEncoder.NvidiaNvenc, ExportContainer.WebM, "av1_nvenc")]
+    [InlineData(VideoCodecFamily.Av1, ExportVideoEncoder.IntelQuickSync, ExportContainer.WebM, "av1_qsv")]
+    [InlineData(VideoCodecFamily.Av1, ExportVideoEncoder.AmdAmf, ExportContainer.WebM, "av1_amf")]
+    public void Supported_hardware_codec_pairs_use_backend_specific_encoders(
+        VideoCodecFamily videoCodec,
+        ExportVideoEncoder videoEncoder,
+        ExportContainer container,
+        string expectedEncoder)
+    {
+        var extension = container == ExportContainer.Mp4 ? ".mp4" : ".webm";
+        var preset = new ExportPreset(
+            "hardware-codec",
+            "Hardware codec",
+            extension,
+            container,
+            videoCodec,
+            AudioCodecFamily.None,
+            requiresEvenDimensions: true);
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath($"C:\\clip{extension}"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
+            preset);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            preset,
+            encodingSettings: new ExportEncodingSettings(
+                qualityMode: ExportQualityMode.Custom,
+                videoEncoder: videoEncoder));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath($"C:\\.clip.partial{extension}"));
+
+        Assert.Equal(expectedEncoder, ValueAfter(arguments, "-c:v"));
+    }
+
+    [Theory]
+    [InlineData(VideoCodecFamily.H264, "h264_vaapi", ExportContainer.Mp4)]
+    [InlineData(VideoCodecFamily.Hevc, "hevc_vaapi", ExportContainer.Mp4)]
+    [InlineData(VideoCodecFamily.Vp8, "vp8_vaapi", ExportContainer.WebM)]
+    [InlineData(VideoCodecFamily.Vp9, "vp9_vaapi", ExportContainer.WebM)]
+    [InlineData(VideoCodecFamily.Av1, "av1_vaapi", ExportContainer.WebM)]
+    public void Vaapi_supports_each_custom_video_codec(
+        VideoCodecFamily videoCodec,
+        string expectedEncoder,
+        ExportContainer container)
+    {
+        var extension = container == ExportContainer.Mp4 ? ".mp4" : ".webm";
+        var preset = new ExportPreset(
+            "vaapi-codec",
+            "VA-API codec",
+            extension,
+            container,
+            videoCodec,
+            AudioCodecFamily.None,
+            requiresEvenDimensions: true);
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath($"C:\\clip{extension}"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
+            preset);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            preset,
+            encodingSettings: new ExportEncodingSettings(videoEncoder: ExportVideoEncoder.Vaapi));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath($"C:\\.clip.partial{extension}"));
+
+        Assert.Equal(expectedEncoder, ValueAfter(arguments, "-c:v"));
+        Assert.Contains("[vout]format=nv12,hwupload[vencoder]", ValueAfter(arguments, "-filter_complex"));
+    }
+
+    [Fact]
+    public void Hdr_export_keeps_software_encoder_until_ten_bit_hardware_is_probed()
+    {
+        var canvas = new PixelSize(1_920, 1_080);
+        var preset = new ExportPreset(
+            "hdr-hevc",
+            "HDR HEVC",
+            ".mp4",
+            ExportContainer.Mp4,
+            VideoCodecFamily.Hevc,
+            AudioCodecFamily.None,
+            requiresEvenDimensions: true);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\hdr.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvas,
+                    CropRegion.FullFrame(canvas),
+                    ClipCanvasTransform.Identity,
+                    videoColorInfo: Hdr10,
+                    sourceSize: canvas),
+            ],
+            canvas,
+            TestPath("C:\\hdr.mp4"),
+            preset,
+            encodingSettings: new ExportEncodingSettings(videoEncoder: ExportVideoEncoder.NvidiaNvenc));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.hdr.partial"));
+
+        Assert.True(plan.PreservesHdr);
+        Assert.Equal("libx265", ValueAfter(arguments, "-c:v"));
     }
 
     [Fact]
