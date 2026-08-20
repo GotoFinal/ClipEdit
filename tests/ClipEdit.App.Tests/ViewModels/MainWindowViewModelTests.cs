@@ -1041,7 +1041,12 @@ public sealed class MainWindowViewModelTests
         Assert.NotNull(result);
         Assert.Equal(BuiltInExportPresets.WebM, renderer.Plan!.Preset);
         Assert.Equal(
-            new ExportEncodingSettings(62, 47, 15, qualityMode: ExportQualityMode.Custom),
+            new ExportEncodingSettings(
+                62,
+                47,
+                15,
+                qualityMode: ExportQualityMode.Custom,
+                videoEncoder: ExportVideoEncoder.Software),
             renderer.Plan.EncodingSettings);
         Assert.Equal(new PixelSize(902, 506), renderer.Plan.OutputSize);
         var segment = Assert.Single(renderer.Plan!.VideoSegments);
