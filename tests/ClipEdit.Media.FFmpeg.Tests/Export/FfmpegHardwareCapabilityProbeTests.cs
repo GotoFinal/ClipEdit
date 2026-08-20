@@ -45,6 +45,25 @@ public sealed class FfmpegHardwareCapabilityProbeTests
     }
 
     [Fact]
+    public async Task Invalid_executable_format_is_reported_as_unavailable()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-invalid-ffmpeg-{Guid.NewGuid():N}");
+        try
+        {
+            await File.WriteAllBytesAsync(path, []);
+            var probe = new FfmpegHardwareCapabilityProbe(path);
+
+            var capabilities = await probe.ProbeAsync();
+
+            Assert.All(capabilities.H264Encoders, capability => Assert.False(capability.IsAvailable));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Fastest_available_encoder_uses_measured_elapsed_time()
     {
         var capabilities = new ExportHardwareCapabilities(

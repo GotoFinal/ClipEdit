@@ -106,7 +106,8 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
                 : Unavailable(probe, CreateDiagnostic(diagnostics));
         }
         catch (Exception exception) when (
-            exception is InvalidOperationException or IOException or UnauthorizedAccessException)
+            exception is InvalidOperationException or IOException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception)
         {
             TryKill(process);
             return Unavailable(probe, exception.Message);
