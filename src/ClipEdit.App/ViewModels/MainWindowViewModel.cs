@@ -154,11 +154,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public string EmptyStateTitle => "Drop a video to begin";
 
-    public string EmptyStateDescription =>
-        "Your source stays untouched. ClipEdit will reveal trimming and crop controls after import.";
-
-    public string SupportedMediaHint => "Video and audio files supported by the local media engine";
-
     public ObservableCollection<MediaItemViewModel> MediaItems { get; } = [];
 
     public ObservableCollection<VideoClipViewModel> VideoClips { get; } = [];
@@ -180,7 +175,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         : "Relink media before opening";
 
     public string PendingProjectOpenDescription =>
-        "ClipEdit has not replaced the current workspace. Use a nearby suggestion or choose the original file at its new location; every replacement must match the saved media fingerprint.";
+        "Choose each missing file at its new location. The current project stays open until every file matches.";
 
     public string? ProjectPath
     {
@@ -405,19 +400,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         if (ExportQualityMode != ClipEdit.Media.Export.ExportQualityMode.MatchSource)
         {
-            Block(PacketCopyBlocker.Quality, "Quality is set to Custom instead of Match input.");
+            Block(PacketCopyBlocker.Quality, "Choose Match input quality.");
         }
         if (ExportScalePercent != ExportEncodingSettings.DefaultScalePercent)
         {
-            Block(PacketCopyBlocker.ExportScale, "Export scale is not 100%.");
+            Block(PacketCopyBlocker.ExportScale, "Set export scale to 100%.");
         }
         if (ExportPlaybackSpeedPercent != ExportEncodingSettings.DefaultPlaybackSpeedPercent)
         {
-            Block(PacketCopyBlocker.ExportSpeed, "Export playback speed is not 100%.");
+            Block(PacketCopyBlocker.ExportSpeed, "Set export speed to 100%.");
         }
         if (preset.VideoCodec == VideoCodecFamily.Gif)
         {
-            Block(PacketCopyBlocker.Format, "GIF always requires encoding.");
+            Block(PacketCopyBlocker.Format, "Choose MP4, WebM, or MKV; GIF must be encoded.");
         }
         if (slices.Count > 1)
         {
@@ -439,7 +434,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         if (slices.Count != 1)
         {
-            Block(PacketCopyBlocker.ClipCount, "Export exactly one complete clip for packet copy.");
+            Block(PacketCopyBlocker.ClipCount, "Export one complete clip at a time.");
             return PacketCopyDecision.Transcode(blockers, reasons);
         }
 
@@ -453,7 +448,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             : new MediaRange(MediaTime.Zero, NonNegativeTimelineTime(SequenceDurationSeconds));
         if (probe is null || video is null || sourceDuration is not { } duration)
         {
-            Block(PacketCopyBlocker.Media, "Source stream information is incomplete.");
+            Block(PacketCopyBlocker.Media, "Reopen or relink the source so its stream information can be read.");
             return PacketCopyDecision.Transcode(blockers, reasons);
         }
         var streamCopyInfo = CreateSegmentStreamCopyInfo(slice, preset);
@@ -461,68 +456,65 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             CreateBoundaryGopRenderInfo(slice, preset) is not null)
         {
             forceBoundaryGop = true;
-            reasons.Add("Only the cut GOPs will be encoded; untouched middle GOPs will be copied and the candidate validated.");
         }
         else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration) &&
                  IsMp4EditListPacketTrimSupported(preset, video.CodecName))
         {
             forceEditListStreamCopy = true;
             forceVideoStreamCopy = CanCopyTrimmedVideoPackets(slice, preset, streamCopyInfo);
-            reasons.Add("MP4 edit-list trim will hide decode preroll while video and unchanged audio packets are copied.");
         }
         else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration) &&
                  CanCopyTrimmedVideoPackets(slice, preset, streamCopyInfo))
         {
             forceVideoStreamCopy = true;
-            reasons.Add("Video boundaries are indexed keyframes; audio is rebuilt for exact timing.");
         }
         else if (slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
         {
             Block(
                 PacketCopyBlocker.SourceRange,
                 EnableExperimentalBoundaryGopRendering
-                    ? "This trim is not eligible for Boundary-GOP rendering; use CFR 8-bit H.264, VP9, or AV1 with at least one second of complete interior GOPs."
-                    : "Trimmed clips still require encoding unless both edges are keyframes. Experimental Boundary-GOP rendering can be enabled in global settings.");
+                    ? "Turn on Fast and move both cut edges to keyframes. This trim has no safe middle section to copy."
+                    : "Turn on Fast and snap both cut edges to keyframes, or enable Boundary-GOP in Settings.");
         }
         var sliceTimelineStart = clip.Model.SourceTimeToTimeline(slice.SourceRange.Start);
         var sliceTimelineDuration = clip.Model.SourceDurationToTimeline(slice.SourceRange.Duration);
         if (exportRange.Start != sliceTimelineStart || exportRange.Duration != sliceTimelineDuration)
         {
-            Block(PacketCopyBlocker.TimelineRange, "The export range must match the clip boundaries without surrounding gaps.");
+            Block(PacketCopyBlocker.TimelineRange, "Select exactly the clip, without empty space before or after it.");
         }
         if (clip.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent)
         {
-            Block(PacketCopyBlocker.ClipSpeed, "Clip playback speed is not 100%.");
+            Block(PacketCopyBlocker.ClipSpeed, "Set clip speed to 100%.");
         }
         if (video.RotationDegrees != 0)
         {
-            Block(PacketCopyBlocker.SourceRotation, "Sources with rotation metadata are not yet packet-copy eligible.");
+            Block(PacketCopyBlocker.SourceRotation, "Use a source without rotation metadata, or keep the full re-encode.");
         }
         if (clip.CanvasTransform != ClipCanvasTransform.Identity)
         {
-            Block(PacketCopyBlocker.Transform, "The clip has a move, scale, rotation, or mirror transform.");
+            Block(PacketCopyBlocker.Transform, "Reset the clip position, scale, rotation, and mirrors.");
         }
         if (CanvasSize != video.EncodedSize)
         {
-            Block(PacketCopyBlocker.Canvas, "The project canvas does not match the encoded video size.");
+            Block(PacketCopyBlocker.Canvas, "Use the source's original canvas size.");
         }
         if (CanvasCrop != CropRegion.FullFrame(CanvasSize))
         {
-            Block(PacketCopyBlocker.Crop, "The crop does not cover the complete canvas.");
+            Block(PacketCopyBlocker.Crop, "Reset crop to the complete canvas.");
         }
         if (!SourceVideoCodecMatches(video.CodecName, preset.VideoCodec))
         {
-            Block(PacketCopyBlocker.VideoCodec, "The selected output video codec differs from the source.");
+            Block(PacketCopyBlocker.VideoCodec, "Choose Match input format.");
         }
         if (preset.FrameRate is not null &&
             SelectedExportPreset.ParameterMode != ExportParameterMode.MatchInput)
         {
-            Block(PacketCopyBlocker.FrameRate, "A fixed output frame rate is enabled.");
+            Block(PacketCopyBlocker.FrameRate, "Use the source frame rate.");
         }
         if (preset.SupportsAudio &&
             AudioTracks.Any(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty))
         {
-            Block(PacketCopyBlocker.ExternalAudio, "Active external audio requires mixing.");
+            Block(PacketCopyBlocker.ExternalAudio, "Mute or remove external audio.");
         }
 
         if (!preset.SupportsAudio)
@@ -544,29 +536,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         if (embedded.Length != 1 || embedded[0].EmbeddedLaneIndex is not { } embeddedLaneIndex)
         {
-            Block(PacketCopyBlocker.AudioLayout, "Packet copy supports at most one active embedded audio track.");
+            Block(PacketCopyBlocker.AudioLayout, "Keep one unchanged embedded audio track.");
             return Finish();
         }
         if (Math.Abs(CombineAudioGain(
                 embedded[0].GainDb,
                 clip.GetAudioLaneGainDb(embeddedLaneIndex))) >= 0.000_001)
         {
-            Block(PacketCopyBlocker.AudioGain, "Audio gain changes require encoding.");
+            Block(PacketCopyBlocker.AudioGain, "Reset audio gain to 0 dB.");
         }
         if (!embedded[0].CreateEditForClip(clip).IsUnedited)
         {
-            Block(PacketCopyBlocker.AudioEdit, "Silenced or cut audio ranges require encoding.");
+            Block(PacketCopyBlocker.AudioEdit, "Reset silenced or cut audio ranges.");
         }
         if (!embedded[0].TryGetEmbeddedStreamIndex(clip.SourcePath, out var streamIndex))
         {
-            Block(PacketCopyBlocker.AudioLayout, "The embedded audio stream could not be mapped unchanged.");
+            Block(PacketCopyBlocker.AudioLayout, "Restore the source audio track.");
             return Finish();
         }
 
         var audio = probe.AudioStreams.FirstOrDefault(stream => stream.Index == streamIndex);
         if (audio is null || !SourceAudioCodecMatches(audio.CodecName, preset.AudioCodec))
         {
-            Block(PacketCopyBlocker.AudioCodec, "The selected output audio codec differs from the source.");
+            Block(PacketCopyBlocker.AudioCodec, "Choose Match input format.");
         }
 
         return Finish();

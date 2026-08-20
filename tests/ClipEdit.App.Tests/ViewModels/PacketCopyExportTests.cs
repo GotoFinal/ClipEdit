@@ -23,7 +23,7 @@ public sealed class PacketCopyExportTests
 
         Assert.True(viewModel.IsPacketCopyExport);
         Assert.Equal("Fast packet copy", viewModel.ExportMethodTitle);
-        Assert.Contains("without filters or quality loss", viewModel.ExportMethodDetails);
+        Assert.Contains("No re-encoding", viewModel.ExportMethodDetails);
         Assert.Contains("packet copy · no re-encode", viewModel.ExportPlanSummary);
 
         var result = await viewModel.ExportAsync(
@@ -47,10 +47,11 @@ public sealed class PacketCopyExportTests
 
         Assert.False(viewModel.IsPacketCopyExport);
         Assert.Equal("Full re-encode", viewModel.ExportMethodTitle);
-        Assert.Contains("Quality is set to Custom", viewModel.ExportMethodDetails);
-        Assert.Contains("Export scale is not 100%", viewModel.ExportMethodDetails);
-        Assert.Contains("Export playback speed is not 100%", viewModel.ExportMethodDetails);
-        Assert.Contains("video codec differs", viewModel.ExportMethodDetails);
+        Assert.Contains("For a faster export", viewModel.ExportMethodDetails);
+        Assert.Contains("Choose Match input quality", viewModel.ExportMethodDetails);
+        Assert.Contains("Set export scale to 100%", viewModel.ExportMethodDetails);
+        Assert.Contains("Set export speed to 100%", viewModel.ExportMethodDetails);
+        Assert.Contains("Choose Match input format", viewModel.ExportMethodDetails);
         Assert.True(viewModel.CanApplyFastCopySettings);
 
         Assert.True(viewModel.ApplyFastCopySettings());
@@ -79,7 +80,7 @@ public sealed class PacketCopyExportTests
 
         Assert.True(viewModel.IsPacketCopyExport);
         Assert.Equal("Fast MP4 packet trim", viewModel.ExportMethodTitle);
-        Assert.Contains("MP4 timestamps hide", viewModel.ExportMethodDetails);
+        Assert.Contains("Fast trim ready", viewModel.ExportMethodDetails);
     }
 
     [Fact]
@@ -97,7 +98,8 @@ public sealed class PacketCopyExportTests
         Assert.True(viewModel.IsVideoStreamCopyExport);
         Assert.False(viewModel.IsFullReencodeExport);
         Assert.Equal("Fast video copy", viewModel.ExportMethodTitle);
-        Assert.Contains("only audio will be processed", viewModel.ExportMethodDetails);
+        Assert.Contains("only audio will be re-encoded", viewModel.ExportMethodDetails);
+        Assert.Contains("Reset audio gain to 0 dB", viewModel.ExportMethodDetails);
         Assert.Contains("video copy · audio re-encode", viewModel.ExportPlanSummary);
 
         var result = await viewModel.ExportAsync(
@@ -201,7 +203,7 @@ public sealed class PacketCopyExportTests
         Assert.True(viewModel.IsBoundaryGopExport);
         Assert.False(viewModel.IsFullReencodeExport);
         Assert.Equal("Experimental Boundary-GOP", viewModel.ExportMethodTitle);
-        Assert.Contains("falls back to a full exact encode", viewModel.ExportMethodDetails);
+        Assert.Contains("Only the cut edges will be encoded", viewModel.ExportMethodDetails);
 
         var result = await viewModel.ExportAsync(
             TestPath($"boundary-gop.{extension}"),
@@ -262,7 +264,7 @@ public sealed class PacketCopyExportTests
 
         Assert.True(viewModel.IsPacketCopyExport);
         Assert.Equal("Fast packet copy", viewModel.ExportMethodTitle);
-        Assert.Contains("joined without decoding", viewModel.ExportMethodDetails);
+        Assert.Contains("Fast join ready", viewModel.ExportMethodDetails);
         Assert.Contains("packet-copy join · no re-encode", viewModel.ExportPlanSummary);
 
         var result = await viewModel.ExportAsync(

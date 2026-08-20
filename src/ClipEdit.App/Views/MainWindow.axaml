@@ -384,7 +384,7 @@
               Height="30"
               VerticalAlignment="Center"
               ItemsSource="{Binding ExportPresets}"
-              SelectedItem="{Binding SelectedExportPreset}" ToolTip.Tip="{Binding ExportPlanSummary}">
+              SelectedItem="{Binding SelectedExportPreset}" ToolTip.Tip="{Binding ExportMethodDetails}">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="mediaExport:ExportPreset">
                 <TextBlock Text="{Binding DisplayName}" />
@@ -425,10 +425,7 @@
                         CornerRadius="8">
                       <ScrollViewer MaxHeight="540" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                       <StackPanel Margin="0,0,3,0" Spacing="8">
-                        <StackPanel Spacing="2">
-                          <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="#F5F5F8" Text="Export settings" />
-                          <TextBlock Classes="muted" FontSize="10" Text="Output size, speed and compression." />
-                        </StackPanel>
+                        <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="#F5F5F8" Text="Export settings" />
 
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Destination" />
@@ -443,12 +440,6 @@
                             </ComboBox.ItemTemplate>
                           </ComboBox>
                         </Grid>
-                        <TextBlock
-                            Classes="muted"
-                            FontSize="10"
-                            Text="Clipboard exports are copied as files; the size limit is in bottom settings."
-                            TextWrapping="Wrap" />
-
                         <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,72" ColumnSpacing="8" RowSpacing="2">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Scale" />
                           <NumericUpDown
@@ -508,13 +499,6 @@
                             </ComboBox.ItemTemplate>
                           </ComboBox>
                         </Grid>
-                        <TextBlock
-                            Classes="muted"
-                            FontSize="10"
-                            IsVisible="{Binding !IsGifExport}"
-                            Text="Hardware decode can be slower with CPU filters; unavailable modes retry in software."
-                            TextWrapping="Wrap" />
-
                         <Grid
                             ColumnDefinitions="Auto,*"
                             ColumnSpacing="7"
@@ -559,7 +543,7 @@
                                   Click="MatchInputQuality_Click"
                                   Content="Match input"
                                   IsChecked="{Binding UsesMatchedInputQuality, Mode=OneWay}"
-                                  ToolTip.Tip="Preserve source quality and enable packet copy when no processing is needed" />
+                                  ToolTip.Tip="Use source settings and allow fast copy when the edit permits it" />
                               <ToggleButton
                                   x:Name="CustomQualityButton"
                                   Grid.Column="1"
@@ -570,12 +554,6 @@
                             </Grid>
                           </Border>
                         </Grid>
-                        <TextBlock
-                            Classes="muted"
-                            FontSize="10"
-                            IsVisible="{Binding UsesMatchedInputQuality}"
-                            Text="Uses source bitrate when available; filters still require encoding."
-                            TextWrapping="Wrap" />
                         <Grid
                             x:Name="CustomQualityPanel"
                             RowDefinitions="Auto,Auto"
@@ -685,10 +663,7 @@
                             CornerRadius="7"
                             IsVisible="{Binding IsCustomExport}">
                           <StackPanel Spacing="8">
-                            <StackPanel Spacing="2">
-                              <TextBlock FontWeight="SemiBold" Foreground="#D8D0FF" Text="Custom format" />
-                              <TextBlock Classes="muted" FontSize="10" Text="Only compatible codec combinations are shown." />
-                            </StackPanel>
+                            <TextBlock FontWeight="SemiBold" Foreground="#D8D0FF" Text="Custom format" />
                             <Grid ColumnDefinitions="96,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="5">
                               <TextBlock VerticalAlignment="Center" Text="Container" />
                               <ComboBox Grid.Column="1" ItemsSource="{Binding CustomExportContainerChoices}" SelectedItem="{Binding CustomExportContainer}">
@@ -825,23 +800,14 @@
                                 Click="ApplyFastCopySettings_Click"
                                 Content="Use source settings"
                                 IsVisible="{Binding CanApplyFastCopySettings}"
-                                ToolTip.Tip="Select Match input format and quality, 100% scale, and 100% export speed" />
+                                ToolTip.Tip="Set format and quality to Match input, then reset scale and speed to 100%" />
                           </StackPanel>
                         </Border>
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                          <CheckBox
-                              x:Name="RememberExportAdjustmentsCheckBox"
-                              Content="Remember adjustments"
-                              IsChecked="{Binding RememberExportAdjustments, Mode=TwoWay}"
-                              ToolTip.Tip="Off resets scale, quality and speed for a new or opened project. Saved export presets are unaffected." />
-                          <TextBlock Classes="muted" FontSize="10" VerticalAlignment="Center" Text="across projects" />
-                        </StackPanel>
-                        <TextBlock
-                            Classes="muted"
-                            FontSize="10"
-                            IsVisible="{Binding IsGifExport}"
-                            Text="GIF quality controls palette size."
-                            TextWrapping="Wrap" />
+                        <CheckBox
+                            x:Name="RememberExportAdjustmentsCheckBox"
+                            Content="Remember export settings"
+                            IsChecked="{Binding RememberExportAdjustments, Mode=TwoWay}"
+                            ToolTip.Tip="Keep scale, quality, and speed for the next project" />
                       </StackPanel>
                       </ScrollViewer>
                     </Border>
@@ -1041,14 +1007,6 @@
                     FontSize="24"
                     FontWeight="SemiBold"
                     Text="{Binding EmptyStateTitle}" />
-                <TextBlock
-                    MaxWidth="470"
-                    HorizontalAlignment="Center"
-                    Classes="muted"
-                    Text="{Binding EmptyStateDescription}"
-                    TextAlignment="Center"
-                    TextWrapping="Wrap" />
-
                 <Border
                     MinWidth="470"
                     MaxWidth="560"
@@ -1060,7 +1018,6 @@
                     IsVisible="{Binding HasRecoveryCandidates}">
                   <StackPanel Spacing="7">
                     <TextBlock FontWeight="SemiBold" Text="Recovery autosaves" />
-                    <TextBlock Classes="muted" FontSize="11" Text="Nothing is restored automatically. Review the referenced media first." />
                     <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
                       <ItemsControl ItemsSource="{Binding RecoveryCandidates}">
                         <ItemsControl.ItemTemplate>
@@ -1103,11 +1060,6 @@
                     Content="Open media"
                     IsEnabled="{Binding IsImportAvailable}" />
 
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    FontSize="12"
-                    Foreground="#767D91"
-                    Text="{Binding SupportedMediaHint}" />
               </StackPanel>
             </Border>
           </Grid>
@@ -1280,11 +1232,6 @@
                           FontSize="10"
                           Foreground="#7C5CFC"
                           Text="{Binding DecoderStatus, ElementName=LivePreview}" />
-                      <TextBlock
-                          FontSize="10"
-                          Foreground="#E3B341"
-                          IsVisible="{Binding HasCuts, ElementName=LivePreview}"
-                          Text="Cut preview sampled · export exact" />
                     </StackPanel>
                   </Border>
                 </Grid>
@@ -1586,7 +1533,6 @@
                   <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="5">
                     <StackPanel Orientation="Horizontal" Spacing="7">
                       <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
-                      <TextBlock Classes="muted" FontSize="9" Text="Synced to video timeline" />
                     </StackPanel>
                     <Button Grid.Column="3" Height="22" Padding="7,1" Classes="secondary" Click="RestoreAudioTracks_Click" Content="Restore tracks" IsEnabled="{Binding CanRestoreMissingAudioTracks}" ToolTip.Tip="Restore source audio lanes that were removed from the project mix" />
                     <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding AudioTrackCountText}" />
@@ -1762,11 +1708,7 @@
                             ShowButtonSpinner="False"
                             Value="{Binding MaximumRecoveryFiles, Mode=TwoWay}" />
                       </Grid>
-                      <TextBlock
-                          Classes="muted"
-                          FontSize="10"
-                          Text="Cleanup runs at startup and after autosaves. The newest files inside the age limit are kept."
-                          TextWrapping="Wrap" />
+                      <TextBlock Classes="muted" FontSize="10" Text="Keeps the newest autosaves within both limits." />
                       <Button
                           HorizontalAlignment="Left"
                           Padding="8,4"
@@ -1781,12 +1723,7 @@
                           x:Name="BoundaryGopRenderingCheckBox"
                           Content="Try Boundary-GOP rendering"
                           IsChecked="{Binding EnableExperimentalBoundaryGopRendering, Mode=TwoWay}"
-                          ToolTip.Tip="For eligible trims, re-encode only the cut GOPs and copy the untouched middle. Every candidate is checked before use; failures fall back to the normal exact encode." />
-                      <TextBlock
-                          Classes="muted"
-                          FontSize="10"
-                          Text="May export much faster, but support is codec- and container-specific. ClipEdit validates decoding, timing, and stream shape before accepting the result."
-                          TextWrapping="Wrap" />
+                          ToolTip.Tip="Speed up eligible trims by encoding only their cut edges; unavailable cases use a full encode" />
                     </StackPanel>
                   </Expander>
                   <Expander x:Name="MediaRuntimeSettingsExpander" Header="Media runtime">
@@ -1874,7 +1811,7 @@
                   <TextBlock
                       Classes="muted"
                       FontSize="10"
-                      Text="Manual paths override automatic selection · FFmpeg/ffprobe apply immediately · libmpv requires restart"
+                      Text="FFmpeg and ffprobe apply now. libmpv requires restart."
                       TextWrapping="Wrap" />
                     </StackPanel>
                   </Expander>
@@ -1889,7 +1826,7 @@
                       x:Name="IncludeBetaVersionsCheckBox"
                       Content="Include beta releases"
                       IsChecked="{Binding Updates.IncludeBetaVersions, Mode=TwoWay}"
-                      ToolTip.Tip="Also offer GitHub prereleases. Draft releases are never shown." />
+                      ToolTip.Tip="Include prerelease updates" />
                   <TextBlock
                       Classes="muted"
                       FontSize="10"
@@ -1911,7 +1848,6 @@
             </Flyout>
           </Button.Flyout>
         </Button>
-        <TextBlock Grid.Column="1" FontSize="11" Foreground="#777E91" Text="Local, private, and non-destructive" />
         <ProgressBar
             Grid.Column="2"
             Height="5"

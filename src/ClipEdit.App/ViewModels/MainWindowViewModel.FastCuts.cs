@@ -56,9 +56,9 @@ public sealed partial class MainWindowViewModel
 
     public string FastCutModeDetails => IsFastCutMode
         ? IsFastCutSnappingActive
-            ? "Selection edges, clip trims, and Split snap to indexed keyframes. Export still verifies whether a faster strategy is safe."
-            : "Indexing source keyframes in the background; cuts remain exact until ready."
-        : "Frame-exact cuts are preserved and re-encoded when necessary.";
+            ? "Snap selection edges, clip trims, and Split to keyframes for faster exports."
+            : "Indexing keyframes… Fast snapping will turn on when ready."
+        : "Keep frame-exact cuts. Turn on Fast for keyframe snapping.";
 
     private void StartKeyframeIndexing(MediaItemViewModel media)
     {
@@ -188,12 +188,12 @@ public sealed partial class MainWindowViewModel
         var failures = new List<string>();
         if (slices.Count == 0)
         {
-            reasons = ["No video clips are selected for export."];
+            reasons = ["Add a video clip to the export range."];
             return false;
         }
         if (AudioTracks.Any(track => track.IsExternal && !track.IsMuted && !track.Edit.IsEmpty))
         {
-            failures.Add("External audio is not compatible with packet-copy concatenation.");
+            failures.Add("Mute or remove external audio.");
         }
 
         var exportRange = HasSequenceSelection
@@ -208,21 +208,21 @@ public sealed partial class MainWindowViewModel
             if (sourceDuration is not { } duration ||
                 slice.SourceRange != new MediaRange(MediaTime.Zero, duration))
             {
-                failures.Add($"{clip.DisplayName} is trimmed; direct packet-copy joining currently accepts complete clips only.");
+                failures.Add($"Reset {clip.DisplayName} to its complete source range.");
             }
             var timelineStart = clip.Model.SourceTimeToTimeline(slice.SourceRange.Start);
             if (timelineStart != cursor)
             {
-                failures.Add("Packet-copy concatenation cannot contain timeline gaps.");
+                failures.Add("Remove timeline gaps between clips.");
             }
             if (clip.PlaybackSpeedPercent != SequenceClip.DefaultPlaybackSpeedPercent)
             {
-                failures.Add($"{clip.DisplayName} does not use 100% playback speed.");
+                failures.Add($"Set {clip.DisplayName} speed to 100%.");
             }
             if (clip.CanvasTransform != ClipCanvasTransform.Identity ||
                 CanvasCrop != CropRegion.FullFrame(CanvasSize))
             {
-                failures.Add($"{clip.DisplayName} has a crop or visual transform.");
+                failures.Add("Reset crop and all clip transforms.");
             }
 
             var info = CreateSegmentStreamCopyInfo(
@@ -231,7 +231,7 @@ public sealed partial class MainWindowViewModel
                 requireConcatCompatibility: true);
             if (info is null)
             {
-                failures.Add($"{clip.DisplayName} lacks a verified compatible stream signature.");
+                failures.Add("Use complete clips with matching video and audio streams.");
             }
             else if (first is null)
             {
@@ -239,7 +239,7 @@ public sealed partial class MainWindowViewModel
             }
             else if (info.Video != first.Video || info.Audio != first.Audio)
             {
-                failures.Add($"{clip.DisplayName} has different encoded stream parameters.");
+                failures.Add("Use clips with matching video and audio formats.");
             }
 
             cursor = timelineStart + clip.Model.SourceDurationToTimeline(slice.SourceRange.Duration);
@@ -247,7 +247,7 @@ public sealed partial class MainWindowViewModel
 
         if (cursor != exportRange.End)
         {
-            failures.Add("The selected export range must end exactly at the last clip boundary.");
+            failures.Add("End the selection exactly at the last clip edge.");
         }
 
         reasons = failures.Distinct().ToArray();

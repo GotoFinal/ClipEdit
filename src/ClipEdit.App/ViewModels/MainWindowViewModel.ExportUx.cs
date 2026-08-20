@@ -437,31 +437,39 @@ public sealed partial class MainWindowViewModel
             return decision.Strategy switch
             {
                 ExportStrategy.StreamCopy =>
-                    "Compressed video and eligible audio will be remuxed without filters or quality loss.",
+                    "Fastest option ready. No re-encoding.",
                 ExportStrategy.EditListStreamCopy =>
-                    "Video and unchanged audio will be copied without re-encoding. MP4 timestamps hide the required decode preroll so the requested visible range is preserved; players that ignore MP4 edit lists may expose preroll.",
+                    "Fast trim ready. Video and audio will be copied without re-encoding.",
                 ExportStrategy.ConcatStreamCopy =>
-                    "Complete compatible clips will be joined without decoding or quality loss.",
+                    "Fast join ready. Compatible clips will be copied without re-encoding.",
                 ExportStrategy.VideoStreamCopy =>
-                    "Video will be copied without quality loss; only audio will be processed and encoded." +
-                    Environment.NewLine +
-                    string.Join(
-                        Environment.NewLine,
-                        decision.Reasons.Select(static reason => $"• {reason}")),
+                    FormatExportActions(
+                        "Video will be copied; only audio will be re-encoded.",
+                        "To avoid audio re-encoding:",
+                        decision.Reasons),
                 ExportStrategy.BoundaryGop =>
-                    "Only the GOPs touching the exact cut edges will be encoded. Interior GOPs will be copied without quality loss." +
-                    Environment.NewLine +
-                    "The candidate must pass codec, frame-count, duration, timestamp, and splice-decode checks or ClipEdit falls back to a full exact encode." +
-                    Environment.NewLine +
-                    string.Join(
-                        Environment.NewLine,
-                        decision.Reasons.Select(static reason => $"• {reason}")),
-                _ => string.Join(
-                    Environment.NewLine,
-                    decision.Reasons.Select(static reason => $"• {reason}")),
+                    "Faster trim ready. Only the cut edges will be encoded; the rest will be copied.",
+                _ => FormatExportActions(
+                    "This export needs re-encoding.",
+                    "For a faster export:",
+                    decision.Reasons),
             };
         }
     }
+
+    private static string FormatExportActions(
+        string summary,
+        string heading,
+        IReadOnlyList<string> actions) =>
+        actions.Count == 0
+            ? summary
+            : summary +
+              Environment.NewLine +
+              heading +
+              Environment.NewLine +
+              string.Join(
+                  Environment.NewLine,
+                  actions.Distinct().Select(static action => $"• {action}"));
 
     public bool CanApplyFastCopySettings
     {
@@ -519,16 +527,16 @@ public sealed partial class MainWindowViewModel
         StatusText = decision.Strategy switch
         {
             ExportStrategy.StreamCopy =>
-                "Source-matching settings applied; export will use fast packet copy",
+                "Export settings fixed. Fast packet copy is ready.",
             ExportStrategy.EditListStreamCopy =>
-                "Source-matching settings applied; export will use fast MP4 packet trim",
+                "Export settings fixed. Fast MP4 trim is ready.",
             ExportStrategy.ConcatStreamCopy =>
-                "Source-matching settings applied; compatible clips will be joined without encoding",
+                "Export settings fixed. Fast joining is ready.",
             ExportStrategy.VideoStreamCopy =>
-                "Source-matching settings applied; video will be copied and only audio encoded",
+                "Export settings fixed. Video can now be copied.",
             ExportStrategy.BoundaryGop =>
-                "Source-matching settings applied; export will try experimental Boundary-GOP rendering",
-            _ => $"Source-matching settings applied; encoding is still required: {decision.Reasons.First()}",
+                "Export settings fixed. Fast edge encoding is ready.",
+            _ => $"Export settings fixed. Next: {decision.Reasons.FirstOrDefault() ?? "This edit still needs re-encoding."}",
         };
         RaiseExportStateChanged();
         return true;

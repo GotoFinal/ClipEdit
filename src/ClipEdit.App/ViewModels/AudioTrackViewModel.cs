@@ -495,8 +495,6 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     public string TimelineSelectionText =>
         $"{FormatTimestamp(_timelineSelectionStart)} – {FormatTimestamp(_timelineSelectionEnd)}";
 
-    public string TimelineViewportLabel => "Synced to video timeline";
-
     public bool IsWaveformDecimated
     {
         get => _isWaveformDecimated;

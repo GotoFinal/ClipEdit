@@ -18,6 +18,9 @@ public sealed class FastCutModeTests
         viewModel.IsFastCutMode = true;
         Assert.True(viewModel.IsFastCutSnappingActive);
         Assert.Equal("Fast", viewModel.FastCutModeText);
+        Assert.Equal(
+            "Snap selection edges, clip trims, and Split to keyframes for faster exports.",
+            viewModel.FastCutModeDetails);
 
         viewModel.SequencePlayheadSeconds = 4.8;
         viewModel.MarkSequenceSelectionStart();
@@ -37,6 +40,9 @@ public sealed class FastCutModeTests
         using var viewModel = new MainWindowViewModel(probe);
         await viewModel.ImportFilesAsync([TestPath("source.mp4")]);
 
+        Assert.Equal(
+            "Keep frame-exact cuts. Turn on Fast for keyframe snapping.",
+            viewModel.FastCutModeDetails);
         viewModel.SequencePlayheadSeconds = 4.8;
 
         Assert.True(viewModel.SplitSelectedVideoClip());
