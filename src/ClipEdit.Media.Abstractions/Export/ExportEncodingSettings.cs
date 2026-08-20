@@ -38,6 +38,7 @@ public sealed record ExportEncodingSettings
     public const ExportQualityMode DefaultQualityMode = ExportQualityMode.MatchSource;
     public const ExportEncodingSpeed DefaultEncodingSpeed = ExportEncodingSpeed.Balanced;
     public const ExportHardwareAcceleration DefaultHardwareAcceleration = ExportHardwareAcceleration.Software;
+    public const ExportVideoEncoder DefaultVideoEncoder = ExportVideoEncoder.Software;
 
     public static ExportEncodingSettings Default { get; } = new();
 
@@ -48,7 +49,8 @@ public sealed record ExportEncodingSettings
         int playbackSpeedPercent = DefaultPlaybackSpeedPercent,
         ExportQualityMode qualityMode = DefaultQualityMode,
         ExportEncodingSpeed encodingSpeed = DefaultEncodingSpeed,
-        ExportHardwareAcceleration hardwareAcceleration = DefaultHardwareAcceleration)
+        ExportHardwareAcceleration hardwareAcceleration = DefaultHardwareAcceleration,
+        ExportVideoEncoder videoEncoder = DefaultVideoEncoder)
     {
         if (quality is < 1 or > 100)
         {
@@ -78,6 +80,10 @@ public sealed record ExportEncodingSettings
         {
             throw new ArgumentOutOfRangeException(nameof(hardwareAcceleration));
         }
+        if (!Enum.IsDefined(videoEncoder))
+        {
+            throw new ArgumentOutOfRangeException(nameof(videoEncoder));
+        }
 
         Quality = quality;
         ScalePercent = scalePercent;
@@ -86,6 +92,7 @@ public sealed record ExportEncodingSettings
         QualityMode = qualityMode;
         EncodingSpeed = encodingSpeed;
         HardwareAcceleration = hardwareAcceleration;
+        VideoEncoder = videoEncoder;
     }
 
     public int Quality { get; }
@@ -101,6 +108,8 @@ public sealed record ExportEncodingSettings
     public ExportEncodingSpeed EncodingSpeed { get; }
 
     public ExportHardwareAcceleration HardwareAcceleration { get; }
+
+    public ExportVideoEncoder VideoEncoder { get; }
 
     public double PlaybackSpeed => PlaybackSpeedPercent / 100d;
 

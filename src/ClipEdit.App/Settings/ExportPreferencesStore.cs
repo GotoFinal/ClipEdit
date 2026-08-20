@@ -21,7 +21,8 @@ internal sealed record ExportPreferences(
     bool RememberAdjustments = false,
     ExportQualityMode QualityMode = ExportQualityMode.MatchSource,
     ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
-    ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software)
+    ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software,
+    ExportVideoEncoder VideoEncoder = ExportVideoEncoder.Software)
 {
     public static ExportPreferences Default { get; } = new(
         BuiltInExportPresets.Mp4Compatible.Id,
@@ -39,7 +40,8 @@ internal sealed record ExportPreferences(
         false,
         ExportQualityMode.MatchSource,
         ExportEncodingSpeed.Balanced,
-        ExportHardwareAcceleration.Software);
+        ExportHardwareAcceleration.Software,
+        ExportVideoEncoder.Software);
 
     public ExportPreferences Normalize()
     {
@@ -63,6 +65,7 @@ internal sealed record ExportPreferences(
                 Enum.IsDefined(preset.QualityMode) &&
                 Enum.IsDefined(preset.EncodingSpeed) &&
                 Enum.IsDefined(preset.HardwareAcceleration) &&
+                Enum.IsDefined(preset.VideoEncoder) &&
                 Enum.IsDefined(preset.Container) &&
                 Enum.IsDefined(preset.VideoCodec) &&
                 Enum.IsDefined(preset.AudioCodec))
@@ -103,6 +106,9 @@ internal sealed record ExportPreferences(
             HardwareAcceleration = Enum.IsDefined(HardwareAcceleration)
                 ? HardwareAcceleration
                 : Default.HardwareAcceleration,
+            VideoEncoder = Enum.IsDefined(VideoEncoder)
+                ? VideoEncoder
+                : Default.VideoEncoder,
             CustomContainer = custom.Container,
             CustomVideoCodec = custom.Video,
             CustomAudioCodec = custom.Audio,

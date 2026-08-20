@@ -44,7 +44,8 @@ public sealed class ExportPreferencesStoreTests
                 true,
                 ExportQualityMode.Custom,
                 ExportEncodingSpeed.Faster,
-                ExportHardwareAcceleration.Vulkan);
+                ExportHardwareAcceleration.Vulkan,
+                ExportVideoEncoder.NvidiaNvenc);
 
             Assert.True(store.Save(settings));
             var restored = store.Load();
@@ -106,6 +107,7 @@ public sealed class ExportPreferencesStoreTests
 
             Assert.Equal(ExportEncodingSpeed.Balanced, restored.EncodingSpeed);
             Assert.Equal(ExportHardwareAcceleration.Software, restored.HardwareAcceleration);
+            Assert.Equal(ExportVideoEncoder.Software, restored.VideoEncoder);
         }
         finally
         {
@@ -154,6 +156,7 @@ public sealed class ExportPreferencesStoreTests
             QualityMode = ExportQualityMode.Custom,
             EncodingSpeed = ExportEncodingSpeed.SmallerFile,
             HardwareAcceleration = ExportHardwareAcceleration.Automatic,
+            VideoEncoder = ExportVideoEncoder.Software,
         };
 
         viewModel.ApplyExportPreferences(preferences);
@@ -172,6 +175,7 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(175, viewModel.ExportPlaybackSpeedPercent);
         Assert.Equal(ExportEncodingSpeed.SmallerFile, viewModel.ExportEncodingSpeed);
         Assert.Equal(ExportHardwareAcceleration.Automatic, viewModel.ExportHardwareAcceleration);
+        Assert.Equal(ExportVideoEncoder.Software, viewModel.PreferredExportVideoEncoder);
         Assert.Equal("Copy", viewModel.ExportActionText);
         Assert.False(viewModel.IsProjectDirty);
     }

@@ -516,6 +516,30 @@
                             TextWrapping="Wrap" />
 
                         <Grid
+                            ColumnDefinitions="Auto,*"
+                            ColumnSpacing="7"
+                            IsVisible="{Binding !IsGifExport}">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Encoder" />
+                          <ComboBox
+                              Grid.Column="1"
+                              ItemsSource="{Binding ExportVideoEncoderChoices}"
+                              SelectedItem="{Binding SelectedExportVideoEncoder}"
+                              ToolTip.Tip="{Binding ExportVideoEncoderDescription}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:ExportVideoEncoderChoice">
+                                <TextBlock Text="{Binding MenuText}" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </Grid>
+                        <TextBlock
+                            Classes="muted"
+                            FontSize="10"
+                            IsVisible="{Binding !IsGifExport}"
+                            Text="{Binding ExportVideoEncoderStatus}"
+                            TextWrapping="Wrap" />
+
+                        <Grid
                             x:Name="VideoQualityModePanel"
                             ColumnDefinitions="*,164"
                             ColumnSpacing="8"

@@ -32,7 +32,8 @@ public sealed record ExportResult(
     string DestinationPath,
     long FileSizeBytes,
     TimeSpan Elapsed,
-    ExportStrategy? ActualStrategy = null);
+    ExportStrategy? ActualStrategy = null,
+    ExportVideoEncoder? ActualVideoEncoder = null);
 
 public enum ExportFailure
 {

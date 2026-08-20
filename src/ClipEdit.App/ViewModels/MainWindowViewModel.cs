@@ -116,6 +116,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _waveformRenderer = waveformRenderer;
         _keyframeProbe = keyframeProbe ?? mediaProbe as IKeyframeProbe;
         _exportRenderer = exportRenderer;
+        ConfigureExportHardwareCapabilityProbe(exportRenderer as IExportHardwareCapabilityProbe);
         _projectStore = projectStore;
         _recoveryDirectory = recoveryDirectory;
         _autosaveDelay = autosaveDelay ?? TimeSpan.FromSeconds(5);
@@ -3040,6 +3041,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         CancelAllKeyframeIndexing();
         DisposeMediaRuntimeValidation();
+        DisposeExportHardwareCapabilityProbe();
         Updates.Dispose();
         if (SelectedMedia is not null)
         {

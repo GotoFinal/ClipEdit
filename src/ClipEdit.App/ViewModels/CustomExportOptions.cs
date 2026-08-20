@@ -67,7 +67,8 @@ public sealed record SavedExportPresetViewModel(
     int PlaybackSpeedPercent = 100,
     ExportQualityMode QualityMode = ExportQualityMode.Custom,
     ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
-    ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software);
+    ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software,
+    ExportVideoEncoder VideoEncoder = ExportVideoEncoder.Software);
 
 public sealed partial class MainWindowViewModel
 {
@@ -308,6 +309,7 @@ public sealed partial class MainWindowViewModel
             SelectedExportEncodingSpeed = ExportEncodingSpeedChoice.FromValue(normalized.EncodingSpeed);
             SelectedExportHardwareAcceleration = ExportHardwareAccelerationChoice.FromValue(
                 normalized.HardwareAcceleration);
+            SelectPreferredExportVideoEncoder(normalized.VideoEncoder);
             ReplaceSavedExportPresets(normalized.SavedPresets);
             SelectedExportPreset = ExportPresets.FirstOrDefault(preset =>
                                        preset.Id == normalized.SelectedExportPresetId) ??
@@ -339,7 +341,8 @@ public sealed partial class MainWindowViewModel
             ? ExportQualityMode
             : ExportEncodingSettings.DefaultQualityMode,
         ExportEncodingSpeed,
-        ExportHardwareAcceleration);
+        ExportHardwareAcceleration,
+        PreferredExportVideoEncoder);
 
     internal void ApplyCustomExportSettings(
         ExportContainer container,
@@ -396,7 +399,8 @@ public sealed partial class MainWindowViewModel
         ExportPlaybackSpeedPercent,
         ExportQualityMode,
         ExportEncodingSpeed,
-        ExportHardwareAcceleration);
+        ExportHardwareAcceleration,
+        PreferredExportVideoEncoder);
 
     private void ApplySavedExportPreset(SavedExportPresetViewModel saved)
     {
@@ -414,6 +418,7 @@ public sealed partial class MainWindowViewModel
         SelectedExportEncodingSpeed = ExportEncodingSpeedChoice.FromValue(saved.EncodingSpeed);
         SelectedExportHardwareAcceleration = ExportHardwareAccelerationChoice.FromValue(
             saved.HardwareAcceleration);
+        SelectPreferredExportVideoEncoder(saved.VideoEncoder);
         SelectedExportPreset = BuiltInExportPresets.Custom;
         CustomPresetName = saved.Name;
     }
@@ -492,6 +497,7 @@ public sealed partial class MainWindowViewModel
         Enum.IsDefined(preset.QualityMode) &&
         Enum.IsDefined(preset.EncodingSpeed) &&
         Enum.IsDefined(preset.HardwareAcceleration) &&
+        Enum.IsDefined(preset.VideoEncoder) &&
         preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
             <= ExportEncodingSettings.MaximumPlaybackSpeedPercent;
 }

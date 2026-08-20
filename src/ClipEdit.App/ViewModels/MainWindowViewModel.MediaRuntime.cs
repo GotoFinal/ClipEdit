@@ -176,7 +176,9 @@ public sealed partial class MainWindowViewModel
         {
             _frameDecoder = new FfmpegFrameDecoder(ffmpegPath);
             _waveformRenderer = new FfmpegWaveformRenderer(ffmpegPath);
-            _exportRenderer = new FfmpegExportRenderer(ffmpegPath);
+            var renderer = new FfmpegExportRenderer(ffmpegPath);
+            _exportRenderer = renderer;
+            ConfigureExportHardwareCapabilityProbe(renderer);
             _activeFfmpegPath = ffmpegPath;
             OnPropertyChanged(nameof(IsExportAvailable));
             OnPropertyChanged(nameof(ExportAvailabilityText));

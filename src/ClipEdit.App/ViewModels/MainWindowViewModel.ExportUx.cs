@@ -365,7 +365,10 @@ public sealed partial class MainWindowViewModel
             var performance = IsGifExport
                 ? string.Empty
                 : $" · {SelectedExportEncodingSpeed.DisplayName.ToLowerInvariant()} encode" +
-                  $" · {SelectedExportHardwareAcceleration.DisplayName} decode";
+                  $" · {SelectedExportHardwareAcceleration.DisplayName} decode" +
+                  (SupportsHardwareVideoEncoding
+                      ? $" · {SelectedExportVideoEncoder.DisplayName}"
+                      : string.Empty);
             return IsGifExport
                 ? $"{destination}{ExportOutputSizeText} · {quality} · {GifFrameRate} fps{speed}"
                 : $"{destination}{ExportOutputSizeText} · {quality}{speed}{performance}";
@@ -538,7 +541,8 @@ public sealed partial class MainWindowViewModel
         ExportPlaybackSpeedPercent,
         IsGifExport ? ClipEdit.Media.Export.ExportQualityMode.Custom : ExportQualityMode,
         ExportEncodingSpeed,
-        ExportHardwareAcceleration);
+        ExportHardwareAcceleration,
+        PreferredExportVideoEncoder);
 
     private void ResetTransientExportAdjustments()
     {
