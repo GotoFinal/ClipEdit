@@ -83,6 +83,8 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
         CancellationToken cancellationToken,
         bool forceExactTranscode = false)
     {
+        var usesExactTranscode = forceExactTranscode || plan.Strategy == ExportStrategy.ExactTranscode;
+        var requestedVideoEncoder = FfmpegExportArguments.ResolveVideoEncoder(plan);
         try
         {
             return await RenderSingleProcessAsync(
@@ -93,19 +95,25 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
                 .ConfigureAwait(false);
         }
         catch (ExportException exception) when (
-            plan.EncodingSettings.HardwareAcceleration != ExportHardwareAcceleration.Software &&
+            usesExactTranscode &&
+            (plan.EncodingSettings.HardwareAcceleration != ExportHardwareAcceleration.Software ||
+             requestedVideoEncoder != ExportVideoEncoder.Software) &&
             IsHardwareAccelerationFailure(exception))
         {
+            var failedComponent = requestedVideoEncoder != ExportVideoEncoder.Software
+                ? "Hardware encoder"
+                : "Hardware decode";
             progress?.Report(new ExportProgress(
                 0,
-                "Hardware decode unavailable · retrying software",
+                $"{failedComponent} unavailable · retrying software",
                 TimeSpan.Zero));
             return await RenderSingleProcessAsync(
                     plan,
                     progress,
                     cancellationToken,
                     forceExactTranscode,
-                    ExportHardwareAcceleration.Software)
+                    ExportHardwareAcceleration.Software,
+                    ExportVideoEncoder.Software)
                 .ConfigureAwait(false);
         }
     }
@@ -115,7 +123,8 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
         IProgress<ExportProgress>? progress,
         CancellationToken cancellationToken,
         bool forceExactTranscode = false,
-        ExportHardwareAcceleration? hardwareAccelerationOverride = null)
+        ExportHardwareAcceleration? hardwareAccelerationOverride = null,
+        ExportVideoEncoder? videoEncoderOverride = null)
     {
         var temporaryPath = CreateTemporaryPath(plan.DestinationPath);
         var concatManifestPath = !forceExactTranscode && plan.Strategy == ExportStrategy.ConcatStreamCopy
@@ -129,11 +138,12 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
         using var process = new DiagnosticProcess
         {
             StartInfo = CreateStartInfo(
-                forceExactTranscode || hardwareAccelerationOverride is not null
+                forceExactTranscode || hardwareAccelerationOverride is not null || videoEncoderOverride is not null
                     ? FfmpegExportArguments.CreateExactTranscode(
                         plan,
                         temporaryPath,
-                        hardwareAccelerationOverride)
+                        hardwareAccelerationOverride,
+                        videoEncoderOverride)
                     : FfmpegExportArguments.Create(plan, temporaryPath, concatManifestPath)),
         };
         var stopwatch = Stopwatch.StartNew();
@@ -205,11 +215,16 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
 
             stopwatch.Stop();
             progress?.Report(new ExportProgress(1, "Complete", plan.ExpectedDurationToTimeSpan()));
+            var actualStrategy = forceExactTranscode ? ExportStrategy.ExactTranscode : plan.Strategy;
+            var actualVideoEncoder = actualStrategy == ExportStrategy.ExactTranscode
+                ? (ExportVideoEncoder?)FfmpegExportArguments.ResolveVideoEncoder(plan, videoEncoderOverride)
+                : null;
             return new ExportResult(
                 plan.DestinationPath,
                 fileInfo.Length,
                 stopwatch.Elapsed,
-                forceExactTranscode ? ExportStrategy.ExactTranscode : plan.Strategy);
+                actualStrategy,
+                actualVideoEncoder);
         }
         catch
         {
@@ -538,7 +553,11 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
             encodingSettings: plan.EncodingSettings);
         await RunUtilityProcessAsync(
                 _executablePath,
-                FfmpegExportArguments.CreateExactTranscode(piecePlan, outputPath),
+                FfmpegExportArguments.CreateExactTranscode(
+                    piecePlan,
+                    outputPath,
+                    ExportHardwareAcceleration.Software,
+                    ExportVideoEncoder.Software),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -891,6 +910,14 @@ public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapab
             "hardware acceleration methods",
             "impossible to convert between the formats",
             "a hardware device reference is required",
+            "error while opening encoder",
+            "failed to create encoder",
+            "cannot load nvcuda",
+            "cannot load libcuda",
+            "no nvenc capable devices found",
+            "failed to initialise vaapi connection",
+            "failed to initialize vaapi connection",
+            "device failed",
         ];
         return indicators.Any(indicator =>
             exception.Message.Contains(indicator, StringComparison.OrdinalIgnoreCase));

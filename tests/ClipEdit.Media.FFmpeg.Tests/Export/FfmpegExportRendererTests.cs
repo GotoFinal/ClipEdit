@@ -38,6 +38,9 @@ public sealed class FfmpegExportRendererTests
         Assert.True(FfmpegExportRenderer.IsHardwareAccelerationFailure(new ExportException(
             ExportFailure.ToolFailed,
             "FFmpeg export failed: Device creation failed: no capable devices found")));
+        Assert.True(FfmpegExportRenderer.IsHardwareAccelerationFailure(new ExportException(
+            ExportFailure.ToolFailed,
+            "FFmpeg export failed: Error while opening encoder - maybe incorrect parameters")));
         Assert.False(FfmpegExportRenderer.IsHardwareAccelerationFailure(new ExportException(
             ExportFailure.ToolFailed,
             "FFmpeg export failed: No space left on device")));

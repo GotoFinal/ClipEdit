@@ -1045,6 +1045,103 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Equal(expectedPreset, ValueAfter(arguments, "-preset"));
     }
 
+    [Theory]
+    [InlineData(ExportVideoEncoder.NvidiaNvenc, "h264_nvenc", "-preset", "p4")]
+    [InlineData(ExportVideoEncoder.IntelQuickSync, "h264_qsv", "-preset", "medium")]
+    [InlineData(ExportVideoEncoder.AmdAmf, "h264_amf", "-quality", "balanced")]
+    public void Validated_hardware_encoder_selection_lowers_to_backend_specific_h264_arguments(
+        ExportVideoEncoder videoEncoder,
+        string expectedCodec,
+        string speedOption,
+        string expectedSpeed)
+    {
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(
+                qualityMode: ExportQualityMode.Custom,
+                videoEncoder: videoEncoder));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal(expectedCodec, ValueAfter(arguments, "-c:v"));
+        Assert.Equal(expectedSpeed, ValueAfter(arguments, speedOption));
+        Assert.Contains(videoEncoder == ExportVideoEncoder.IntelQuickSync ? "-global_quality" : "-rc", arguments);
+    }
+
+    [Fact]
+    public void Vaapi_encoder_uploads_the_software_filter_result_to_its_validated_device()
+    {
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(
+                qualityMode: ExportQualityMode.Custom,
+                videoEncoder: ExportVideoEncoder.Vaapi));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal("vaapi=clipeditva", ValueAfter(arguments, "-init_hw_device"));
+        Assert.Equal("clipeditva", ValueAfter(arguments, "-filter_hw_device"));
+        Assert.Contains("[vout]format=nv12,hwupload[vencoder]", ValueAfter(arguments, "-filter_complex"));
+        Assert.Equal("[vencoder]", ValueAfter(arguments, "-map"));
+        Assert.Equal("h264_vaapi", ValueAfter(arguments, "-c:v"));
+    }
+
+    [Fact]
+    public void H264_only_hardware_encoder_setting_does_not_replace_a_vp9_encoder()
+    {
+        var vp9 = new ExportPreset(
+            "vp9-test",
+            "VP9 test",
+            ".webm",
+            ExportContainer.WebM,
+            VideoCodecFamily.Vp9,
+            AudioCodecFamily.None,
+            requiresEvenDimensions: true);
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.webm"),
+            audioStreamIndex: null,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))],
+            vp9);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: null,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(
+                videoEncoder: ExportVideoEncoder.NvidiaNvenc));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal("libvpx-vp9", ValueAfter(arguments, "-c:v"));
+        Assert.DoesNotContain("h264_nvenc", arguments);
+    }
+
     [Fact]
     public void Vulkan_decode_is_applied_to_each_bounded_video_input_only()
     {

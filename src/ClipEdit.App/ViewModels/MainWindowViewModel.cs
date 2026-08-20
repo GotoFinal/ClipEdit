@@ -1624,11 +1624,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             ExportProgress = 1;
             var usedBoundaryFallback = exportStrategy == ExportStrategy.BoundaryGop &&
                                        result.ActualStrategy == ExportStrategy.ExactTranscode;
+            var usedEncoderFallback = PreferredExportVideoEncoder != ExportVideoEncoder.Software &&
+                                      result.ActualVideoEncoder == ExportVideoEncoder.Software;
             ExportPhaseText = usedBoundaryFallback
                 ? "Complete · exact fallback · 100%"
+                : usedEncoderFallback
+                    ? "Complete · software fallback · 100%"
                 : "Complete · 100%";
             StatusText = usedBoundaryFallback
                 ? $"Exported {Path.GetFileName(result.DestinationPath)} using exact fallback after Boundary-GOP validation failed"
+                : usedEncoderFallback
+                    ? $"Exported {Path.GetFileName(result.DestinationPath)} after the hardware encoder failed and software encoding succeeded"
                 : $"Exported {Path.GetFileName(result.DestinationPath)}";
             return result;
         }
@@ -4047,6 +4053,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ExportPlanSummary));
         OnPropertyChanged(nameof(ExportOutputSizeText));
         OnPropertyChanged(nameof(ExportSettingsSummary));
+        OnPropertyChanged(nameof(SupportsHardwareVideoEncoding));
+        OnPropertyChanged(nameof(ExportVideoEncoderStatus));
         OnPropertyChanged(nameof(IsPacketCopyExport));
         OnPropertyChanged(nameof(IsVideoStreamCopyExport));
         OnPropertyChanged(nameof(IsBoundaryGopExport));
