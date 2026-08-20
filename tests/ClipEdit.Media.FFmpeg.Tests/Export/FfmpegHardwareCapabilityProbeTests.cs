@@ -1,0 +1,46 @@
+using ClipEdit.Media.Export;
+using ClipEdit.Media.FFmpeg.Export;
+
+namespace ClipEdit.Media.FFmpeg.Tests.Export;
+
+public sealed class FfmpegHardwareCapabilityProbeTests
+{
+    [Fact]
+    public void H264_probes_execute_real_single_frame_encodes_for_each_backend()
+    {
+        var probes = FfmpegHardwareCapabilityProbe.CreateH264Probes();
+
+        Assert.Equal(
+            [
+                ExportVideoEncoder.NvidiaNvenc,
+                ExportVideoEncoder.IntelQuickSync,
+                ExportVideoEncoder.AmdAmf,
+                ExportVideoEncoder.Vaapi,
+            ],
+            probes.Select(probe => probe.Encoder));
+        Assert.All(probes, probe =>
+        {
+            Assert.Contains("-frames:v", probe.Arguments);
+            Assert.Contains("1", probe.Arguments);
+            Assert.Contains(probe.FfmpegEncoderName, probe.Arguments);
+            Assert.Equal("-", probe.Arguments[^1]);
+        });
+        var vaapi = probes.Single(probe => probe.Encoder == ExportVideoEncoder.Vaapi);
+        Assert.Contains("-init_hw_device", vaapi.Arguments);
+        Assert.Contains("format=nv12,hwupload", vaapi.Arguments);
+    }
+
+    [Fact]
+    public async Task Probe_results_are_cached_for_the_same_executable_fingerprint()
+    {
+        var firstProbe = new FfmpegHardwareCapabilityProbe(Environment.ProcessPath!);
+        var secondProbe = new FfmpegHardwareCapabilityProbe(Environment.ProcessPath!);
+
+        var first = await firstProbe.ProbeAsync();
+        var second = await secondProbe.ProbeAsync();
+
+        Assert.Same(first, second);
+        Assert.True(first.Get(ExportVideoEncoder.Software).IsAvailable);
+        Assert.False(first.Get(ExportVideoEncoder.NvidiaNvenc).IsAvailable);
+    }
+}

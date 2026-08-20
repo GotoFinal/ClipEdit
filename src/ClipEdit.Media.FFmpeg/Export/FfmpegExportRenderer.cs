@@ -9,11 +9,12 @@ using DiagnosticProcess = System.Diagnostics.Process;
 
 namespace ClipEdit.Media.FFmpeg.Export;
 
-public sealed class FfmpegExportRenderer : IExportRenderer
+public sealed class FfmpegExportRenderer : IExportRenderer, IExportHardwareCapabilityProbe
 {
     private const int MaximumDiagnosticCharacters = 256 * 1024;
     private readonly string _executablePath;
     private readonly string? _ffprobeExecutablePath;
+    private readonly FfmpegHardwareCapabilityProbe _hardwareCapabilityProbe;
 
     public FfmpegExportRenderer(string executablePath, string? ffprobeExecutablePath = null)
     {
@@ -25,6 +26,7 @@ public sealed class FfmpegExportRenderer : IExportRenderer
                 ExportFailure.ToolUnavailable,
                 "The configured FFmpeg executable does not exist.");
         }
+        _hardwareCapabilityProbe = new FfmpegHardwareCapabilityProbe(_executablePath);
         if (!string.IsNullOrWhiteSpace(ffprobeExecutablePath))
         {
             _ffprobeExecutablePath = Path.GetFullPath(ffprobeExecutablePath);
@@ -36,6 +38,10 @@ public sealed class FfmpegExportRenderer : IExportRenderer
             }
         }
     }
+
+    public Task<ExportHardwareCapabilities> ProbeAsync(
+        CancellationToken cancellationToken = default) =>
+        _hardwareCapabilityProbe.ProbeAsync(cancellationToken);
 
     public async Task<ExportResult> RenderAsync(
         ExportPlan plan,
