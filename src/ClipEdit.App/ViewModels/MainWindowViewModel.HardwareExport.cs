@@ -37,6 +37,7 @@ public sealed partial class MainWindowViewModel
     private VideoCodecFamily? _exportHardwareProbeCodec;
     private CancellationTokenSource? _exportHardwareProbeCancellation;
     private bool _isExportHardwareProbeRunning;
+    private bool _isRefreshingExportVideoEncoderChoices;
 
     public IReadOnlyList<ExportVideoEncoderChoice> ExportVideoEncoderChoices =>
         _exportVideoEncoderChoices;
@@ -46,6 +47,14 @@ public sealed partial class MainWindowViewModel
         get => _selectedExportVideoEncoder;
         set
         {
+            // Replacing the codec-specific ItemsSource can make Avalonia write a
+            // transient null selection back through the two-way binding. The new
+            // list and selection are applied together below, so ignore that write.
+            if (_isRefreshingExportVideoEncoderChoices)
+            {
+                return;
+            }
+
             var next = value ?? ExportVideoEncoderChoices.First(choice =>
                 choice.Value == ExportVideoEncoder.Software);
             if (!next.IsAvailable)
@@ -210,7 +219,7 @@ public sealed partial class MainWindowViewModel
         VideoCodecFamily videoCodec,
         string? failure = null)
     {
-        _exportVideoEncoderChoices = InitialExportVideoEncoderChoices
+        var nextChoices = InitialExportVideoEncoderChoices
             .Select(initial =>
             {
                 if (initial.Value == ExportVideoEncoder.Automatic)
@@ -248,20 +257,34 @@ public sealed partial class MainWindowViewModel
                         capability.Details);
             })
             .ToArray();
-        OnPropertyChanged(nameof(ExportVideoEncoderChoices));
-        _automaticExportVideoEncoder = capabilities?.FastestAvailable(videoCodec).Encoder ??
-                                       ExportVideoEncoder.Software;
+        var nextAutomaticEncoder = capabilities?.FastestAvailable(videoCodec).Encoder ??
+                                   ExportVideoEncoder.Software;
 
-        var preferred = _exportVideoEncoderChoices.FirstOrDefault(choice =>
+        var preferred = nextChoices.FirstOrDefault(choice =>
             choice.Value == _preferredExportVideoEncoder && choice.IsAvailable);
-        _selectedExportVideoEncoder = preferred ?? _exportVideoEncoderChoices.First(choice =>
+        var nextSelected = preferred ?? nextChoices.First(choice =>
             choice.Value == ExportVideoEncoder.Software);
 
-        OnPropertyChanged(nameof(SelectedExportVideoEncoder));
-        OnPropertyChanged(nameof(PreferredExportVideoEncoder));
-        OnPropertyChanged(nameof(EffectiveExportVideoEncoder));
-        OnPropertyChanged(nameof(ExportVideoEncoderStatus));
-        OnPropertyChanged(nameof(ExportVideoEncoderDescription));
+        _isRefreshingExportVideoEncoderChoices = true;
+        try
+        {
+            // Keep the public properties internally consistent throughout every
+            // notification: SelectedItem must already belong to ItemsSource.
+            _exportVideoEncoderChoices = nextChoices;
+            _automaticExportVideoEncoder = nextAutomaticEncoder;
+            _selectedExportVideoEncoder = nextSelected;
+            OnPropertyChanged(nameof(ExportVideoEncoderChoices));
+            OnPropertyChanged(nameof(SelectedExportVideoEncoder));
+            OnPropertyChanged(nameof(PreferredExportVideoEncoder));
+            OnPropertyChanged(nameof(EffectiveExportVideoEncoder));
+            OnPropertyChanged(nameof(ExportVideoEncoderStatus));
+            OnPropertyChanged(nameof(ExportVideoEncoderDescription));
+        }
+        finally
+        {
+            _isRefreshingExportVideoEncoderChoices = false;
+        }
+
         RaiseExportStateChanged();
     }
 

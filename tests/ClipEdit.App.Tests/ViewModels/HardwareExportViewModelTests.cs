@@ -116,6 +116,39 @@ public sealed class HardwareExportViewModelTests
         Assert.Equal(ExportVideoEncoder.NvidiaNvenc, viewModel.EffectiveExportVideoEncoder);
     }
 
+    [Fact]
+    public void Codec_probe_updates_never_publish_a_selection_outside_the_new_choices()
+    {
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        var observedChoicesRefresh = false;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(MainWindowViewModel.ExportVideoEncoderChoices))
+            {
+                return;
+            }
+
+            observedChoicesRefresh = true;
+            Assert.Contains(
+                viewModel.SelectedExportVideoEncoder,
+                viewModel.ExportVideoEncoderChoices);
+
+            // Simulate the transient null write produced by a two-way ComboBox
+            // while it replaces ItemsSource.
+            var expectedSelection = viewModel.SelectedExportVideoEncoder;
+            viewModel.SelectedExportVideoEncoder = null!;
+            Assert.Same(expectedSelection, viewModel.SelectedExportVideoEncoder);
+        };
+
+        viewModel.ConfigureExportHardwareCapabilityProbe(new StubProbe(
+            Capabilities(VideoCodecFamily.H264, ExportVideoEncoder.NvidiaNvenc)));
+
+        Assert.True(observedChoicesRefresh);
+        Assert.Contains(
+            viewModel.SelectedExportVideoEncoder,
+            viewModel.ExportVideoEncoderChoices);
+    }
+
     private static ExportHardwareCapabilities Capabilities(
         VideoCodecFamily videoCodec,
         ExportVideoEncoder hardwareEncoder) =>
