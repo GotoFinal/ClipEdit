@@ -299,7 +299,9 @@ public sealed class MainWindowChromeTests
         var qualityMode = window.FindControl<Grid>("VideoQualityModePanel");
         var matchQuality = window.FindControl<ToggleButton>("MatchInputQualityButton");
         var customQuality = window.FindControl<ToggleButton>("CustomQualityButton");
+        var bitRateQuality = window.FindControl<ToggleButton>("BitRateQualityButton");
         var customQualityPanel = window.FindControl<Grid>("CustomQualityPanel");
+        var bitRateInput = window.FindControl<NumericUpDown>("ExportVideoBitRateInput");
         var remember = window.FindControl<CheckBox>("RememberExportAdjustmentsCheckBox");
         var exportMethod = window.FindControl<Border>("ExportMethodPanel");
         var fastCopySettings = window.FindControl<Button>("ApplyFastCopySettingsButton");
@@ -309,7 +311,9 @@ public sealed class MainWindowChromeTests
         Assert.NotNull(qualityMode);
         Assert.NotNull(matchQuality);
         Assert.NotNull(customQuality);
+        Assert.NotNull(bitRateQuality);
         Assert.NotNull(customQualityPanel);
+        Assert.NotNull(bitRateInput);
         Assert.NotNull(remember);
         Assert.NotNull(exportMethod);
         Assert.NotNull(fastCopySettings);
@@ -321,11 +325,19 @@ public sealed class MainWindowChromeTests
         Assert.True(flyout.OverlayDismissEventPassThrough);
         Assert.True(viewModel.UsesMatchedInputQuality);
         Assert.False(viewModel.UsesCustomExportQuality);
+        Assert.False(viewModel.UsesTargetBitRate);
+
+        bitRateQuality.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal(ExportQualityMode.BitRate, viewModel.ExportQualityMode);
+        Assert.True(viewModel.UsesTargetBitRate);
+        Assert.True(bitRateInput.IsVisible);
 
         viewModel.SelectedExportPreset = BuiltInExportPresets.Gif;
 
         Assert.True(viewModel.UsesCustomExportQuality);
         Assert.False(viewModel.UsesMatchedInputQuality);
+        Assert.False(viewModel.UsesTargetBitRate);
 
         window.Close();
     }

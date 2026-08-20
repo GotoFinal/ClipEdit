@@ -1007,11 +1007,14 @@ internal static class FfmpegExportArguments
     {
         var quality = plan.EncodingSettings.Quality;
         var videoPixelFormat = GetOutputPixelFormat(plan);
-        var targetVideoBitRate = plan.Preset.VideoBitRateBitsPerSecond is { } videoBitRate
-            ? plan.EncodingSettings.QualityMode == ExportQualityMode.MatchSource
-                ? videoBitRate
-                : ScaleBitRate(videoBitRate, quality)
-            : (long?)null;
+        var targetVideoBitRate = plan.EncodingSettings.QualityMode switch
+        {
+            ExportQualityMode.BitRate => plan.EncodingSettings.VideoBitRateBitsPerSecond,
+            ExportQualityMode.MatchSource => plan.Preset.VideoBitRateBitsPerSecond,
+            _ => plan.Preset.VideoBitRateBitsPerSecond is { } videoBitRate
+                ? ScaleBitRate(videoBitRate, quality)
+                : null,
+        };
         var arguments = plan.Preset.VideoCodec switch
         {
             VideoCodecFamily.H264 => CreateH264PresetArguments(
@@ -1500,9 +1503,9 @@ internal static class FfmpegExportArguments
 
         var baseAudioBitRate = plan.Preset.AudioBitRateBitsPerSecond ??
                                (plan.Preset.AudioCodec == AudioCodecFamily.Aac ? 192_000 : 160_000);
-        var audioBitRate = (plan.EncodingSettings.QualityMode == ExportQualityMode.MatchSource
-                ? baseAudioBitRate
-                : ScaleBitRate(baseAudioBitRate, plan.EncodingSettings.Quality))
+        var audioBitRate = (plan.EncodingSettings.QualityMode == ExportQualityMode.Custom
+                ? ScaleBitRate(baseAudioBitRate, plan.EncodingSettings.Quality)
+                : baseAudioBitRate)
             .ToString(CultureInfo.InvariantCulture);
         return plan.Preset.AudioCodec switch
         {

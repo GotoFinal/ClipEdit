@@ -22,7 +22,8 @@ internal sealed record ExportPreferences(
     ExportQualityMode QualityMode = ExportQualityMode.MatchSource,
     ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
     ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software,
-    ExportVideoEncoder VideoEncoder = ExportEncodingSettings.DefaultVideoEncoder)
+    ExportVideoEncoder VideoEncoder = ExportEncodingSettings.DefaultVideoEncoder,
+    int VideoBitRateKbps = ExportEncodingSettings.DefaultVideoBitRateKbps)
 {
     public static ExportPreferences Default { get; } = new(
         BuiltInExportPresets.Mp4Compatible.Id,
@@ -41,7 +42,8 @@ internal sealed record ExportPreferences(
         ExportQualityMode.MatchSource,
         ExportEncodingSpeed.Balanced,
         ExportHardwareAcceleration.Software,
-        ExportEncodingSettings.DefaultVideoEncoder);
+        ExportEncodingSettings.DefaultVideoEncoder,
+        ExportEncodingSettings.DefaultVideoBitRateKbps);
 
     public ExportPreferences Normalize()
     {
@@ -59,6 +61,8 @@ internal sealed record ExportPreferences(
                 preset.FrameRate is >= 1 and <= 120 &&
                 preset.ScalePercent is >= 10 and <= 100 &&
                 preset.Quality is >= 1 and <= 100 &&
+                preset.VideoBitRateKbps is >= ExportEncodingSettings.MinimumVideoBitRateKbps and
+                    <= ExportEncodingSettings.MaximumVideoBitRateKbps &&
                 preset.GifFrameRate is >= 1 and <= 60 &&
                 preset.PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
                     <= ExportEncodingSettings.MaximumPlaybackSpeedPercent &&
@@ -92,6 +96,10 @@ internal sealed record ExportPreferences(
             SelectedExportPresetId = presetId,
             ScalePercent = Math.Clamp(ScalePercent, 10, 100),
             Quality = Math.Clamp(Quality, 1, 100),
+            VideoBitRateKbps = Math.Clamp(
+                VideoBitRateKbps,
+                ExportEncodingSettings.MinimumVideoBitRateKbps,
+                ExportEncodingSettings.MaximumVideoBitRateKbps),
             GifFrameRate = Math.Clamp(GifFrameRate, 1, 60),
             PlaybackSpeedPercent = PlaybackSpeedPercent is >= ExportEncodingSettings.MinimumPlaybackSpeedPercent and
                 <= ExportEncodingSettings.MaximumPlaybackSpeedPercent

@@ -38,14 +38,16 @@ public sealed class ExportPreferencesStoreTests
                         62,
                         18,
                         7_500,
-                        ExportQualityMode.Custom),
+                        ExportQualityMode.BitRate,
+                        VideoBitRateKbps: 7_500),
                 ],
                 10_000,
                 true,
                 ExportQualityMode.Custom,
                 ExportEncodingSpeed.Faster,
                 ExportHardwareAcceleration.Vulkan,
-                ExportVideoEncoder.NvidiaNvenc);
+                ExportVideoEncoder.NvidiaNvenc,
+                8_500);
 
             Assert.True(store.Save(settings));
             var restored = store.Load();
@@ -176,6 +178,7 @@ public sealed class ExportPreferencesStoreTests
             PlaybackSpeedPercent = 175,
             RememberAdjustments = true,
             QualityMode = ExportQualityMode.Custom,
+            VideoBitRateKbps = 9_500,
             EncodingSpeed = ExportEncodingSpeed.SmallerFile,
             HardwareAcceleration = ExportHardwareAcceleration.Automatic,
             VideoEncoder = ExportVideoEncoder.Software,
@@ -187,6 +190,7 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(52, viewModel.ExportScalePercent);
         Assert.Equal(61, viewModel.ExportQuality);
         Assert.Equal(ExportQualityMode.Custom, viewModel.ExportQualityMode);
+        Assert.Equal(9_500, viewModel.ExportVideoBitRateKbps);
         Assert.True(viewModel.RememberExportAdjustments);
         Assert.Same(ExportContainerChoice.Matroska, viewModel.CustomExportContainer);
         Assert.Same(VideoCodecChoice.Vp9, viewModel.CustomVideoCodec);
@@ -211,6 +215,7 @@ public sealed class ExportPreferencesStoreTests
             ScalePercent = 52,
             Quality = 61,
             PlaybackSpeedPercent = 175,
+            VideoBitRateKbps = 9_500,
             QualityMode = ExportQualityMode.Custom,
             RememberAdjustments = false,
         };
@@ -220,6 +225,7 @@ public sealed class ExportPreferencesStoreTests
         Assert.False(viewModel.RememberExportAdjustments);
         Assert.Equal(100, viewModel.ExportScalePercent);
         Assert.Equal(75, viewModel.ExportQuality);
+        Assert.Equal(ExportEncodingSettings.DefaultVideoBitRateKbps, viewModel.ExportVideoBitRateKbps);
         Assert.Equal(100, viewModel.ExportPlaybackSpeedPercent);
         Assert.Equal(ExportQualityMode.MatchSource, viewModel.ExportQualityMode);
     }
@@ -232,6 +238,7 @@ public sealed class ExportPreferencesStoreTests
             ExportScalePercent = 40,
             ExportQuality = 25,
             ExportPlaybackSpeedPercent = 250,
+            ExportVideoBitRateKbps = 9_500,
             SelectedExportQuality = ExportQualityChoice.Custom,
         };
 
@@ -242,6 +249,7 @@ public sealed class ExportPreferencesStoreTests
         Assert.Equal(75, preferences.Quality);
         Assert.Equal(100, preferences.PlaybackSpeedPercent);
         Assert.Equal(ExportQualityMode.MatchSource, preferences.QualityMode);
+        Assert.Equal(ExportEncodingSettings.DefaultVideoBitRateKbps, preferences.VideoBitRateKbps);
     }
 
     [Fact]

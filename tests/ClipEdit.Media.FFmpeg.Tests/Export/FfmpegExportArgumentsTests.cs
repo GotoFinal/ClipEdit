@@ -951,6 +951,34 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Fact]
+    public void Target_bitrate_mode_sets_an_exact_video_bitrate_without_scaling_audio()
+    {
+        var basePlan = CreatePlan(
+            TestPath("C:\\source.mkv"),
+            TestPath("C:\\clip.mp4"),
+            audioStreamIndex: 1,
+            [new MediaRange(MediaTime.Zero, new MediaTime(2, 1))]);
+        var plan = new ExportPlan(
+            basePlan.SourcePath,
+            basePlan.DestinationPath,
+            basePlan.VideoStreamIndex,
+            audioStreamIndex: 1,
+            basePlan.Crop,
+            basePlan.SourceRanges,
+            basePlan.Preset,
+            encodingSettings: new ExportEncodingSettings(
+                quality: 1,
+                qualityMode: ExportQualityMode.BitRate,
+                videoBitRateKbps: 6_000));
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.clip.partial"));
+
+        Assert.Equal("6000000", ValueAfter(arguments, "-b:v"));
+        Assert.Equal("192000", ValueAfter(arguments, "-b:a"));
+        Assert.DoesNotContain("-crf", arguments);
+    }
+
+    [Fact]
     public void Sequence_input_seek_rebases_embedded_audio_masks_to_the_bounded_input()
     {
         var sourceDuration = new MediaTime(20, 1);

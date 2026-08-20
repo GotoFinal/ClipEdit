@@ -1291,6 +1291,21 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void BitRateQuality_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (ViewModel is not { IsGifExport: false } viewModel)
+        {
+            return;
+        }
+
+        viewModel.SelectedExportQuality = ExportQualityChoice.BitRate;
+        if (sender is ToggleButton toggle)
+        {
+            toggle.IsChecked = true;
+        }
+    }
+
     private async void Export_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

@@ -76,7 +76,8 @@ public sealed record SavedExportPresetViewModel(
     ExportQualityMode QualityMode = ExportQualityMode.Custom,
     ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
     ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software,
-    ExportVideoEncoder VideoEncoder = ExportEncodingSettings.DefaultVideoEncoder);
+    ExportVideoEncoder VideoEncoder = ExportEncodingSettings.DefaultVideoEncoder,
+    int VideoBitRateKbps = ExportEncodingSettings.DefaultVideoBitRateKbps);
 
 public sealed partial class MainWindowViewModel
 {
@@ -316,6 +317,7 @@ public sealed partial class MainWindowViewModel
             {
                 ExportScalePercent = normalized.ScalePercent;
                 ExportQuality = normalized.Quality;
+                ExportVideoBitRateKbps = normalized.VideoBitRateKbps;
                 GifFrameRate = normalized.GifFrameRate;
                 ExportPlaybackSpeedPercent = normalized.PlaybackSpeedPercent;
                 SelectedExportQuality = ExportQualityChoice.FromValue(normalized.QualityMode);
@@ -361,7 +363,10 @@ public sealed partial class MainWindowViewModel
             : ExportEncodingSettings.DefaultQualityMode,
         ExportEncodingSpeed,
         ExportHardwareAcceleration,
-        PreferredExportVideoEncoder);
+        PreferredExportVideoEncoder,
+        RememberExportAdjustments
+            ? ExportVideoBitRateKbps
+            : ExportEncodingSettings.DefaultVideoBitRateKbps);
 
     internal void ApplyCustomExportSettings(
         ExportContainer container,
@@ -419,7 +424,8 @@ public sealed partial class MainWindowViewModel
         ExportQualityMode,
         ExportEncodingSpeed,
         ExportHardwareAcceleration,
-        PreferredExportVideoEncoder);
+        PreferredExportVideoEncoder,
+        ExportVideoBitRateKbps);
 
     private void ApplySavedExportPreset(SavedExportPresetViewModel saved)
     {
@@ -431,6 +437,7 @@ public sealed partial class MainWindowViewModel
             saved.FrameRate);
         ExportScalePercent = saved.ScalePercent;
         ExportQuality = saved.Quality;
+        ExportVideoBitRateKbps = saved.VideoBitRateKbps;
         GifFrameRate = saved.GifFrameRate;
         ExportPlaybackSpeedPercent = saved.PlaybackSpeedPercent;
         SelectedExportQuality = ExportQualityChoice.FromValue(saved.QualityMode);

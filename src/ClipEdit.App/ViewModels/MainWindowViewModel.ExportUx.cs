@@ -48,14 +48,19 @@ public sealed record ExportQualityChoice(
 
     public static ExportQualityChoice Custom { get; } = new(
         ExportQualityMode.Custom,
-        "Custom");
+        "Quality");
+
+    public static ExportQualityChoice BitRate { get; } = new(
+        ExportQualityMode.BitRate,
+        "Bitrate");
 
     public static IReadOnlyList<ExportQualityChoice> All { get; } =
-        [MatchSource, Custom];
+        [MatchSource, Custom, BitRate];
 
     public static ExportQualityChoice FromValue(ExportQualityMode value) => value switch
     {
         ExportQualityMode.Custom => Custom,
+        ExportQualityMode.BitRate => BitRate,
         _ => MatchSource,
     };
 }
@@ -176,6 +181,7 @@ public sealed partial class MainWindowViewModel
                 OnPropertyChanged(nameof(ExportQualityMode));
                 OnPropertyChanged(nameof(UsesCustomExportQuality));
                 OnPropertyChanged(nameof(UsesMatchedInputQuality));
+                OnPropertyChanged(nameof(UsesTargetBitRate));
                 RaiseExportStateChanged();
             }
         }
@@ -229,6 +235,9 @@ public sealed partial class MainWindowViewModel
     public bool UsesMatchedInputQuality =>
         !IsGifExport && ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.MatchSource;
 
+    public bool UsesTargetBitRate =>
+        !IsGifExport && ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.BitRate;
+
     public bool RememberExportAdjustments
     {
         get => _rememberExportAdjustments;
@@ -277,6 +286,22 @@ public sealed partial class MainWindowViewModel
     {
         get => ExportQuality;
         set => ExportQuality = (int)Math.Round(value, MidpointRounding.AwayFromZero);
+    }
+
+    public int ExportVideoBitRateKbps
+    {
+        get => _exportVideoBitRateKbps;
+        set
+        {
+            var next = Math.Clamp(
+                value,
+                ExportEncodingSettings.MinimumVideoBitRateKbps,
+                ExportEncodingSettings.MaximumVideoBitRateKbps);
+            if (SetProperty(ref _exportVideoBitRateKbps, next))
+            {
+                RaiseExportStateChanged();
+            }
+        }
     }
 
     public int GifFrameRate
@@ -361,7 +386,9 @@ public sealed partial class MainWindowViewModel
                 : $" · {ExportPlaybackSpeedPercent}% speed";
             var quality = IsGifExport || ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.Custom
                 ? $"quality {ExportQuality}%"
-                : "match input quality";
+                : ExportQualityMode == ClipEdit.Media.Export.ExportQualityMode.BitRate
+                    ? $"{ExportVideoBitRateKbps:N0} kbps"
+                    : "match input quality";
             var performance = IsGifExport
                 ? string.Empty
                 : $" · {SelectedExportEncodingSpeed.DisplayName.ToLowerInvariant()} encode" +
@@ -550,12 +577,14 @@ public sealed partial class MainWindowViewModel
         IsGifExport ? ClipEdit.Media.Export.ExportQualityMode.Custom : ExportQualityMode,
         ExportEncodingSpeed,
         ExportHardwareAcceleration,
-        EffectiveExportVideoEncoder);
+        EffectiveExportVideoEncoder,
+        ExportVideoBitRateKbps);
 
     private void ResetTransientExportAdjustments()
     {
         SelectedExportQuality = ExportQualityChoice.FromValue(ExportEncodingSettings.DefaultQualityMode);
         ExportQuality = ExportEncodingSettings.DefaultQuality;
+        ExportVideoBitRateKbps = ExportEncodingSettings.DefaultVideoBitRateKbps;
         ExportScalePercent = ExportEncodingSettings.DefaultScalePercent;
         GifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
         ExportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;

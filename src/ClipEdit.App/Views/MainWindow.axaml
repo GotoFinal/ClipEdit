@@ -528,7 +528,7 @@
 
                         <Grid
                             x:Name="VideoQualityModePanel"
-                            ColumnDefinitions="*,164"
+                            ColumnDefinitions="*,236"
                             ColumnSpacing="8"
                             IsVisible="{Binding !IsGifExport}">
                           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Quality" />
@@ -539,7 +539,7 @@
                               BorderBrush="#4A5060"
                               BorderThickness="1"
                               CornerRadius="5">
-                            <Grid ColumnDefinitions="92,68">
+                            <Grid ColumnDefinitions="92,72,72">
                               <ToggleButton
                                   x:Name="MatchInputQualityButton"
                                   Classes="export-quality-choice"
@@ -552,8 +552,15 @@
                                   Grid.Column="1"
                                   Classes="export-quality-choice"
                                   Click="CustomQuality_Click"
-                                  Content="Custom"
+                                  Content="Quality"
                                   IsChecked="{Binding UsesCustomExportQuality, Mode=OneWay}" />
+                              <ToggleButton
+                                  x:Name="BitRateQualityButton"
+                                  Grid.Column="2"
+                                  Classes="export-quality-choice"
+                                  Click="BitRateQuality_Click"
+                                  Content="Bitrate"
+                                  IsChecked="{Binding UsesTargetBitRate, Mode=OneWay}" />
                             </Grid>
                           </Border>
                         </Grid>
@@ -593,6 +600,25 @@
                               TickFrequency="1"
                               IsSnapToTickEnabled="True"
                               Value="{Binding ExportQualitySliderValue, Mode=TwoWay}" />
+                        </Grid>
+                        <Grid
+                            ColumnDefinitions="*,110"
+                            ColumnSpacing="8"
+                            IsVisible="{Binding UsesTargetBitRate}">
+                          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Video bitrate" />
+                          <NumericUpDown
+                              x:Name="ExportVideoBitRateInput"
+                              Grid.Column="1"
+                              Classes="numeric-entry"
+                              Minimum="100"
+                              Maximum="1000000"
+                              Increment="100"
+                              FormatString="0' kbps'"
+                              ShowButtonSpinner="False"
+                              Background="#151820"
+                              BorderBrush="#555C6C"
+                              Foreground="#F5F5F8"
+                              Value="{Binding ExportVideoBitRateKbps, Mode=TwoWay}" />
                         </Grid>
 
                         <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,72" ColumnSpacing="8" RowSpacing="2">

@@ -7,6 +7,7 @@ public enum ExportQualityMode
 {
     Custom,
     MatchSource,
+    BitRate,
 }
 
 public enum ExportEncodingSpeed
@@ -30,6 +31,9 @@ public enum ExportHardwareAcceleration
 public sealed record ExportEncodingSettings
 {
     public const int DefaultQuality = 75;
+    public const int DefaultVideoBitRateKbps = 6_000;
+    public const int MinimumVideoBitRateKbps = 100;
+    public const int MaximumVideoBitRateKbps = 1_000_000;
     public const int DefaultScalePercent = 100;
     public const int DefaultGifFrameRate = 15;
     public const int MinimumPlaybackSpeedPercent = 1;
@@ -50,7 +54,8 @@ public sealed record ExportEncodingSettings
         ExportQualityMode qualityMode = DefaultQualityMode,
         ExportEncodingSpeed encodingSpeed = DefaultEncodingSpeed,
         ExportHardwareAcceleration hardwareAcceleration = DefaultHardwareAcceleration,
-        ExportVideoEncoder videoEncoder = DefaultVideoEncoder)
+        ExportVideoEncoder videoEncoder = DefaultVideoEncoder,
+        int videoBitRateKbps = DefaultVideoBitRateKbps)
     {
         if (quality is < 1 or > 100)
         {
@@ -84,6 +89,10 @@ public sealed record ExportEncodingSettings
         {
             throw new ArgumentOutOfRangeException(nameof(videoEncoder));
         }
+        if (videoBitRateKbps is < MinimumVideoBitRateKbps or > MaximumVideoBitRateKbps)
+        {
+            throw new ArgumentOutOfRangeException(nameof(videoBitRateKbps));
+        }
 
         Quality = quality;
         ScalePercent = scalePercent;
@@ -93,6 +102,7 @@ public sealed record ExportEncodingSettings
         EncodingSpeed = encodingSpeed;
         HardwareAcceleration = hardwareAcceleration;
         VideoEncoder = videoEncoder;
+        VideoBitRateKbps = videoBitRateKbps;
     }
 
     public int Quality { get; }
@@ -110,6 +120,10 @@ public sealed record ExportEncodingSettings
     public ExportHardwareAcceleration HardwareAcceleration { get; }
 
     public ExportVideoEncoder VideoEncoder { get; }
+
+    public int VideoBitRateKbps { get; }
+
+    public long VideoBitRateBitsPerSecond => VideoBitRateKbps * 1_000L;
 
     public double PlaybackSpeed => PlaybackSpeedPercent / 100d;
 

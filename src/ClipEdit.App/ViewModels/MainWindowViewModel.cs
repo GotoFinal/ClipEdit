@@ -68,6 +68,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private ExportPreset _selectedExportPreset = BuiltInExportPresets.Mp4Compatible;
     private int _exportScalePercent = ExportEncodingSettings.DefaultScalePercent;
     private int _exportQuality = ExportEncodingSettings.DefaultQuality;
+    private int _exportVideoBitRateKbps = ExportEncodingSettings.DefaultVideoBitRateKbps;
     private int _gifFrameRate = ExportEncodingSettings.DefaultGifFrameRate;
     private int _exportPlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent;
     private ExportQualityChoice _selectedExportQuality = ExportQualityChoice.MatchSource;
@@ -603,6 +604,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(IsGifExport));
                 OnPropertyChanged(nameof(UsesCustomExportQuality));
                 OnPropertyChanged(nameof(UsesMatchedInputQuality));
+                OnPropertyChanged(nameof(UsesTargetBitRate));
                 RaiseExportStateChanged();
                 MarkProjectDirty();
                 if (ResolveMatchInput(GetSequenceExportSlices()) is { } resolution)
