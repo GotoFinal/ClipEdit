@@ -68,7 +68,7 @@ public sealed record SavedExportPresetViewModel(
     ExportQualityMode QualityMode = ExportQualityMode.Custom,
     ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
     ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software,
-    ExportVideoEncoder VideoEncoder = ExportVideoEncoder.Software);
+    ExportVideoEncoder VideoEncoder = ExportEncodingSettings.DefaultVideoEncoder);
 
 public sealed partial class MainWindowViewModel
 {

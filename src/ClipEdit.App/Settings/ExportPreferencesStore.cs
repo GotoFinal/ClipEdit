@@ -22,7 +22,7 @@ internal sealed record ExportPreferences(
     ExportQualityMode QualityMode = ExportQualityMode.MatchSource,
     ExportEncodingSpeed EncodingSpeed = ExportEncodingSpeed.Balanced,
     ExportHardwareAcceleration HardwareAcceleration = ExportHardwareAcceleration.Software,
-    ExportVideoEncoder VideoEncoder = ExportVideoEncoder.Software)
+    ExportVideoEncoder VideoEncoder = ExportEncodingSettings.DefaultVideoEncoder)
 {
     public static ExportPreferences Default { get; } = new(
         BuiltInExportPresets.Mp4Compatible.Id,
@@ -41,7 +41,7 @@ internal sealed record ExportPreferences(
         ExportQualityMode.MatchSource,
         ExportEncodingSpeed.Balanced,
         ExportHardwareAcceleration.Software,
-        ExportVideoEncoder.Software);
+        ExportEncodingSettings.DefaultVideoEncoder);
 
     public ExportPreferences Normalize()
     {

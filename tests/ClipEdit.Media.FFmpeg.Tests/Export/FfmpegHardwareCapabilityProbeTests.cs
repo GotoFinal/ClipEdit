@@ -6,7 +6,7 @@ namespace ClipEdit.Media.FFmpeg.Tests.Export;
 public sealed class FfmpegHardwareCapabilityProbeTests
 {
     [Fact]
-    public void H264_probes_execute_real_single_frame_encodes_for_each_backend()
+    public void H264_probes_execute_timed_encode_workloads_for_each_backend()
     {
         var probes = FfmpegHardwareCapabilityProbe.CreateH264Probes();
 
@@ -21,7 +21,7 @@ public sealed class FfmpegHardwareCapabilityProbeTests
         Assert.All(probes, probe =>
         {
             Assert.Contains("-frames:v", probe.Arguments);
-            Assert.Contains("1", probe.Arguments);
+            Assert.Contains("120", probe.Arguments);
             Assert.Contains(probe.FfmpegEncoderName, probe.Arguments);
             Assert.Equal("-", probe.Arguments[^1]);
         });
@@ -40,7 +40,22 @@ public sealed class FfmpegHardwareCapabilityProbeTests
         var second = await secondProbe.ProbeAsync();
 
         Assert.Same(first, second);
-        Assert.True(first.Get(ExportVideoEncoder.Software).IsAvailable);
+        Assert.False(first.Get(ExportVideoEncoder.Software).IsAvailable);
         Assert.False(first.Get(ExportVideoEncoder.NvidiaNvenc).IsAvailable);
+    }
+
+    [Fact]
+    public void Fastest_available_encoder_uses_measured_elapsed_time()
+    {
+        var capabilities = new ExportHardwareCapabilities(
+        [
+            new(ExportVideoEncoder.Software, "Software", true, "Available", TimeSpan.FromSeconds(1)),
+            new(ExportVideoEncoder.NvidiaNvenc, "NVENC", true, "Available", TimeSpan.FromSeconds(0.2)),
+            new(ExportVideoEncoder.AmdAmf, "AMF", false, "Unavailable"),
+        ]);
+
+        Assert.Equal(
+            ExportVideoEncoder.NvidiaNvenc,
+            capabilities.FastestAvailableH264Encoder.Encoder);
     }
 }

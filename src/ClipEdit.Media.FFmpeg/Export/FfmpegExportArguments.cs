@@ -1068,6 +1068,10 @@ internal static class FfmpegExportArguments
         ExportVideoEncoder? videoEncoderOverride = null)
     {
         var requested = videoEncoderOverride ?? plan.EncodingSettings.VideoEncoder;
+        if (requested == ExportVideoEncoder.Automatic)
+        {
+            requested = ExportVideoEncoder.Software;
+        }
         return plan.Preset.VideoCodec == VideoCodecFamily.H264 && !plan.PreservesHdr
             ? requested
             : ExportVideoEncoder.Software;

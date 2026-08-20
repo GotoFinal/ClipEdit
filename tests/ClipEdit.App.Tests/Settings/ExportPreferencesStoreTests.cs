@@ -107,7 +107,7 @@ public sealed class ExportPreferencesStoreTests
 
             Assert.Equal(ExportEncodingSpeed.Balanced, restored.EncodingSpeed);
             Assert.Equal(ExportHardwareAcceleration.Software, restored.HardwareAcceleration);
-            Assert.Equal(ExportVideoEncoder.Software, restored.VideoEncoder);
+            Assert.Equal(ExportVideoEncoder.Automatic, restored.VideoEncoder);
         }
         finally
         {

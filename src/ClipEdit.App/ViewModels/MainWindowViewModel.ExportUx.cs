@@ -542,7 +542,7 @@ public sealed partial class MainWindowViewModel
         IsGifExport ? ClipEdit.Media.Export.ExportQualityMode.Custom : ExportQualityMode,
         ExportEncodingSpeed,
         ExportHardwareAcceleration,
-        PreferredExportVideoEncoder);
+        EffectiveExportVideoEncoder);
 
     private void ResetTransientExportAdjustments()
     {

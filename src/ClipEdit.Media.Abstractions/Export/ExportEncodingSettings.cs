@@ -38,7 +38,7 @@ public sealed record ExportEncodingSettings
     public const ExportQualityMode DefaultQualityMode = ExportQualityMode.MatchSource;
     public const ExportEncodingSpeed DefaultEncodingSpeed = ExportEncodingSpeed.Balanced;
     public const ExportHardwareAcceleration DefaultHardwareAcceleration = ExportHardwareAcceleration.Software;
-    public const ExportVideoEncoder DefaultVideoEncoder = ExportVideoEncoder.Software;
+    public const ExportVideoEncoder DefaultVideoEncoder = ExportVideoEncoder.Automatic;
 
     public static ExportEncodingSettings Default { get; } = new();
 

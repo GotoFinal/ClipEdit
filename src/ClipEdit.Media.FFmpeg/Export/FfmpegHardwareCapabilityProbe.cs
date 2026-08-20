@@ -49,11 +49,7 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
     {
         var capabilities = new List<ExportVideoEncoderCapability>
         {
-            new(
-                ExportVideoEncoder.Software,
-                "Software (x264)",
-                true,
-                "Built-in software encoder; compatibility baseline."),
+            await ProbeEncoderAsync(SoftwareProbe).ConfigureAwait(false),
         };
         foreach (var probe in CreateH264Probes())
         {
@@ -65,6 +61,7 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
 
     private async Task<ExportVideoEncoderCapability> ProbeEncoderAsync(EncoderProbe probe)
     {
+        var stopwatch = Stopwatch.StartNew();
         using var process = new DiagnosticProcess
         {
             StartInfo = CreateStartInfo(probe.Arguments),
@@ -98,12 +95,14 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
 
             await standardOutput.ConfigureAwait(false);
             var diagnostics = await standardError.ConfigureAwait(false);
+            stopwatch.Stop();
             return process.ExitCode == 0
                 ? new ExportVideoEncoderCapability(
                     probe.Encoder,
                     probe.DisplayName,
                     true,
-                    $"Available · {probe.FfmpegEncoderName}")
+                    $"Available · {probe.FfmpegEncoderName} · {stopwatch.Elapsed.TotalSeconds:0.00}s self-test",
+                    stopwatch.Elapsed)
                 : Unavailable(probe, CreateDiagnostic(diagnostics));
         }
         catch (Exception exception) when (
@@ -160,19 +159,25 @@ public sealed class FfmpegHardwareCapabilityProbe : IExportHardwareCapabilityPro
                 "-hide_banner", "-nostdin", "-loglevel", "error",
                 "-init_hw_device", "vaapi=clipeditva",
                 "-filter_hw_device", "clipeditva",
-                "-f", "lavfi", "-i", "color=c=black:s=128x128:r=30:d=0.1",
-                "-frames:v", "1", "-an",
+                "-f", "lavfi", "-i", "testsrc2=s=1920x1080:r=60:d=2",
+                "-frames:v", "120", "-an",
                 "-vf", "format=nv12,hwupload",
                 "-c:v", "h264_vaapi",
                 "-f", "null", "-",
             ]),
     ];
 
+    private static EncoderProbe SoftwareProbe { get; } = new(
+        ExportVideoEncoder.Software,
+        "Software (x264)",
+        "libx264",
+        CommonProbeArguments("libx264"));
+
     private static IReadOnlyList<string> CommonProbeArguments(string encoder) =>
     [
         "-hide_banner", "-nostdin", "-loglevel", "error",
-        "-f", "lavfi", "-i", "color=c=black:s=128x128:r=30:d=0.1",
-        "-frames:v", "1", "-an",
+        "-f", "lavfi", "-i", "testsrc2=s=1920x1080:r=60:d=2",
+        "-frames:v", "120", "-an",
         "-pix_fmt", "yuv420p",
         "-c:v", encoder,
         "-f", "null", "-",

@@ -45,6 +45,36 @@ public sealed class HardwareExportViewModelTests
         Assert.Contains("no AMF device", viewModel.StatusText);
     }
 
+    [Fact]
+    public void Automatic_choice_uses_the_fastest_successful_timed_probe()
+    {
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        viewModel.ConfigureExportHardwareCapabilityProbe(new StubProbe(
+            new ExportHardwareCapabilities(
+            [
+                new(
+                    ExportVideoEncoder.Software,
+                    "Software (x264)",
+                    true,
+                    "Available",
+                    TimeSpan.FromSeconds(0.8)),
+                new(
+                    ExportVideoEncoder.NvidiaNvenc,
+                    "NVIDIA NVENC",
+                    true,
+                    "Available",
+                    TimeSpan.FromSeconds(0.2)),
+            ])));
+
+        var automatic = viewModel.ExportVideoEncoderChoices.Single(choice =>
+            choice.Value == ExportVideoEncoder.Automatic);
+        viewModel.SelectedExportVideoEncoder = automatic;
+
+        Assert.Equal(ExportVideoEncoder.Automatic, viewModel.PreferredExportVideoEncoder);
+        Assert.Equal(ExportVideoEncoder.NvidiaNvenc, viewModel.EffectiveExportVideoEncoder);
+        Assert.Contains("NVIDIA NVENC", viewModel.ExportVideoEncoderStatus);
+    }
+
     private sealed class StubProbe(ExportHardwareCapabilities capabilities)
         : IExportHardwareCapabilityProbe
     {

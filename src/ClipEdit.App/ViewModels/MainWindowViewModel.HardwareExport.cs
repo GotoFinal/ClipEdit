@@ -15,6 +15,7 @@ public sealed partial class MainWindowViewModel
 {
     private static readonly IReadOnlyList<ExportVideoEncoderChoice> InitialExportVideoEncoderChoices =
     [
+        new(ExportVideoEncoder.Automatic, "Auto (timed)", false, "Checking encoder performance..."),
         new(
             ExportVideoEncoder.Software,
             "Software (x264)",
@@ -29,8 +30,9 @@ public sealed partial class MainWindowViewModel
     private IReadOnlyList<ExportVideoEncoderChoice> _exportVideoEncoderChoices =
         InitialExportVideoEncoderChoices;
     private ExportVideoEncoderChoice _selectedExportVideoEncoder =
-        InitialExportVideoEncoderChoices[0];
-    private ExportVideoEncoder _preferredExportVideoEncoder = ExportVideoEncoder.Software;
+        InitialExportVideoEncoderChoices[1];
+    private ExportVideoEncoder _preferredExportVideoEncoder = ExportEncodingSettings.DefaultVideoEncoder;
+    private ExportVideoEncoder _automaticExportVideoEncoder = ExportVideoEncoder.Software;
     private CancellationTokenSource? _exportHardwareProbeCancellation;
     private bool _isExportHardwareProbeRunning;
 
@@ -42,7 +44,8 @@ public sealed partial class MainWindowViewModel
         get => _selectedExportVideoEncoder;
         set
         {
-            var next = value ?? ExportVideoEncoderChoices[0];
+            var next = value ?? ExportVideoEncoderChoices.First(choice =>
+                choice.Value == ExportVideoEncoder.Software);
             if (!next.IsAvailable)
             {
                 StatusText = next.Details;
@@ -54,6 +57,7 @@ public sealed partial class MainWindowViewModel
             if (SetProperty(ref _selectedExportVideoEncoder, next))
             {
                 OnPropertyChanged(nameof(PreferredExportVideoEncoder));
+                OnPropertyChanged(nameof(EffectiveExportVideoEncoder));
                 OnPropertyChanged(nameof(ExportVideoEncoderStatus));
                 OnPropertyChanged(nameof(ExportVideoEncoderDescription));
                 RaiseExportStateChanged();
@@ -62,6 +66,11 @@ public sealed partial class MainWindowViewModel
     }
 
     public ExportVideoEncoder PreferredExportVideoEncoder => _preferredExportVideoEncoder;
+
+    public ExportVideoEncoder EffectiveExportVideoEncoder =>
+        PreferredExportVideoEncoder == ExportVideoEncoder.Automatic
+            ? _automaticExportVideoEncoder
+            : PreferredExportVideoEncoder;
 
     public bool IsExportHardwareProbeRunning
     {
@@ -93,12 +102,14 @@ public sealed partial class MainWindowViewModel
             : ExportVideoEncoder.Software;
         var choice = ExportVideoEncoderChoices.FirstOrDefault(candidate =>
                          candidate.Value == _preferredExportVideoEncoder && candidate.IsAvailable) ??
-                     ExportVideoEncoderChoices[0];
+                     ExportVideoEncoderChoices.First(candidate =>
+                         candidate.Value == ExportVideoEncoder.Software);
         if (!ReferenceEquals(_selectedExportVideoEncoder, choice))
         {
             _selectedExportVideoEncoder = choice;
             OnPropertyChanged(nameof(SelectedExportVideoEncoder));
             OnPropertyChanged(nameof(PreferredExportVideoEncoder));
+            OnPropertyChanged(nameof(EffectiveExportVideoEncoder));
             OnPropertyChanged(nameof(ExportVideoEncoderStatus));
             OnPropertyChanged(nameof(ExportVideoEncoderDescription));
             RaiseExportStateChanged();
@@ -162,9 +173,24 @@ public sealed partial class MainWindowViewModel
         _exportVideoEncoderChoices = InitialExportVideoEncoderChoices
             .Select(initial =>
             {
-                if (initial.Value == ExportVideoEncoder.Software)
+                if (initial.Value == ExportVideoEncoder.Automatic)
                 {
-                    return initial;
+                    if (capabilities is null)
+                    {
+                        return initial with
+                        {
+                            Details = string.IsNullOrWhiteSpace(failure)
+                                ? "No FFmpeg capability probe is available."
+                                : $"Capability check failed: {failure}",
+                        };
+                    }
+
+                    var fastest = capabilities.FastestAvailableH264Encoder;
+                    return new ExportVideoEncoderChoice(
+                        ExportVideoEncoder.Automatic,
+                        "Auto (timed)",
+                        fastest.IsAvailable,
+                        $"Uses {fastest.DisplayName}, the fastest encoder in this runtime self-test.");
                 }
 
                 var capability = capabilities?.Get(initial.Value);
@@ -183,10 +209,13 @@ public sealed partial class MainWindowViewModel
             })
             .ToArray();
         OnPropertyChanged(nameof(ExportVideoEncoderChoices));
+        _automaticExportVideoEncoder = capabilities?.FastestAvailableH264Encoder.Encoder ??
+                                       ExportVideoEncoder.Software;
 
         var preferred = _exportVideoEncoderChoices.FirstOrDefault(choice =>
             choice.Value == _preferredExportVideoEncoder && choice.IsAvailable);
-        _selectedExportVideoEncoder = preferred ?? _exportVideoEncoderChoices[0];
+        _selectedExportVideoEncoder = preferred ?? _exportVideoEncoderChoices.First(choice =>
+            choice.Value == ExportVideoEncoder.Software);
         if (preferred is null)
         {
             _preferredExportVideoEncoder = ExportVideoEncoder.Software;
@@ -194,6 +223,7 @@ public sealed partial class MainWindowViewModel
 
         OnPropertyChanged(nameof(SelectedExportVideoEncoder));
         OnPropertyChanged(nameof(PreferredExportVideoEncoder));
+        OnPropertyChanged(nameof(EffectiveExportVideoEncoder));
         OnPropertyChanged(nameof(ExportVideoEncoderStatus));
         OnPropertyChanged(nameof(ExportVideoEncoderDescription));
         RaiseExportStateChanged();
