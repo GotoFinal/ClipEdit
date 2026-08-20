@@ -9,6 +9,10 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <Version>0.0.0-dev</Version>
+  </PropertyGroup>
+
   <ItemGroup>
     <AvaloniaResource Include="Assets/ClipEdit.ico" />
     <AvaloniaResource Include="Assets/ClipEdit.png" />
