@@ -53,6 +53,9 @@ public sealed class MpvPreviewEngineLocalTests
         Assert.True(afterStep > beforeStep.Value);
         await engine.StepFrameAsync(PreviewFrameStepDirection.Backward, CancellationToken.None);
         Assert.Equal(PreviewState.Paused, engine.State);
+
+        await engine.StopAsync(CancellationToken.None);
+        Assert.Equal(PreviewState.Idle, engine.State);
     }
 
     [Fact]

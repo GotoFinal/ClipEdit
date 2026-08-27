@@ -45,6 +45,11 @@ public sealed class MpvVideoView : OpenGlControlBase
             nameof(SourceVideoSize),
             new DomainPixelSize(1, 1));
 
+    public static readonly StyledProperty<DomainPixelSize> DecodedVideoSizeProperty =
+        AvaloniaProperty.Register<MpvVideoView, DomainPixelSize>(
+            nameof(DecodedVideoSize),
+            new DomainPixelSize(1, 1));
+
     public static readonly StyledProperty<DomainPixelSize> CanvasSizeProperty =
         AvaloniaProperty.Register<MpvVideoView, DomainPixelSize>(
             nameof(CanvasSize),
@@ -84,6 +89,11 @@ public sealed class MpvVideoView : OpenGlControlBase
             nameof(IsSeekPending),
             view => view.IsSeekPending);
 
+    public static readonly DirectProperty<MpvVideoView, bool> IsSeekPlaceholderVisibleProperty =
+        AvaloniaProperty.RegisterDirect<MpvVideoView, bool>(
+            nameof(IsSeekPlaceholderVisible),
+            view => view.IsSeekPlaceholderVisible);
+
     public static readonly DirectProperty<MpvVideoView, string> PlaybackStatusProperty =
         AvaloniaProperty.RegisterDirect<MpvVideoView, string>(
             nameof(PlaybackStatus),
@@ -119,6 +129,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private OpenGlVideoCompositor? _videoCompositor;
     private bool _isPlaybackAvailable;
     private bool _isSeekPending;
+    private bool _isSeekPlaceholderVisible;
     private string _playbackStatus = "Select a video to start live preview";
     private string _playButtonText = "▶";
     private string _decoderStatus = "Decoder pending";
@@ -151,6 +162,8 @@ public sealed class MpvVideoView : OpenGlControlBase
         PlaybackSpeedProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartPlaybackSpeedChange());
         SourceVideoSizeProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.StartNativeGeometryChange());
+        DecodedVideoSizeProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartNativeGeometryChange());
         CanvasSizeProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.QueueRenderRequest());
@@ -249,6 +262,12 @@ public sealed class MpvVideoView : OpenGlControlBase
         set => SetValue(CanvasTransformProperty, value);
     }
 
+    public DomainPixelSize DecodedVideoSize
+    {
+        get => GetValue(DecodedVideoSizeProperty);
+        set => SetValue(DecodedVideoSizeProperty, value);
+    }
+
     public bool IsInteractiveTransformActive
     {
         get => GetValue(IsInteractiveTransformActiveProperty);
@@ -289,6 +308,15 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => _isSeekPending;
         private set => SetAndRaise(IsSeekPendingProperty, ref _isSeekPending, value);
+    }
+
+    public bool IsSeekPlaceholderVisible
+    {
+        get => _isSeekPlaceholderVisible;
+        private set => SetAndRaise(
+            IsSeekPlaceholderVisibleProperty,
+            ref _isSeekPlaceholderVisible,
+            value);
     }
 
     public string PlaybackStatus
@@ -357,7 +385,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         var target = GetPlaybackStartPosition(Position, PlaybackRanges, _isEndOfFile);
         SetPositionFromPlayback(target);
         _seekReadyToRevealRevision = -1;
-        IsSeekPending = false;
+        SetSeekPending(false);
         await _engine.SeekAsync(target, cancellationToken);
         _isEndOfFile = false;
         await _engine.SetPausedAsync(false, cancellationToken);
@@ -412,7 +440,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         }
 
         _shutdownStarted = true;
-        IsSeekPending = false;
+        SetSeekPending(false);
         _positionTimer.Stop();
         _lifetimeCancellation.Cancel();
         _loadCancellation?.Cancel();
@@ -558,7 +586,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             if (_seekReadyToRevealRevision == _seekRevision)
             {
                 _seekReadyToRevealRevision = -1;
-                IsSeekPending = false;
+                SetSeekPending(false);
             }
 
             if (ShouldContinueRenderingDuringLoad(_loadTask.IsCompleted))
@@ -667,11 +695,18 @@ public sealed class MpvVideoView : OpenGlControlBase
         _mediaLoaded = false;
         _isEndOfFile = false;
         _seekReadyToRevealRevision = -1;
-        IsSeekPending = false;
+        SetSeekPending(false);
         DecoderStatus = "Decoder pending";
         IsPlaybackAvailable = false;
         if (string.IsNullOrWhiteSpace(sourcePath))
         {
+            var engine = _engine;
+            if (engine is not null)
+            {
+                await engine.StopAsync(cancellationToken);
+            }
+            _positionTimer.Stop();
+            SetCurrentValue(IsPausedProperty, true);
             PlaybackStatus = "Select a video to start live preview";
             return;
         }
@@ -687,6 +722,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             var initialVideoTransformRevision = _videoTransformRevision;
             await engine.SetVideoTransformAsync(
                 CalculatePreviewVideoTransform(
+                    DecodedVideoSize,
                     SourceVideoSize,
                     SourceVideoSize,
                     ClipCanvasTransform.Identity,
@@ -749,7 +785,7 @@ public sealed class MpvVideoView : OpenGlControlBase
         _pendingSeekPosition = GetDisplaySeekPosition(Position, PlaybackRanges, FrameStepSeconds);
         _seekRevision++;
         _seekReadyToRevealRevision = -1;
-        IsSeekPending = true;
+        SetSeekPending(true);
         if (_seekLoopRunning)
         {
             return;
@@ -788,7 +824,12 @@ public sealed class MpvVideoView : OpenGlControlBase
 
                 target = _pendingSeekPosition;
                 await _engine.SeekAsync(target, cancellationToken);
-                if (!await WaitForSeekCompletionAsync(target, revision, cancellationToken))
+                var allowAdvancingClock = !IsPaused;
+                if (!await WaitForSeekCompletionAsync(
+                        target,
+                        revision,
+                        allowAdvancingClock,
+                        cancellationToken))
                 {
                     continue;
                 }
@@ -818,7 +859,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             request.Dispose();
             if (handledRevision == _seekRevision && _renderContext is null)
             {
-                IsSeekPending = false;
+                SetSeekPending(false);
             }
 
             if (!_shutdownStarted && _mediaLoaded && !_suppressSeekRestart && handledRevision != _seekRevision)
@@ -831,9 +872,11 @@ public sealed class MpvVideoView : OpenGlControlBase
     private async Task<bool> WaitForSeekCompletionAsync(
         MediaTime target,
         int revision,
+        bool allowAdvancingClock,
         CancellationToken cancellationToken)
     {
-        const int maximumAttempts = 750;
+        const int maximumAttempts = 150;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         for (var attempt = 0; attempt < maximumAttempts; attempt++)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
@@ -843,7 +886,14 @@ public sealed class MpvVideoView : OpenGlControlBase
             }
 
             var snapshot = await _engine!.GetPlaybackSnapshotAsync(cancellationToken);
-            if (!snapshot.IsSeeking && IsSeekPositionReady(snapshot.Position, target, FrameStepSeconds))
+            if (!snapshot.IsSeeking &&
+                (allowAdvancingClock
+                    ? IsAdvancingSeekPositionReady(
+                        snapshot.Position,
+                        target,
+                        FrameStepSeconds,
+                        stopwatch.Elapsed)
+                    : IsSeekPositionReady(snapshot.Position, target, FrameStepSeconds)))
             {
                 return true;
             }
@@ -857,6 +907,7 @@ public sealed class MpvVideoView : OpenGlControlBase
     private void StartPauseChange()
     {
         PlayButtonText = IsPaused ? "▶" : "Ⅱ";
+        UpdateSeekPlaceholderVisibility();
         if (IsPaused)
         {
             _positionTimer.Stop();
@@ -953,6 +1004,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             {
                 var handledRevision = _videoTransformRevision;
                 var transform = CalculatePreviewVideoTransform(
+                    DecodedVideoSize,
                     SourceVideoSize,
                     SourceVideoSize,
                     ClipCanvasTransform.Identity,
@@ -986,6 +1038,19 @@ public sealed class MpvVideoView : OpenGlControlBase
         DomainPixelSize sourceSize,
         DomainPixelSize canvasSize,
         ClipCanvasTransform canvasTransform,
+        Size viewportSize) =>
+        CalculatePreviewVideoTransform(
+            sourceSize,
+            sourceSize,
+            canvasSize,
+            canvasTransform,
+            viewportSize);
+
+    internal static PreviewVideoTransform CalculatePreviewVideoTransform(
+        DomainPixelSize decodedSourceSize,
+        DomainPixelSize logicalSourceSize,
+        DomainPixelSize canvasSize,
+        ClipCanvasTransform canvasTransform,
         Size viewportSize)
     {
         var viewportWidth = Math.Max(1, viewportSize.Width);
@@ -993,12 +1058,16 @@ public sealed class MpvVideoView : OpenGlControlBase
         var radians = canvasTransform.RotationDegrees * Math.PI / 180;
         var cosine = Math.Abs(Math.Cos(radians));
         var sine = Math.Abs(Math.Sin(radians));
-        var rotatedWidth = (sourceSize.Width * cosine) + (sourceSize.Height * sine);
-        var rotatedHeight = (sourceSize.Width * sine) + (sourceSize.Height * cosine);
+        var rotatedWidth = (logicalSourceSize.Width * cosine) + (logicalSourceSize.Height * sine);
+        var rotatedHeight = (logicalSourceSize.Width * sine) + (logicalSourceSize.Height * cosine);
         var canvasDisplayScale = Math.Min(
             viewportWidth / canvasSize.Width,
             viewportHeight / canvasSize.Height);
-        var uniformScale = Math.Sqrt(canvasTransform.ScaleX * canvasTransform.ScaleY);
+        var decodedToLogicalScaleX = logicalSourceSize.Width / (double)decodedSourceSize.Width;
+        var decodedToLogicalScaleY = logicalSourceSize.Height / (double)decodedSourceSize.Height;
+        var effectiveScaleX = canvasTransform.ScaleX * decodedToLogicalScaleX;
+        var effectiveScaleY = canvasTransform.ScaleY * decodedToLogicalScaleY;
+        var uniformScale = Math.Sqrt(effectiveScaleX * effectiveScaleY);
         var desiredPixelScale = uniformScale * canvasDisplayScale;
         var zoomFactor = Math.Clamp(desiredPixelScale, 1d / 1_048_576, 1_048_576);
         var displayedWidth = Math.Max(
@@ -1012,8 +1081,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             canvasTransform.OffsetX * canvasDisplayScale / displayedWidth,
             canvasTransform.OffsetY * canvasDisplayScale / displayedHeight,
             canvasTransform.RotationDegrees,
-            canvasTransform.ScaleX / uniformScale,
-            canvasTransform.ScaleY / uniformScale);
+            effectiveScaleX / uniformScale,
+            effectiveScaleY / uniformScale);
     }
 
     private void SubscribeToTopLevelScaling()
@@ -1254,7 +1323,12 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         _ = sender;
         _ = eventArgs;
-        if (_positionPollInProgress || IsPaused || !_mediaLoaded || _engine is null)
+        if (_positionPollInProgress ||
+            IsPaused ||
+            IsSeekPending ||
+            _seekLoopRunning ||
+            !_mediaLoaded ||
+            _engine is null)
         {
             return;
         }
@@ -1263,6 +1337,10 @@ public sealed class MpvVideoView : OpenGlControlBase
         try
         {
             var snapshot = await _engine.GetPlaybackSnapshotAsync(_lifetimeCancellation.Token);
+            if (IsSeekPending || _seekLoopRunning)
+            {
+                return;
+            }
             UpdateDecoderStatus(snapshot.HardwareDecoder);
             if (snapshot.Position is not null)
             {
@@ -1401,6 +1479,40 @@ public sealed class MpvVideoView : OpenGlControlBase
         return Math.Abs(actual.Value.TotalSeconds - target.TotalSeconds) <= tolerance;
     }
 
+    internal static bool IsAdvancingSeekPositionReady(
+        MediaTime? actual,
+        MediaTime target,
+        double frameStepSeconds,
+        TimeSpan elapsed)
+    {
+        if (actual is null)
+        {
+            return false;
+        }
+
+        var tolerance = double.IsFinite(frameStepSeconds) && frameStepSeconds > 0
+            ? Math.Max(0.05, frameStepSeconds * 2)
+            : 0.05;
+        var allowedAdvance = Math.Max(tolerance, Math.Max(0, elapsed.TotalSeconds) + 0.25);
+        var seconds = actual.Value.TotalSeconds;
+        return seconds >= target.TotalSeconds - tolerance &&
+               seconds <= target.TotalSeconds + allowedAdvance;
+    }
+
+    internal static bool ShouldShowSeekPlaceholder(bool isSeekPending, bool isPaused) =>
+        isSeekPending && isPaused;
+
+    private void SetSeekPending(bool value)
+    {
+        IsSeekPending = value;
+        UpdateSeekPlaceholderVisibility();
+    }
+
+    private void UpdateSeekPlaceholderVisibility()
+    {
+        IsSeekPlaceholderVisible = ShouldShowSeekPlaceholder(IsSeekPending, IsPaused);
+    }
+
     private void SetPositionFromPlayback(MediaTime position)
     {
         _updatingPositionFromPlayback = true;
@@ -1430,7 +1542,7 @@ public sealed class MpvVideoView : OpenGlControlBase
             {
                 _mediaLoaded = false;
                 _seekReadyToRevealRevision = -1;
-                IsSeekPending = false;
+                SetSeekPending(false);
                 IsPlaybackAvailable = false;
                 PlaybackStatus = message;
             });

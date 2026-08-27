@@ -16,6 +16,7 @@ using ClipEdit.App.Updates;
 using ClipEdit.Application.Media;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Preview;
+using DomainPixelSize = ClipEdit.Domain.Geometry.PixelSize;
 
 namespace ClipEdit.App.Views;
 
@@ -936,8 +937,9 @@ public sealed partial class MainWindow : Window
 
         var item = ViewModel?.ImportPreparedInternetMedia(
             imported,
-            prepared.PreviewVideoUri,
-            prepared.PreviewAudioUri);
+            prepared.Preview.VideoUri,
+            prepared.Preview.AudioUri,
+            new DomainPixelSize(prepared.Preview.VideoWidth, prepared.Preview.VideoHeight));
         if (item is null)
         {
             return;
@@ -1125,6 +1127,9 @@ public sealed partial class MainWindow : Window
         LivePreview.SetCurrentValue(MpvVideoView.PositionProperty, sourcePosition);
         LivePreview.SetCurrentValue(MpvVideoView.PlaybackRangesProperty, clip.PlaybackRanges);
         LivePreview.SetCurrentValue(MpvVideoView.SourceVideoSizeProperty, clip.VideoSize);
+        LivePreview.SetCurrentValue(
+            MpvVideoView.DecodedVideoSizeProperty,
+            clip.Source.PreviewVideoSize);
         LivePreview.SetCurrentValue(MpvVideoView.CanvasTransformProperty, clip.CanvasTransform);
     }
 

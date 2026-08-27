@@ -301,6 +301,47 @@ public sealed class MpvVideoViewTests
         Assert.False(view.IsInteractiveTransformActive);
     }
 
+    [Fact]
+    public void Playing_seek_accepts_forward_clock_progress_but_not_the_old_frame()
+    {
+        var target = new MediaTime(30, 1);
+
+        Assert.False(MpvVideoView.IsAdvancingSeekPositionReady(
+            new MediaTime(90, 1),
+            target,
+            frameStepSeconds: 1d / 30d,
+            TimeSpan.FromMilliseconds(100)));
+        Assert.True(MpvVideoView.IsAdvancingSeekPositionReady(
+            new MediaTime(303, 10),
+            target,
+            frameStepSeconds: 1d / 30d,
+            TimeSpan.FromMilliseconds(100)));
+    }
+
+    [Fact]
+    public void Cached_seek_placeholder_is_never_shown_over_playing_video()
+    {
+        Assert.True(MpvVideoView.ShouldShowSeekPlaceholder(isSeekPending: true, isPaused: true));
+        Assert.False(MpvVideoView.ShouldShowSeekPlaceholder(isSeekPending: true, isPaused: false));
+    }
+
+    [Fact]
+    public void Reduced_stream_raster_is_scaled_as_the_full_resolution_source()
+    {
+        var transform = MpvVideoView.CalculatePreviewVideoTransform(
+            new DomainPixelSize(640, 360),
+            new DomainPixelSize(1_920, 1_080),
+            new DomainPixelSize(1_920, 1_080),
+            ClipCanvasTransform.Identity,
+            new Size(960, 540));
+
+        Assert.Equal(1.5, transform.ZoomFactor, 6);
+        Assert.Equal(1, transform.ScaleX, 6);
+        Assert.Equal(1, transform.ScaleY, 6);
+        Assert.Equal(0, transform.PanX);
+        Assert.Equal(0, transform.PanY);
+    }
+
     [AvaloniaFact]
     public async Task Attached_view_without_media_does_not_initialize_preview_engine()
     {

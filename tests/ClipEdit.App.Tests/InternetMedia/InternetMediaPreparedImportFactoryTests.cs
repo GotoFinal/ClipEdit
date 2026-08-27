@@ -25,8 +25,11 @@ public sealed class InternetMediaPreparedImportFactoryTests
         var prepared = new InternetMediaPreparedImport(
             request,
             localPath,
-            new Uri("https://cdn.example.test/video.webm"),
-            new Uri("https://cdn.example.test/audio.webm"),
+            new InternetMediaPreviewInfo(
+                new Uri("https://cdn.example.test/video.webm"),
+                new Uri("https://cdn.example.test/audio.webm"),
+                1280,
+                720),
             720,
             null);
 
@@ -59,8 +62,11 @@ public sealed class InternetMediaPreparedImportFactoryTests
         var prepared = new InternetMediaPreparedImport(
             request,
             Path.GetFullPath(Path.Combine(Path.GetTempPath(), "media.mkv")),
-            new Uri("https://cdn.example.test/video.mp4"),
-            null,
+            new InternetMediaPreviewInfo(
+                new Uri("https://cdn.example.test/video.mp4"),
+                null,
+                1280,
+                720),
             720,
             null);
 

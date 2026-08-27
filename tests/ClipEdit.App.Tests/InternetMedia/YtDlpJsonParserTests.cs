@@ -5,6 +5,25 @@ namespace ClipEdit.App.Tests.InternetMedia;
 public sealed class YtDlpJsonParserTests
 {
     [Fact]
+    public void Parses_selected_preview_streams_with_the_decoded_video_raster()
+    {
+        var preview = YtDlpJsonParser.ParsePreview(
+            """
+            {
+              "requested_formats": [
+                { "url": "https://cdn.example.test/video.webm", "vcodec": "vp9", "acodec": "none", "width": 640, "height": 360 },
+                { "url": "https://cdn.example.test/audio.webm", "vcodec": "none", "acodec": "opus" }
+              ]
+            }
+            """);
+
+        Assert.Equal("https://cdn.example.test/video.webm", preview.VideoUri.AbsoluteUri);
+        Assert.Equal("https://cdn.example.test/audio.webm", preview.AudioUri?.AbsoluteUri);
+        Assert.Equal(640, preview.VideoWidth);
+        Assert.Equal(360, preview.VideoHeight);
+    }
+
+    [Fact]
     public void Parses_metadata_and_builds_distinct_quality_choices()
     {
         var info = YtDlpJsonParser.Parse(

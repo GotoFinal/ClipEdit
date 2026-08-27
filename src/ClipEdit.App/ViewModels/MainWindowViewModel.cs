@@ -1456,7 +1456,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public MediaItemViewModel? ImportPreparedInternetMedia(
         ImportedMedia media,
         Uri previewVideoUri,
-        Uri? previewAudioUri)
+        Uri? previewAudioUri,
+        PixelSize previewVideoSize)
     {
         ArgumentNullException.ThrowIfNull(media);
         ArgumentNullException.ThrowIfNull(previewVideoUri);
@@ -1473,7 +1474,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         _knownPaths.Add(fullPath);
         var item = new MediaItemViewModel(fullPath, displayName: media.DisplayName);
-        item.UsePreparedInternetMedia(media, previewVideoUri, previewAudioUri);
+        item.UsePreparedInternetMedia(media, previewVideoUri, previewAudioUri, previewVideoSize);
         MediaItems.Add(item);
         AddAudioTracks(item);
         AddInitialVideoClip(item);

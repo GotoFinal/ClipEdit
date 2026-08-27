@@ -85,6 +85,15 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     public Task LoadAsync(string sourcePath, CancellationToken cancellationToken) =>
         LoadAsync(PreviewMediaSource.LocalFile(sourcePath), cancellationToken);
 
+    public Task StopAsync(CancellationToken cancellationToken) =>
+        InvokeAsync(
+            client =>
+            {
+                client.Stop();
+                Volatile.Write(ref _state, (int)PreviewState.Idle);
+            },
+            cancellationToken);
+
     public Task SeekAsync(MediaTime position, CancellationToken cancellationToken) =>
         InvokeAsync(client => client.Seek(position, exact: true), cancellationToken);
 

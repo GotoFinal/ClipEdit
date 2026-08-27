@@ -14,6 +14,7 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     private string? _errorText;
     private string _previewSource;
     private string? _remotePreviewAudioSource;
+    private PixelSize? _remotePreviewVideoSize;
     private bool _isInternetDownloadPending;
     private double? _internetDownloadProgress;
     private bool _isProbing;
@@ -106,6 +107,7 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(IsExternalAudio));
                 OnPropertyChanged(nameof(IsHdrVideo));
                 OnPropertyChanged(nameof(VideoSize));
+                OnPropertyChanged(nameof(PreviewVideoSize));
                 OnPropertyChanged(nameof(FrameStepSeconds));
                 OnPropertyChanged(nameof(Summary));
                 OnPropertyChanged(nameof(Detail));
@@ -133,6 +135,8 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
 
     public PixelSize VideoSize =>
         Media?.Probe.VideoStreams.FirstOrDefault()?.OrientedSize ?? new PixelSize(1, 1);
+
+    public PixelSize PreviewVideoSize => _remotePreviewVideoSize ?? VideoSize;
 
     public CropRegion Crop
     {
@@ -521,10 +525,15 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     internal void UsePreparedInternetMedia(
         ImportedMedia media,
         Uri previewVideoUri,
-        Uri? previewAudioUri)
+        Uri? previewAudioUri,
+        PixelSize previewVideoSize)
     {
         ArgumentNullException.ThrowIfNull(media);
         ArgumentNullException.ThrowIfNull(previewVideoUri);
+        if (previewVideoSize.Width <= 0 || previewVideoSize.Height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(previewVideoSize));
+        }
         if (!string.Equals(
                 Path.GetFullPath(media.Probe.SourcePath),
                 Path.GetFullPath(SourcePath),
@@ -537,6 +546,8 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
         var video = Media.Probe.VideoStreams.First();
         Crop = CropRegion.FullFrame(video.OrientedSize);
         InitializeEditing(video);
+        _remotePreviewVideoSize = previewVideoSize;
+        OnPropertyChanged(nameof(PreviewVideoSize));
         PreviewSource = previewVideoUri.AbsoluteUri;
         RemotePreviewAudioSource = previewAudioUri?.AbsoluteUri;
         IsInternetDownloadPending = true;
@@ -567,6 +578,8 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
         }
 
         Media = localMedia;
+        _remotePreviewVideoSize = null;
+        OnPropertyChanged(nameof(PreviewVideoSize));
         PreviewSource = SourcePath;
         RemotePreviewAudioSource = null;
         IsInternetDownloadPending = false;

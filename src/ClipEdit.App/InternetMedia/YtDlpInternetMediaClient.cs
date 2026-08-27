@@ -122,17 +122,16 @@ internal sealed class YtDlpInternetMediaClient : IInternetMediaClient
                     previewMaximumHeight,
                     cancellationToken)
                 .ConfigureAwait(false)
-            : (request.Info.SourceUri, (Uri?)null);
+            : new InternetMediaPreviewInfo(request.Info.SourceUri, null, 1, 1);
         return new InternetMediaPreparedImport(
             request,
             _cache.GetExpectedCompletedPath(request),
-            previewLocations.Item1,
-            previewLocations.Item2,
+            previewLocations,
             previewMaximumHeight,
             completedPath);
     }
 
-    private async Task<(Uri Video, Uri? Audio)> ResolvePreviewLocationsAsync(
+    private async Task<InternetMediaPreviewInfo> ResolvePreviewLocationsAsync(
         string toolPath,
         Uri sourceUri,
         int previewMaximumHeight,
@@ -150,24 +149,7 @@ internal sealed class YtDlpInternetMediaClient : IInternetMediaClient
             throw CreateProcessException("Could not prepare the streaming preview", result.StandardError);
         }
 
-        var locations = result.StandardOutput
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(static value => Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-                                    uri.Scheme is "http" or "https" &&
-                                    uri.UserInfo.Length == 0
-                ? uri
-                : null)
-            .Where(static uri => uri is not null)
-            .Cast<Uri>()
-            .Take(3)
-            .ToArray();
-        return locations.Length switch
-        {
-            1 => (locations[0], null),
-            2 => (locations[0], locations[1]),
-            _ => throw new InternetMediaException(
-                "yt-dlp did not provide a usable streaming preview."),
-        };
+        return YtDlpJsonParser.ParsePreview(result.StandardOutput);
     }
 
     internal static bool TryParseProgress(string line, out InternetMediaDownloadProgress? progress)

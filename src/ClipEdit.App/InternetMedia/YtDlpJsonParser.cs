@@ -5,6 +5,46 @@ namespace ClipEdit.App.InternetMedia;
 
 internal static class YtDlpJsonParser
 {
+    public static InternetMediaPreviewInfo ParsePreview(string json)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(json);
+        try
+        {
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 64 });
+            var root = document.RootElement;
+            var formats = root.TryGetProperty("requested_formats", out var requestedFormats) &&
+                          requestedFormats.ValueKind == JsonValueKind.Array
+                ? requestedFormats.EnumerateArray().Where(static value => value.ValueKind == JsonValueKind.Object)
+                    .ToArray()
+                : [root];
+            var video = formats.FirstOrDefault(static format => HasCodec(format, "vcodec"));
+            if (video.ValueKind != JsonValueKind.Object ||
+                GetRemoteUri(video, "url") is not { } videoUri ||
+                GetPositiveInt(video, "width") is not { } width ||
+                GetPositiveInt(video, "height") is not { } height)
+            {
+                throw new InternetMediaException(
+                    "yt-dlp did not report a usable streaming-preview video raster.");
+            }
+
+            var audio = formats.FirstOrDefault(static format =>
+                HasCodec(format, "acodec") && !HasCodec(format, "vcodec"));
+            return new InternetMediaPreviewInfo(
+                videoUri,
+                audio.ValueKind == JsonValueKind.Object ? GetRemoteUri(audio, "url") : null,
+                width,
+                height);
+        }
+        catch (InternetMediaException)
+        {
+            throw;
+        }
+        catch (JsonException exception)
+        {
+            throw new InternetMediaException("yt-dlp returned invalid preview information.", exception);
+        }
+    }
+
     public static InternetMediaInfo Parse(Uri requestedUri, string json)
     {
         ArgumentNullException.ThrowIfNull(requestedUri);
@@ -144,6 +184,17 @@ internal static class YtDlpJsonParser
     private static string? GetString(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
+            : null;
+
+    private static bool HasCodec(JsonElement element, string name) =>
+        GetString(element, name) is { Length: > 0 } codec &&
+        !codec.Equals("none", StringComparison.OrdinalIgnoreCase);
+
+    private static Uri? GetRemoteUri(JsonElement element, string name) =>
+        Uri.TryCreate(GetString(element, name), UriKind.Absolute, out var uri) &&
+        uri.Scheme is "http" or "https" &&
+        uri.UserInfo.Length == 0
+            ? uri
             : null;
 
     private static int? GetPositiveInt(JsonElement element, string name)

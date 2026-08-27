@@ -12,7 +12,14 @@ public sealed class YtDlpInternetMediaClientTests
         {
             var runner = new RecordingRunner(new YtDlpProcessResult(
                 0,
-                "https://cdn.example.test/video.webm\nhttps://cdn.example.test/audio.webm\n",
+                """
+                {
+                  "requested_formats": [
+                    { "url": "https://cdn.example.test/video.webm", "vcodec": "vp9", "acodec": "none", "width": 1280, "height": 720 },
+                    { "url": "https://cdn.example.test/audio.webm", "vcodec": "none", "acodec": "opus" }
+                  ]
+                }
+                """,
                 string.Empty));
             var client = new YtDlpInternetMediaClient(
                 new StubToolProvider(),
@@ -24,10 +31,12 @@ public sealed class YtDlpInternetMediaClientTests
 
             var prepared = await client.PrepareImportAsync(request, 720, CancellationToken.None);
 
-            Assert.Equal("https://cdn.example.test/video.webm", prepared.PreviewVideoUri.AbsoluteUri);
-            Assert.Equal("https://cdn.example.test/audio.webm", prepared.PreviewAudioUri?.AbsoluteUri);
+            Assert.Equal("https://cdn.example.test/video.webm", prepared.Preview.VideoUri.AbsoluteUri);
+            Assert.Equal("https://cdn.example.test/audio.webm", prepared.Preview.AudioUri?.AbsoluteUri);
+            Assert.Equal(1280, prepared.Preview.VideoWidth);
+            Assert.Equal(720, prepared.Preview.VideoHeight);
             Assert.Null(prepared.CompletedLocalPath);
-            Assert.Contains("--get-url", runner.Arguments);
+            Assert.Contains("--dump-single-json", runner.Arguments);
             Assert.Contains("b[height<=720]/bv*[height<=720]+ba/b", runner.Arguments);
         }
         finally

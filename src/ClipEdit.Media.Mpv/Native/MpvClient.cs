@@ -125,6 +125,13 @@ internal sealed class MpvClient : IDisposable
         ("aid", "no"),
     ];
 
+    public void Stop()
+    {
+        _loadedExternalAudioSources = [];
+        _lastVideoTransform = null;
+        RunCommand("stop");
+    }
+
     public void Seek(MediaTime position, bool exact)
     {
         if (position < MediaTime.Zero)

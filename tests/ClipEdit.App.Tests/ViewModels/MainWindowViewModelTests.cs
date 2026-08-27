@@ -29,12 +29,14 @@ public sealed class MainWindowViewModelTests
         var item = viewModel.ImportPreparedInternetMedia(
             media,
             new Uri("https://cdn.example.test/video.webm"),
-            new Uri("https://cdn.example.test/audio.webm"));
+            new Uri("https://cdn.example.test/audio.webm"),
+            new PixelSize(640, 360));
 
         Assert.NotNull(item);
         Assert.True(item.IsInternetDownloadPending);
         Assert.Equal("https://cdn.example.test/video.webm", item.PreviewSource);
         Assert.Equal("https://cdn.example.test/audio.webm", item.RemotePreviewAudioSource);
+        Assert.Equal(new PixelSize(640, 360), item.PreviewVideoSize);
         Assert.True(viewModel.ShowTimeline);
         Assert.Single(viewModel.VideoClips);
         Assert.False(viewModel.CanExport);
@@ -44,6 +46,7 @@ public sealed class MainWindowViewModelTests
 
         Assert.False(item.IsInternetDownloadPending);
         Assert.Equal(localPath, item.PreviewSource);
+        Assert.Equal(new PixelSize(1920, 1080), item.PreviewVideoSize);
         Assert.True(viewModel.CanExport);
     }
 

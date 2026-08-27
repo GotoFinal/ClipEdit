@@ -11,6 +11,8 @@ public interface IPreviewEngine : IAsyncDisposable
     Task LoadAsync(string sourcePath, CancellationToken cancellationToken) =>
         LoadAsync(PreviewMediaSource.LocalFile(sourcePath), cancellationToken);
 
+    Task StopAsync(CancellationToken cancellationToken);
+
     Task SeekAsync(MediaTime position, CancellationToken cancellationToken);
 
     Task SeekFastAsync(MediaTime position, CancellationToken cancellationToken) =>

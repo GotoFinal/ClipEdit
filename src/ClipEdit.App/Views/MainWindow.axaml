@@ -1172,6 +1172,7 @@
                       PlaybackSpeed="{Binding SelectedVideoClip.PlaybackSpeed}"
                       FrameStepSeconds="{Binding SelectedMedia.FrameStepSeconds}"
                       Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
+                      DecodedVideoSize="{Binding SelectedMedia.PreviewVideoSize}"
                       SourceVideoSize="{Binding SelectedVideoClip.VideoSize}"
                       SourcePath="{Binding SelectedMedia.PreviewSource}" />
 
@@ -1181,7 +1182,7 @@
                       CanvasTransform="{Binding SelectedVideoClip.CanvasTransform}"
                       Image="{Binding PreviewImage}"
                       IsHitTestVisible="False"
-                      IsVisible="{Binding IsSeekPending, ElementName=LivePreview}"
+                      IsVisible="{Binding IsSeekPlaceholderVisible, ElementName=LivePreview}"
                       SourceSize="{Binding SelectedVideoClip.VideoSize}"
                       ZIndex="8" />
 

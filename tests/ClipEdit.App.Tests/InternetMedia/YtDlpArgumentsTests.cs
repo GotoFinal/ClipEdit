@@ -44,7 +44,8 @@ public sealed class YtDlpArgumentsTests
             new Uri("https://example.test/watch/1"),
             720);
 
-        Assert.Contains("--get-url", arguments);
+        Assert.Contains("--skip-download", arguments);
+        Assert.Contains("--dump-single-json", arguments);
         Assert.Equal("b[height<=720]/bv*[height<=720]+ba/b", ValueAfter(arguments, "--format"));
         Assert.Equal("https://example.test/watch/1", arguments[^1]);
     }

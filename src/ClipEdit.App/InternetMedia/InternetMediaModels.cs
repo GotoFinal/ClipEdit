@@ -106,11 +106,16 @@ internal sealed record InternetMediaDownloadProgress(
 
 internal sealed record InternetMediaDownloadResult(string LocalPath, InternetMediaDownloadRequest Request);
 
+internal sealed record InternetMediaPreviewInfo(
+    Uri VideoUri,
+    Uri? AudioUri,
+    int VideoWidth,
+    int VideoHeight);
+
 internal sealed record InternetMediaPreparedImport(
     InternetMediaDownloadRequest Request,
     string ExpectedLocalPath,
-    Uri PreviewVideoUri,
-    Uri? PreviewAudioUri,
+    InternetMediaPreviewInfo Preview,
     int PreviewMaximumHeight,
     string? CompletedLocalPath);
 
