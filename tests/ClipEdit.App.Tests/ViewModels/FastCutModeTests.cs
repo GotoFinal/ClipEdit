@@ -49,6 +49,28 @@ public sealed class FastCutModeTests
         Assert.Equal(4.8, viewModel.VideoClips[0].SourceEndSeconds, 6);
     }
 
+    [Fact]
+    public async Task Fast_mode_selects_chapters_on_keyframes_while_avoiding_small_boundary_overhangs()
+    {
+        var probe = new KeyframeProbe();
+        using var viewModel = new MainWindowViewModel(probe);
+        await viewModel.ImportFilesAsync([TestPath("chapters.mp4")]);
+        viewModel.IsFastCutMode = true;
+
+        Assert.True(viewModel.SelectSequenceChapter(viewModel.SequenceChapters[0]));
+        Assert.Equal(2, viewModel.SequenceSelectionStartSeconds, 6);
+        Assert.Equal(8, viewModel.SequenceSelectionEndSeconds, 6);
+
+        Assert.True(viewModel.SelectSequenceChapter(viewModel.SequenceChapters[1]));
+        Assert.Equal(4, viewModel.SequenceSelectionStartSeconds, 6);
+        Assert.Equal(6, viewModel.SequenceSelectionEndSeconds, 6);
+        Assert.Equal(4, viewModel.SequencePlayheadSeconds, 6);
+        Assert.Contains("on keyframes", viewModel.StatusText, StringComparison.Ordinal);
+
+        Assert.True(viewModel.SelectAdjacentSequenceChapter(-1));
+        Assert.Equal(2, viewModel.SequencePlayheadSeconds, 6);
+    }
+
     private static string TestPath(string fileName) => Path.Combine(Path.GetTempPath(), fileName);
 
     private sealed class KeyframeProbe : IMediaProbe, IKeyframeProbe
@@ -90,7 +112,15 @@ public sealed class FastCutModeTests
                     "bt709",
                     "bt709",
                     "bt709",
-                    "progressive"))));
+                    "progressive")),
+                [
+                    new MediaChapterInfo(
+                        "Enclosed",
+                        new MediaRange(new MediaTime(11, 5), new MediaTime(36, 5))),
+                    new MediaChapterInfo(
+                        "Close inner keyframes",
+                        new MediaRange(new MediaTime(33, 10), new MediaTime(34, 5))),
+                ]));
         }
 
         public Task<KeyframeIndex> ProbeKeyframesAsync(

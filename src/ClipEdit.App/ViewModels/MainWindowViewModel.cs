@@ -2143,12 +2143,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             return false;
         }
 
-        _sequencePlayhead = current.TimelineRange.Start;
-        _sequenceSelectionStart = current.TimelineRange.Start;
-        _sequenceSelectionEnd = current.TimelineRange.End;
+        var selectedRange = SnapChapterRangeIfEnabled(current);
+        _sequencePlayhead = selectedRange.Start;
+        _sequenceSelectionStart = selectedRange.Start;
+        _sequenceSelectionEnd = selectedRange.End;
         RaiseSequenceStateChanged();
         SyncSourcePreviewToSequenceTime(_sequencePlayhead, selectClip: false);
-        StatusText = $"Selected chapter: {current.Title}";
+        StatusText = selectedRange == current.TimelineRange
+            ? $"Selected chapter: {current.Title}"
+            : $"Selected chapter on keyframes: {current.Title}";
         return true;
     }
 
@@ -2161,8 +2164,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         var chapters = SequenceChapters;
         var target = direction > 0
-            ? chapters.FirstOrDefault(chapter => chapter.TimelineRange.Start > _sequencePlayhead)
-            : chapters.LastOrDefault(chapter => chapter.TimelineRange.Start < _sequencePlayhead);
+            ? chapters.FirstOrDefault(chapter => SnapChapterRangeIfEnabled(chapter).Start > _sequencePlayhead)
+            : chapters.LastOrDefault(chapter => SnapChapterRangeIfEnabled(chapter).Start < _sequencePlayhead);
         return target is not null && SelectSequenceChapter(target);
     }
 

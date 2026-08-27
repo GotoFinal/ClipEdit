@@ -1439,12 +1439,12 @@
                       </Button>
                     </StackPanel>
                   </StackPanel>
-                  <Grid x:Name="TimelineToolbar" Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="4">
+                  <Grid x:Name="TimelineToolbar" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="4">
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                       <TextBlock Classes="muted" FontSize="9" Text="{Binding SequenceTimelineViewportText}" />
                       <TextBlock Classes="muted" FontSize="9" Text="Drag selects · Ctrl+drag moves · drag clip edges to trim" />
                     </StackPanel>
-                    <ComboBox x:Name="TimelineChapterCombo" Grid.Column="1" Width="150" Height="24" Padding="7,0" AutomationProperties.Name="Video chapters" ItemsSource="{Binding SequenceChapters}" IsVisible="{Binding HasSequenceChapters}" PlaceholderText="Chapters" SelectionChanged="TimelineChapter_SelectionChanged">
+                    <ComboBox x:Name="TimelineChapterCombo" Grid.Column="1" MinWidth="150" Height="24" Padding="7,0" AutomationProperties.Name="Video chapters" ItemsSource="{Binding SequenceChapters}" IsVisible="{Binding HasSequenceChapters}" PlaceholderText="Chapters" SelectionChanged="TimelineChapter_SelectionChanged">
                       <ComboBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:SequenceChapterViewModel">
                           <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />

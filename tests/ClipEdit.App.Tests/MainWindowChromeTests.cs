@@ -403,13 +403,19 @@ public sealed class MainWindowChromeTests
         var snapping = window.FindControl<ToggleButton>("TimelineSnappingToggle");
         var freeMode = window.FindControl<ToggleButton>("TimelineFreeModeToggle");
         var chapters = window.FindControl<ComboBox>("TimelineChapterCombo");
+        var toolbar = window.FindControl<Grid>("TimelineToolbar");
 
         Assert.NotNull(laneLayout);
         Assert.NotNull(pointerMode);
         Assert.NotNull(snapping);
         Assert.NotNull(freeMode);
         Assert.NotNull(chapters);
+        Assert.NotNull(toolbar);
         Assert.Equal(new GridLength(24), laneLayout.RowDefinitions[0].Height);
+        Assert.True(toolbar.ColumnDefinitions[0].Width.IsAuto);
+        Assert.True(toolbar.ColumnDefinitions[1].Width.IsStar);
+        Assert.True(double.IsNaN(chapters.Width));
+        Assert.Equal(150, chapters.MinWidth);
 
         foreach (var toggle in new[] { pointerMode, snapping, freeMode })
         {

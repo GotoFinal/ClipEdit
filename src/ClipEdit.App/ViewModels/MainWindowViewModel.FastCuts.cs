@@ -8,6 +8,7 @@ namespace ClipEdit.App.ViewModels;
 
 public sealed partial class MainWindowViewModel
 {
+    private static readonly MediaTime ChapterInnerKeyframeTolerance = new(1, 1);
     private readonly Dictionary<Guid, CancellationTokenSource> _keyframeIndexCancellations = [];
     private IKeyframeProbe? _keyframeProbe;
     private bool _isFastCutMode;
@@ -176,6 +177,59 @@ public sealed partial class MainWindowViewModel
         {
             yield return clip.Model.SourceTimeToTimeline(sourceDuration);
         }
+    }
+
+    private MediaRange SnapChapterRangeIfEnabled(SequenceChapterViewModel chapter)
+    {
+        var chapterRange = chapter.TimelineRange;
+        if (!IsFastCutMode || !chapter.Clip.Source.IsKeyframeIndexReady)
+        {
+            return chapterRange;
+        }
+
+        var boundaries = GetTimelineCopyBoundaries(chapter.Clip)
+            .Where(boundary =>
+                boundary >= chapter.Clip.TimelineStart &&
+                boundary <= chapter.Clip.TimelineEnd)
+            .Distinct()
+            .Order()
+            .ToArray();
+        if (boundaries.Length == 0)
+        {
+            return chapterRange;
+        }
+
+        var enclosingStartIndex = Array.FindLastIndex(
+            boundaries,
+            boundary => boundary <= chapterRange.Start);
+        var enclosingEndIndex = Array.FindIndex(
+            boundaries,
+            boundary => boundary >= chapterRange.End);
+        var innerStartIndex = Array.FindIndex(
+            boundaries,
+            boundary => boundary >= chapterRange.Start);
+        var innerEndIndex = Array.FindLastIndex(
+            boundaries,
+            boundary => boundary <= chapterRange.End);
+        var enclosingStart = enclosingStartIndex >= 0 ? boundaries[enclosingStartIndex] : (MediaTime?)null;
+        var enclosingEnd = enclosingEndIndex >= 0 ? boundaries[enclosingEndIndex] : (MediaTime?)null;
+        var innerStart = innerStartIndex >= 0 ? boundaries[innerStartIndex] : (MediaTime?)null;
+        var innerEnd = innerEndIndex >= 0 ? boundaries[innerEndIndex] : (MediaTime?)null;
+
+        var selectedStart = innerStart is { } closeStart &&
+                            closeStart > chapterRange.Start &&
+                            closeStart - chapterRange.Start < ChapterInnerKeyframeTolerance
+            ? closeStart
+            : enclosingStart ?? innerStart ?? chapterRange.Start;
+        var selectedEnd = innerEnd is { } closeEnd &&
+                          closeEnd < chapterRange.End &&
+                          chapterRange.End - closeEnd < ChapterInnerKeyframeTolerance
+            ? closeEnd
+            : enclosingEnd ?? innerEnd ?? chapterRange.End;
+
+        return selectedEnd > selectedStart
+            ? new MediaRange(selectedStart, selectedEnd)
+            : chapterRange;
     }
 
     private static MediaTime Absolute(MediaTime value) => value < MediaTime.Zero ? -value : value;
