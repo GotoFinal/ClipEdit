@@ -662,6 +662,38 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Mark_in_replaces_an_obsolete_out_point_with_the_sequence_end()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "mark-in.mkv")]);
+        viewModel.SequenceSelectionStartSeconds = 10;
+        viewModel.SequenceSelectionEndSeconds = 20;
+        viewModel.SequencePlayheadSeconds = 30;
+
+        viewModel.MarkSequenceSelectionStart();
+
+        Assert.Equal(30, viewModel.SequenceSelectionStartSeconds);
+        Assert.Equal(60, viewModel.SequenceSelectionEndSeconds);
+        Assert.True(viewModel.HasSequenceSelection);
+    }
+
+    [Fact]
+    public async Task Mark_out_replaces_an_obsolete_in_point_with_the_sequence_start()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "mark-out.mkv")]);
+        viewModel.SequenceSelectionStartSeconds = 30;
+        viewModel.SequenceSelectionEndSeconds = 40;
+        viewModel.SequencePlayheadSeconds = 20;
+
+        viewModel.MarkSequenceSelectionEnd();
+
+        Assert.Equal(0, viewModel.SequenceSelectionStartSeconds);
+        Assert.Equal(20, viewModel.SequenceSelectionEndSeconds);
+        Assert.True(viewModel.HasSequenceSelection);
+    }
+
+    [Fact]
     public async Task Split_selection_makes_the_range_a_selected_middle_clip_and_is_undoable()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());

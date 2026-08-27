@@ -1827,9 +1827,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public void MarkSequenceSelectionStart()
     {
         _sequenceSelectionStart = SnapTimelineCutIfEnabled(_sequencePlayhead);
-        if (_sequenceSelectionEnd < _sequenceSelectionStart)
+        if (_sequenceSelectionEnd <= _sequenceSelectionStart)
         {
-            _sequenceSelectionEnd = _sequenceSelectionStart;
+            _sequenceSelectionEnd = SequenceTimeFromSeconds(SequenceDurationSeconds);
         }
 
         OnPropertyChanged(nameof(SequenceSelectionStartSeconds));
@@ -1840,9 +1840,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public void MarkSequenceSelectionEnd()
     {
         _sequenceSelectionEnd = SnapTimelineCutIfEnabled(_sequencePlayhead);
-        if (_sequenceSelectionStart > _sequenceSelectionEnd)
+        if (_sequenceSelectionStart >= _sequenceSelectionEnd)
         {
-            _sequenceSelectionStart = _sequenceSelectionEnd;
+            _sequenceSelectionStart = MediaTime.Zero;
         }
 
         OnPropertyChanged(nameof(SequenceSelectionStartSeconds));

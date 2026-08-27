@@ -424,7 +424,7 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
-    public void Space_pauses_playback_but_does_not_steal_text_entry()
+    public void Space_always_toggles_playback_even_when_text_input_has_focus()
     {
         var window = new MainWindow();
         var preview = window.FindControl<MpvVideoView>("LivePreview");
@@ -441,7 +441,7 @@ public sealed class MainWindowChromeTests
         preview.IsPaused = false;
         textBox.Focus();
         window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
-        Assert.False(preview.IsPaused);
+        Assert.True(preview.IsPaused);
 
         window.Close();
     }

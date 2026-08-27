@@ -524,8 +524,7 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         if (eventArgs.Key == Key.Space &&
-            eventArgs.KeyModifiers == KeyModifiers.None &&
-            !IsEditingControlSource(eventArgs.Source))
+            eventArgs.KeyModifiers == KeyModifiers.None)
         {
             eventArgs.Handled = true;
             await TogglePlaybackAsync();
