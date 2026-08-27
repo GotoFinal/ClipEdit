@@ -681,6 +681,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
             OnPropertyChanged(nameof(CanMoveSelectedVideoRight));
             OnPropertyChanged(nameof(SelectedClipPlaybackSpeedPercent));
+            OnPropertyChanged(nameof(SequenceChapters));
+            OnPropertyChanged(nameof(HasSequenceChapters));
             RaiseExportStateChanged();
         }
     }
@@ -859,6 +861,42 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
          _sequenceSelectionEnd < SequenceTimeFromSeconds(SequenceDurationSeconds));
 
     public bool CanSplitSequenceSelection => FindClipContainingSequenceSelection() is not null;
+
+    public IReadOnlyList<SequenceChapterViewModel> SequenceChapters
+    {
+        get
+        {
+            if (SelectedVideoClip is not { } clip ||
+                clip.Source.Media?.Probe.Chapters.IsDefaultOrEmpty != false)
+            {
+                return [];
+            }
+
+            var chapters = new List<SequenceChapterViewModel>();
+            foreach (var chapter in clip.Source.Media.Probe.Chapters)
+            {
+                var sourceStart = Max(chapter.Range.Start, clip.Model.SourceRange.Start);
+                var sourceEnd = Min(chapter.Range.End, clip.Model.SourceRange.End);
+                if (sourceEnd <= sourceStart)
+                {
+                    continue;
+                }
+
+                var timelineRange = new MediaRange(
+                    clip.Model.SourceTimeToTimeline(sourceStart),
+                    clip.Model.SourceTimeToTimeline(sourceEnd));
+                chapters.Add(new SequenceChapterViewModel(
+                    clip,
+                    chapter.Title,
+                    timelineRange,
+                    $"{FormatSequenceTimestamp(timelineRange.Start)} · {chapter.Title}"));
+            }
+
+            return chapters;
+        }
+    }
+
+    public bool HasSequenceChapters => SequenceChapters.Count > 0;
 
     public bool CanDeleteSelectedVideoClip => SelectedVideoClip is not null && !IsBusy && !IsExporting;
 
@@ -1958,6 +1996,39 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         MarkProjectDirty();
         StartSequenceTimelineAnalysis(debounce: false);
         return true;
+    }
+
+    public bool SelectSequenceChapter(SequenceChapterViewModel chapter)
+    {
+        ArgumentNullException.ThrowIfNull(chapter);
+        var current = SequenceChapters.FirstOrDefault(candidate =>
+            candidate.Clip.Id == chapter.Clip.Id && candidate.TimelineRange == chapter.TimelineRange);
+        if (current is null)
+        {
+            return false;
+        }
+
+        _sequencePlayhead = current.TimelineRange.Start;
+        _sequenceSelectionStart = current.TimelineRange.Start;
+        _sequenceSelectionEnd = current.TimelineRange.End;
+        RaiseSequenceStateChanged();
+        SyncSourcePreviewToSequenceTime(_sequencePlayhead, selectClip: false);
+        StatusText = $"Selected chapter: {current.Title}";
+        return true;
+    }
+
+    public bool SelectAdjacentSequenceChapter(int direction)
+    {
+        if (direction == 0)
+        {
+            return false;
+        }
+
+        var chapters = SequenceChapters;
+        var target = direction > 0
+            ? chapters.FirstOrDefault(chapter => chapter.TimelineRange.Start > _sequencePlayhead)
+            : chapters.LastOrDefault(chapter => chapter.TimelineRange.Start < _sequencePlayhead);
+        return target is not null && SelectSequenceChapter(target);
     }
 
     public bool DeleteSelectedVideoClip()
@@ -3180,6 +3251,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanRotateCanvas));
         OnPropertyChanged(nameof(CanMoveSelectedVideoLeft));
         OnPropertyChanged(nameof(CanMoveSelectedVideoRight));
+        OnPropertyChanged(nameof(SequenceChapters));
+        OnPropertyChanged(nameof(HasSequenceChapters));
         RaiseFastCutStateChanged();
         RaiseRecoveryStateChanged();
         RaiseSequenceStateChanged();
@@ -3255,6 +3328,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             nameof(MediaItemViewModel.SelectionEnd))
         {
             RaiseExportStateChanged();
+        }
+
+        if (eventArgs.PropertyName == nameof(MediaItemViewModel.Media))
+        {
+            OnPropertyChanged(nameof(SequenceChapters));
+            OnPropertyChanged(nameof(HasSequenceChapters));
         }
 
     }

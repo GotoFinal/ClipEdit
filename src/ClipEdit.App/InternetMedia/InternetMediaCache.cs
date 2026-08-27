@@ -5,6 +5,7 @@ namespace ClipEdit.App.InternetMedia;
 
 internal sealed class InternetMediaCache
 {
+    private const string CacheFormatVersion = "2-embedded-chapters";
     private readonly string _cacheRoot;
 
     public InternetMediaCache(string cacheRoot)
@@ -15,7 +16,8 @@ internal sealed class InternetMediaCache
     public string GetEntryDirectory(InternetMediaDownloadRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var identity = $"{request.Info.SourceUri.AbsoluteUri}\n" +
+        var identity = $"{CacheFormatVersion}\n" +
+                       $"{request.Info.SourceUri.AbsoluteUri}\n" +
                        $"{request.VideoQuality.MaximumHeight?.ToString() ?? "best"}\n" +
                        $"{request.AudioQuality.MaximumBitrateKbps?.ToString() ?? "best"}";
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))

@@ -33,6 +33,7 @@ internal static class FfprobeJsonParser
             var root = document.RootElement;
             var format = root.GetProperty("format");
             var streams = ParseStreams(root);
+            var chapters = ParseChapters(root);
 
             return new MediaProbeResult(
                 sourcePath,
@@ -42,7 +43,8 @@ internal static class FfprobeJsonParser
                 ParseSeconds(GetOptionalString(format, "duration")),
                 ParseNullableLong(format, "size"),
                 ParseNullableLong(format, "bit_rate"),
-                streams);
+                streams,
+                chapters);
         }
         catch (MediaProbeException)
         {
@@ -60,6 +62,42 @@ internal static class FfprobeJsonParser
                 "ffprobe returned incomplete or invalid JSON metadata.",
                 exception);
         }
+    }
+
+    private static ImmutableArray<MediaChapterInfo> ParseChapters(JsonElement root)
+    {
+        if (!root.TryGetProperty("chapters", out var chaptersElement) ||
+            chaptersElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var chapters = ImmutableArray.CreateBuilder<MediaChapterInfo>();
+        foreach (var chapter in chaptersElement.EnumerateArray().Take(10_000))
+        {
+            if (chapter.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var timeBase = ParsePositiveTimeBase(GetOptionalString(chapter, "time_base"));
+            var start = ParseStreamTime(chapter, "start", "start_time", timeBase);
+            var end = ParseStreamTime(chapter, "end", "end_time", timeBase);
+            if (start is null || end is null || start < MediaTime.Zero || end <= start)
+            {
+                continue;
+            }
+
+            var title = GetNestedOptionalString(chapter, "tags", "title");
+            chapters.Add(new MediaChapterInfo(
+                string.IsNullOrWhiteSpace(title) ? $"Chapter {chapters.Count + 1}" : title,
+                new MediaRange(start.Value, end.Value)));
+        }
+
+        return chapters
+            .OrderBy(static chapter => chapter.Range.Start)
+            .ThenBy(static chapter => chapter.Range.End)
+            .ToImmutableArray();
     }
 
     private static ImmutableArray<MediaStreamInfo> ParseStreams(JsonElement root)

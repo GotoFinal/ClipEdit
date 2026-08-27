@@ -12,7 +12,9 @@ internal static class FfprobeArguments
         "sample_rate,channels,channel_layout:" +
         "stream_tags=language,title,DURATION,rotate:" +
         "stream_disposition=default,forced,attached_pic:" +
-        "stream_side_data=rotation";
+        "stream_side_data=rotation:" +
+        "chapter=id,time_base,start,start_time,end,end_time:" +
+        "chapter_tags=title";
 
     public static IReadOnlyList<string> Create(string sourcePath)
     {
@@ -27,6 +29,7 @@ internal static class FfprobeArguments
             "sha256",
             "-show_format",
             "-show_streams",
+            "-show_chapters",
             "-show_entries",
             Entries,
             "--",

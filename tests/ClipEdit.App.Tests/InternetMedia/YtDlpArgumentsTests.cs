@@ -49,6 +49,7 @@ public sealed class YtDlpArgumentsTests
 
         Assert.Contains("--continue", arguments);
         Assert.Contains("--part", arguments);
+        Assert.Contains("--embed-chapters", arguments);
         Assert.Equal("6", ValueAfter(arguments, "--concurrent-fragments"));
         Assert.Equal(Path.GetFullPath(ffmpeg), ValueAfter(arguments, "--ffmpeg-location"));
         Assert.Equal(Path.GetFullPath(output), ValueAfter(arguments, "--paths"));

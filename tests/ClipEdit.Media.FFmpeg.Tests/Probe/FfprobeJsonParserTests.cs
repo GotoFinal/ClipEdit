@@ -75,6 +75,22 @@ public sealed class FfprobeJsonParserTests
               "tags": {}
             }
           ],
+          "chapters": [
+            {
+              "id": 0,
+              "time_base": "1/1000",
+              "start": 0,
+              "end": 12500,
+              "tags": { "title": "Opening" }
+            },
+            {
+              "id": 1,
+              "time_base": "1/1000",
+              "start": 12500,
+              "end": 42000,
+              "tags": {}
+            }
+          ],
           "format": {
             "format_name": "matroska,webm",
             "format_long_name": "Matroska / WebM",
@@ -103,6 +119,10 @@ public sealed class FfprobeJsonParserTests
         var audio = Assert.Single(result.AudioStreams);
         Assert.Equal("mp4a", audio.CodecTag);
         Assert.Equal("SHA256:audio", audio.CodecExtradataHash);
+        Assert.Equal(2, result.Chapters.Length);
+        Assert.Equal("Opening", result.Chapters[0].Title);
+        Assert.Equal(new MediaRange(MediaTime.Zero, new MediaTime(25, 2)), result.Chapters[0].Range);
+        Assert.Equal("Chapter 2", result.Chapters[1].Title);
     }
 
     [Fact]

@@ -53,6 +53,7 @@ internal static class YtDlpArguments
             CreateFormatSelector(request.VideoQuality.MaximumHeight, request.AudioQuality.MaximumBitrateKbps),
             "--merge-output-format",
             "mkv",
+            "--embed-chapters",
             "--paths",
             Path.GetFullPath(outputDirectory),
             "--output",

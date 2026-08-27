@@ -13,7 +13,8 @@ public sealed record MediaProbeResult
         MediaTime? duration,
         long? fileSizeBytes,
         long? bitRateBitsPerSecond,
-        ImmutableArray<MediaStreamInfo> streams)
+        ImmutableArray<MediaStreamInfo> streams,
+        ImmutableArray<MediaChapterInfo> chapters = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(formatName);
@@ -26,6 +27,7 @@ public sealed record MediaProbeResult
         FileSizeBytes = fileSizeBytes;
         BitRateBitsPerSecond = bitRateBitsPerSecond;
         Streams = streams.IsDefault ? [] : streams;
+        Chapters = chapters.IsDefault ? [] : chapters;
     }
 
     public string SourcePath { get; }
@@ -43,6 +45,8 @@ public sealed record MediaProbeResult
     public long? BitRateBitsPerSecond { get; }
 
     public ImmutableArray<MediaStreamInfo> Streams { get; }
+
+    public ImmutableArray<MediaChapterInfo> Chapters { get; }
 
     public IEnumerable<VideoStreamInfo> VideoStreams => Streams.OfType<VideoStreamInfo>();
 

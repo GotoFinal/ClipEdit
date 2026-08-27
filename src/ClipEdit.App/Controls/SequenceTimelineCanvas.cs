@@ -20,6 +20,9 @@ public sealed class SequenceTimelineCanvas : Control
     public static readonly StyledProperty<VideoClipViewModel?> SelectedClipProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, VideoClipViewModel?>(nameof(SelectedClip));
 
+    public static readonly StyledProperty<IReadOnlyList<SequenceChapterViewModel>?> ChaptersProperty =
+        AvaloniaProperty.Register<SequenceTimelineCanvas, IReadOnlyList<SequenceChapterViewModel>?>(nameof(Chapters));
+
     public static readonly StyledProperty<double> DurationProperty =
         AvaloniaProperty.Register<SequenceTimelineCanvas, double>(nameof(Duration));
 
@@ -70,6 +73,8 @@ public sealed class SequenceTimelineCanvas : Control
     private static readonly IPen SelectionPen = new Pen(0xFFE8DEFF, 2.5).ToImmutable();
     private static readonly IPen PlayheadPen = new Pen(0xFFFF6D8A, 2).ToImmutable();
     private static readonly IPen HoverPen = new Pen(0xFF9DE7FF, 1).ToImmutable();
+    private static readonly IPen ChapterPen = new Pen(0xFFFFC857, 1).ToImmutable();
+    private static readonly IBrush ChapterBrush = new ImmutableSolidColorBrush(0xFFFFC857);
     private const double TrackTop = 28;
     private const double EdgeHitWidth = 14;
     private const double SelectionDragThreshold = 3;
@@ -92,6 +97,7 @@ public sealed class SequenceTimelineCanvas : Control
         AffectsRender<SequenceTimelineCanvas>(
             ClipsProperty,
             SelectedClipProperty,
+            ChaptersProperty,
             DurationProperty,
             PlayheadProperty,
             SelectionStartProperty,
@@ -136,6 +142,12 @@ public sealed class SequenceTimelineCanvas : Control
     {
         get => GetValue(SelectedClipProperty);
         set => SetValue(SelectedClipProperty, value);
+    }
+
+    public IReadOnlyList<SequenceChapterViewModel>? Chapters
+    {
+        get => GetValue(ChaptersProperty);
+        set => SetValue(ChaptersProperty, value);
     }
 
     public double Duration
@@ -224,6 +236,8 @@ public sealed class SequenceTimelineCanvas : Control
         {
             DrawClip(context, clip);
         }
+
+        DrawChapterMarkers(context);
 
         DrawSelection(context);
 
@@ -863,6 +877,22 @@ public sealed class SequenceTimelineCanvas : Control
         if (duration is { } sourceDuration && clip.Model.AvailableRange.End == sourceDuration)
         {
             yield return clip.Model.SourceTimeToTimeline(clip.Model.AvailableRange.End).TotalSeconds;
+        }
+    }
+
+    private void DrawChapterMarkers(DrawingContext context)
+    {
+        foreach (var chapter in Chapters ?? [])
+        {
+            var time = chapter.TimelineRange.Start.TotalSeconds;
+            if (!IsVisibleTime(time))
+            {
+                continue;
+            }
+
+            var x = TimeToX(time);
+            context.DrawLine(ChapterPen, new Point(x, TrackTop - 7), new Point(x, Bounds.Height));
+            context.FillRectangle(ChapterBrush, new Rect(x - 2, TrackTop - 8, 4, 8), 1);
         }
     }
 

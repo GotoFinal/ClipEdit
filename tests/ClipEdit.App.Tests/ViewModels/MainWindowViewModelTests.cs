@@ -653,6 +653,24 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Selecting_a_source_chapter_selects_its_timeline_range_and_moves_the_playhead()
+    {
+        var viewModel = new MainWindowViewModel(new ChapterProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "chapters.mkv")]);
+
+        Assert.Equal(2, viewModel.SequenceChapters.Count);
+        Assert.True(viewModel.HasSequenceChapters);
+        Assert.True(viewModel.SelectSequenceChapter(viewModel.SequenceChapters[1]));
+
+        Assert.Equal(20, viewModel.SequencePlayheadSeconds);
+        Assert.Equal(20, viewModel.SequenceSelectionStartSeconds);
+        Assert.Equal(35, viewModel.SequenceSelectionEndSeconds);
+        Assert.Contains("Second", viewModel.StatusText, StringComparison.Ordinal);
+        Assert.True(viewModel.SelectAdjacentSequenceChapter(-1));
+        Assert.Equal(0, viewModel.SequencePlayheadSeconds);
+    }
+
+    [Fact]
     public async Task Undo_and_redo_restore_keep_selection_while_preserving_other_clips()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
@@ -2033,6 +2051,30 @@ public sealed class MainWindowViewModelTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(CreateCompatibleCopyProbe(sourcePath));
+        }
+    }
+
+    private sealed class ChapterProbe : IMediaProbe
+    {
+        public Task<MediaProbeResult> ProbeAsync(
+            string sourcePath,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var probe = CreateVideoProbe(sourcePath);
+            return Task.FromResult(new MediaProbeResult(
+                probe.SourcePath,
+                probe.FormatName,
+                probe.FormatLongName,
+                probe.StartTime,
+                probe.Duration,
+                probe.FileSizeBytes,
+                probe.BitRateBitsPerSecond,
+                probe.Streams,
+                [
+                    new MediaChapterInfo("First", new MediaRange(MediaTime.Zero, new MediaTime(20, 1))),
+                    new MediaChapterInfo("Second", new MediaRange(new MediaTime(20, 1), new MediaTime(35, 1))),
+                ]));
         }
     }
 

@@ -526,6 +526,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (eventArgs.Key is Key.PageUp or Key.PageDown &&
+            eventArgs.KeyModifiers == KeyModifiers.None &&
+            !IsEditingControlSource(eventArgs.Source) &&
+            ViewModel?.SelectAdjacentSequenceChapter(eventArgs.Key == Key.PageDown ? 1 : -1) == true)
+        {
+            eventArgs.Handled = true;
+            return;
+        }
+
         if (!eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control) ||
             eventArgs.KeyModifiers.HasFlag(KeyModifiers.Alt))
         {
@@ -1165,6 +1174,15 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         ViewModel?.FitSequenceTimeline();
+    }
+
+    private void TimelineChapter_SelectionChanged(object? sender, SelectionChangedEventArgs eventArgs)
+    {
+        _ = eventArgs;
+        if (sender is ComboBox { SelectedItem: SequenceChapterViewModel chapter })
+        {
+            ViewModel?.SelectSequenceChapter(chapter);
+        }
     }
 
     private void SequenceTimeline_PointerMoved(object? sender, PointerEventArgs eventArgs)

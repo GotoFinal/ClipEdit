@@ -15,5 +15,7 @@ public sealed class FfprobeArgumentsTests
         Assert.Equal(sourcePath, arguments[^1]);
         Assert.DoesNotContain($"\"{sourcePath}\"", arguments);
         Assert.Equal("sha256", arguments[arguments.ToList().IndexOf("-show_data_hash") + 1]);
+        Assert.Contains("-show_chapters", arguments);
+        Assert.Contains("chapter_tags=title", arguments[arguments.ToList().IndexOf("-show_entries") + 1]);
     }
 }
