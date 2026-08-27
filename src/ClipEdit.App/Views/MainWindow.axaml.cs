@@ -517,6 +517,15 @@ public sealed partial class MainWindow : Window
     private async void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
     {
         _ = sender;
+        if (eventArgs.Key == Key.Space &&
+            eventArgs.KeyModifiers == KeyModifiers.None &&
+            !IsEditingControlSource(eventArgs.Source))
+        {
+            eventArgs.Handled = true;
+            await TogglePlaybackAsync();
+            return;
+        }
+
         if (!eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control) ||
             eventArgs.KeyModifiers.HasFlag(KeyModifiers.Alt))
         {
@@ -878,6 +887,18 @@ public sealed partial class MainWindow : Window
             ancestor is TextBox or NumericUpDown or SequenceTimelineCanvas or SourceRangeCanvas);
     }
 
+    private static bool IsEditingControlSource(object? source)
+    {
+        static bool IsEditingControl(object? candidate) =>
+            candidate is TextBox or NumericUpDown or ComboBox or MenuItem or Button or ToggleButton or Slider;
+
+        if (IsEditingControl(source))
+        {
+            return true;
+        }
+        return source is Visual visual && visual.GetVisualAncestors().Any(IsEditingControl);
+    }
+
     private void GoToStart_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
@@ -892,6 +913,11 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
+        await TogglePlaybackAsync();
+    }
+
+    private async Task TogglePlaybackAsync()
+    {
         if (LivePreview.IsPaused && ViewModel?.PrepareSequencePlayback() is { } sourcePosition)
         {
             SynchronizeLivePreviewToSelectedClip(sourcePosition);
@@ -1159,6 +1185,13 @@ public sealed partial class MainWindow : Window
         ViewModel?.SplitSelectedVideoClip();
     }
 
+    private void SplitSelection_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SplitSequenceSelection();
+    }
+
     private void DeleteSelectedClip_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
@@ -1185,6 +1218,13 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = eventArgs;
         ViewModel?.SplitSelectedVideoClip();
+    }
+
+    private void SequenceTimeline_SplitSelectionRequested(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.SplitSequenceSelection();
     }
 
     private void SequenceTimeline_MoveLeftRequested(object? sender, EventArgs eventArgs)

@@ -858,6 +858,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         (_sequenceSelectionStart > MediaTime.Zero ||
          _sequenceSelectionEnd < SequenceTimeFromSeconds(SequenceDurationSeconds));
 
+    public bool CanSplitSequenceSelection => FindClipContainingSequenceSelection() is not null;
+
     public bool CanDeleteSelectedVideoClip => SelectedVideoClip is not null && !IsBusy && !IsExporting;
 
     public bool CanSplitSelectedVideoClip =>
@@ -1900,6 +1902,59 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SequencePlayheadText));
         CollapseSequenceSelection(splitTime);
         StatusText = $"Split {clip.DisplayName} at {SequencePlayheadText}";
+        MarkProjectDirty();
+        StartSequenceTimelineAnalysis(debounce: false);
+        return true;
+    }
+
+    public bool SplitSequenceSelection()
+    {
+        var clip = FindClipContainingSequenceSelection();
+        if (clip is null)
+        {
+            return false;
+        }
+
+        var selection = NormalizedSequenceSelection();
+        var splitStart = SnapTimelineCutIfEnabled(selection.Start, clip);
+        var splitEnd = SnapTimelineCutIfEnabled(selection.End, clip);
+        if (splitStart < clip.TimelineStart || splitEnd > clip.TimelineEnd || splitEnd <= splitStart)
+        {
+            return false;
+        }
+
+        var index = VideoClips.IndexOf(clip);
+        var parts = new List<VideoClipViewModel>(3);
+        var middleModel = clip.Model;
+        if (splitStart > clip.TimelineStart)
+        {
+            var sourceStart = clip.Model.TimelineTimeToSource(splitStart);
+            var (left, middle) = middleModel.Split(sourceStart, Guid.NewGuid());
+            parts.Add(clip.CreateSibling(left));
+            middleModel = middle;
+        }
+
+        VideoClipViewModel? rightPart = null;
+        if (splitEnd < clip.TimelineEnd)
+        {
+            var sourceEnd = clip.Model.TimelineTimeToSource(splitEnd);
+            var (middle, right) = middleModel.Split(sourceEnd, Guid.NewGuid());
+            middleModel = middle;
+            rightPart = clip.CreateSibling(right);
+        }
+
+        parts.Add(clip.CreateSibling(middleModel));
+        if (rightPart is not null)
+        {
+            parts.Add(rightPart);
+        }
+
+        var replacements = VideoClips.ToList();
+        replacements.RemoveAt(index);
+        replacements.InsertRange(index, parts);
+        ReplaceVideoClips(replacements, middleModel.Id);
+        CollapseSequenceSelection(middleModel.TimelineStart);
+        StatusText = $"Made {FormatSequenceTimestamp(middleModel.Duration)} selection its own clip";
         MarkProjectDirty();
         StartSequenceTimelineAnalysis(debounce: false);
         return true;
@@ -3711,6 +3766,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                (timelineTime == VideoClips[^1].TimelineEnd ? VideoClips[^1] : null);
     }
 
+    private VideoClipViewModel? FindClipContainingSequenceSelection()
+    {
+        var selection = NormalizedSequenceSelection();
+        return selection.IsEmpty
+            ? null
+            : VideoClips.FirstOrDefault(clip =>
+                selection.Start >= clip.TimelineStart && selection.End <= clip.TimelineEnd);
+    }
+
     private void SyncSourcePreviewToSequenceTime(MediaTime timelineTime, bool selectClip)
     {
         var clip = FindClipAtTimelineTime(timelineTime);
@@ -3791,6 +3855,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasSequenceSelection));
         OnPropertyChanged(nameof(CanRemoveSequenceSelection));
         OnPropertyChanged(nameof(CanKeepSequenceSelection));
+        OnPropertyChanged(nameof(CanSplitSequenceSelection));
         SynchronizeAudioTimelineState(refreshWaveforms: false);
         RaiseExportStateChanged();
     }
@@ -3819,6 +3884,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SequenceSelectionEndSeconds));
         OnPropertyChanged(nameof(SequenceOutputDurationText));
         OnPropertyChanged(nameof(CanSplitSelectedVideoClip));
+        OnPropertyChanged(nameof(CanSplitSequenceSelection));
         OnPropertyChanged(nameof(CanDeleteSelectedVideoClip));
         RaiseSequenceSelectionChanged();
         RaiseSequenceViewportChanged();

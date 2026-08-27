@@ -72,6 +72,7 @@ public sealed class SequenceTimelineCanvas : Control
     private static readonly IPen HoverPen = new Pen(0xFF9DE7FF, 1).ToImmutable();
     private const double TrackTop = 28;
     private const double EdgeHitWidth = 14;
+    private const double SelectionDragThreshold = 3;
 
     private SequenceTimelineDragMode _dragMode;
     private VideoClipViewModel? _dragClip;
@@ -82,6 +83,7 @@ public sealed class SequenceTimelineCanvas : Control
     private double _previewTimelineStart = double.NaN;
     private double _selectionAnchor;
     private bool _isPanning;
+    private bool _hasSelectionDragStarted;
     private double _panStartX;
     private double _panViewportStart;
 
@@ -113,6 +115,8 @@ public sealed class SequenceTimelineCanvas : Control
     public event EventHandler? DeleteRequested;
 
     public event EventHandler? SplitRequested;
+
+    public event EventHandler? SplitSelectionRequested;
 
     public event EventHandler? MoveLeftRequested;
 
@@ -313,9 +317,8 @@ public sealed class SequenceTimelineCanvas : Control
         _previewTimelineStart = _dragTimelineStart;
         if (_dragMode == SequenceTimelineDragMode.NewSelection)
         {
-            SetCurrentValue(SelectionStartProperty, _selectionAnchor);
-            SetCurrentValue(SelectionEndProperty, _selectionAnchor);
             SetCurrentValue(PlayheadProperty, _selectionAnchor);
+            _hasSelectionDragStarted = false;
         }
 
         eventArgs.Pointer.Capture(this);
@@ -348,6 +351,12 @@ public sealed class SequenceTimelineCanvas : Control
         switch (_dragMode)
         {
             case SequenceTimelineDragMode.NewSelection:
+                if (!_hasSelectionDragStarted &&
+                    !HasExceededSelectionDragThreshold(_pointerStartX, point.X))
+                {
+                    break;
+                }
+                _hasSelectionDragStarted = true;
                 SetCurrentValue(SelectionStartProperty, Math.Min(_selectionAnchor, cutTime));
                 SetCurrentValue(SelectionEndProperty, Math.Max(_selectionAnchor, cutTime));
                 SetCurrentValue(PlayheadProperty, cutTime);
@@ -398,6 +407,7 @@ public sealed class SequenceTimelineCanvas : Control
         _dragMode = SequenceTimelineDragMode.None;
         _dragClip = null;
         _previewTimelineStart = double.NaN;
+        _hasSelectionDragStarted = false;
         InvalidateVisual();
 
         eventArgs.Handled = true;
@@ -410,6 +420,7 @@ public sealed class SequenceTimelineCanvas : Control
         _dragMode = SequenceTimelineDragMode.None;
         _dragClip = null;
         _previewTimelineStart = double.NaN;
+        _hasSelectionDragStarted = false;
         InvalidateVisual();
     }
 
@@ -485,7 +496,14 @@ public sealed class SequenceTimelineCanvas : Control
 
         if (eventArgs.Key == Key.S && !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
-            SplitRequested?.Invoke(this, EventArgs.Empty);
+            if (eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                SplitSelectionRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                SplitRequested?.Invoke(this, EventArgs.Empty);
+            }
             eventArgs.Handled = true;
             return;
         }
@@ -643,6 +661,9 @@ public sealed class SequenceTimelineCanvas : Control
 
     internal static bool ShouldMoveClip(bool moveClipsByDefault, KeyModifiers modifiers) =>
         moveClipsByDefault || modifiers.HasFlag(KeyModifiers.Control);
+
+    internal static bool HasExceededSelectionDragThreshold(double pointerStartX, double pointerX) =>
+        Math.Abs(pointerX - pointerStartX) >= SelectionDragThreshold;
 
     private void DrawSelection(DrawingContext context)
     {

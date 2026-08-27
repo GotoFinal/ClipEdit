@@ -1,5 +1,8 @@
 using ClipEdit.App.Controls;
 using Avalonia.Input;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
 
 namespace ClipEdit.App.Tests.Controls;
 
@@ -53,4 +56,48 @@ public sealed class SequenceTimelineCanvasTests
     {
         Assert.Equal(expectedMove, SequenceTimelineCanvas.ShouldMoveClip(moveByDefault, modifiers));
     }
+
+    [AvaloniaFact]
+    public void Single_click_moves_only_the_playhead_while_drag_creates_a_selection()
+    {
+        var timeline = new SequenceTimelineCanvas
+        {
+            Width = 400,
+            Height = 80,
+            Duration = 100,
+            SelectionStart = 20,
+            SelectionEnd = 80,
+        };
+        var window = new Window
+        {
+            Width = 400,
+            Height = 80,
+            WindowDecorations = WindowDecorations.None,
+            Content = timeline,
+        };
+        window.Show();
+
+        window.MouseDown(new Avalonia.Point(100, 50), MouseButton.Left, RawInputModifiers.LeftMouseButton);
+        window.MouseUp(new Avalonia.Point(100, 50), MouseButton.Left, RawInputModifiers.None);
+
+        Assert.Equal(25, timeline.Playhead, 6);
+        Assert.Equal(20, timeline.SelectionStart, 6);
+        Assert.Equal(80, timeline.SelectionEnd, 6);
+
+        window.MouseDown(new Avalonia.Point(100, 50), MouseButton.Left, RawInputModifiers.LeftMouseButton);
+        window.MouseMove(new Avalonia.Point(200, 50), RawInputModifiers.LeftMouseButton);
+        window.MouseUp(new Avalonia.Point(200, 50), MouseButton.Left, RawInputModifiers.None);
+
+        Assert.Equal(25, timeline.SelectionStart, 6);
+        Assert.Equal(50, timeline.SelectionEnd, 6);
+        Assert.Equal(50, timeline.Playhead, 6);
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(100, 102.9, false)]
+    [InlineData(100, 103, true)]
+    [InlineData(100, 90, true)]
+    public void Selection_drag_uses_a_small_pointer_threshold(double start, double current, bool expected) =>
+        Assert.Equal(expected, SequenceTimelineCanvas.HasExceededSelectionDragThreshold(start, current));
 }

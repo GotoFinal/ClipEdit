@@ -1476,6 +1476,7 @@
                       SnappingEnabled="{Binding IsTimelineSnappingEnabled}"
                       SelectionEnd="{Binding SequenceSelectionEndSeconds, Mode=TwoWay}"
                       SelectionStart="{Binding SequenceSelectionStartSeconds, Mode=TwoWay}"
+                      SplitSelectionRequested="SequenceTimeline_SplitSelectionRequested"
                       SplitRequested="SequenceTimeline_SplitRequested"
                       ViewportStart="{Binding SequenceTimelineViewportStart, Mode=TwoWay}"
                       VisualRevision="{Binding SequenceTimelineVisualRevision}"
@@ -1484,15 +1485,16 @@
                 </Grid>
               </Border>
 
-              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="5" IsVisible="{Binding ShowTimeline}">
+              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="5" IsVisible="{Binding ShowTimeline}">
                 <Button Classes="secondary" Click="MarkIn_Click" Content="Mark in" />
                 <Button Grid.Column="1" Classes="secondary" Click="MarkOut_Click" Content="Mark out" />
                 <Button Grid.Column="2" Classes="primary" Click="RemoveSelection_Click" Content="Remove selection" IsEnabled="{Binding CanRemoveSequenceSelection}" />
                 <Button Grid.Column="3" Classes="primary" Click="KeepSelectionOnly_Click" Content="Keep selection" IsEnabled="{Binding CanKeepSequenceSelection}" />
-                <Button Grid.Column="4" Classes="secondary" Click="SplitClip_Click" Content="Split" IsEnabled="{Binding CanSplitSelectedVideoClip}" ToolTip.Tip="Split at the playhead (S)" />
-                <Button Grid.Column="5" Classes="secondary" Click="ResetCuts_Click" Content="Reset cuts" />
-                <Button Grid.Column="6" HorizontalAlignment="Left" Classes="secondary" Click="DeleteSelectedClip_Click" Content="Delete clip" IsEnabled="{Binding CanDeleteSelectedVideoClip}" />
-                <StackPanel Grid.Column="7" HorizontalAlignment="Right" Spacing="1">
+                <Button Grid.Column="4" Classes="secondary" Click="SplitSelection_Click" Content="Split selection" IsEnabled="{Binding CanSplitSequenceSelection}" ToolTip.Tip="Make the selected range its own clip (Shift+S)" />
+                <Button Grid.Column="5" Classes="secondary" Click="SplitClip_Click" Content="Split head" IsEnabled="{Binding CanSplitSelectedVideoClip}" ToolTip.Tip="Split at the playhead (S)" />
+                <Button Grid.Column="6" Classes="secondary" Click="ResetCuts_Click" Content="Reset cuts" />
+                <Button Grid.Column="7" HorizontalAlignment="Left" Classes="secondary" Click="DeleteSelectedClip_Click" Content="Delete clip" IsEnabled="{Binding CanDeleteSelectedVideoClip}" />
+                <StackPanel Grid.Column="8" HorizontalAlignment="Right" Spacing="1">
                   <TextBlock HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="{Binding SequenceSelectionRangeText}" />
                   <TextBlock HorizontalAlignment="Right" FontSize="11" FontWeight="SemiBold" Text="{Binding SequenceSelectedDurationText}" />
                 </StackPanel>

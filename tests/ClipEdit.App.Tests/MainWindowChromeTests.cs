@@ -2,12 +2,14 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Layout;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using ClipEdit.Application.Export;
+using ClipEdit.App.Controls;
 using ClipEdit.App.Views;
 using ClipEdit.App.Platform;
 using ClipEdit.App.ViewModels;
@@ -415,6 +417,29 @@ public sealed class MainWindowChromeTests
             Assert.Equal(HorizontalAlignment.Center, toggle.HorizontalContentAlignment);
             Assert.Equal(VerticalAlignment.Center, toggle.VerticalContentAlignment);
         }
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Space_pauses_playback_but_does_not_steal_text_entry()
+    {
+        var window = new MainWindow();
+        var preview = window.FindControl<MpvVideoView>("LivePreview");
+        Assert.NotNull(preview);
+        window.Show();
+
+        preview.IsPaused = false;
+        window.Focus();
+        window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+        Assert.True(preview.IsPaused);
+
+        var textBox = new TextBox();
+        window.Content = textBox;
+        preview.IsPaused = false;
+        textBox.Focus();
+        window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+        Assert.False(preview.IsPaused);
 
         window.Close();
     }

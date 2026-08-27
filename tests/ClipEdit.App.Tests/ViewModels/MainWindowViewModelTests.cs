@@ -630,6 +630,29 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Split_selection_makes_the_range_a_selected_middle_clip_and_is_undoable()
+    {
+        var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "split-selection.mkv")]);
+        viewModel.SequenceSelectionStartSeconds = 10;
+        viewModel.SequenceSelectionEndSeconds = 20;
+
+        Assert.True(viewModel.CanSplitSequenceSelection);
+        Assert.True(viewModel.SplitSequenceSelection());
+
+        Assert.Equal(3, viewModel.VideoClips.Count);
+        var selected = Assert.IsType<VideoClipViewModel>(viewModel.SelectedVideoClip);
+        Assert.Same(viewModel.VideoClips[1], selected);
+        Assert.Equal(new MediaRange(new MediaTime(10, 1), new MediaTime(20, 1)), selected.Model.SourceRange);
+        Assert.Equal(10, selected.TimelineStartSeconds);
+        Assert.Equal(10, viewModel.SequencePlayheadSeconds);
+        Assert.Equal(viewModel.SequenceSelectionStartSeconds, viewModel.SequenceSelectionEndSeconds);
+
+        Assert.True(viewModel.Undo());
+        Assert.Single(viewModel.VideoClips);
+    }
+
+    [Fact]
     public async Task Undo_and_redo_restore_keep_selection_while_preserving_other_clips()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
