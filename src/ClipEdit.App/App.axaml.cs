@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Settings;
+using ClipEdit.App.InternetMedia;
 using ClipEdit.App.Platform;
 using ClipEdit.App.Updates;
 using ClipEdit.App.Views;
@@ -101,6 +102,16 @@ public sealed partial class App : Avalonia.Application
             var exportPreferencesStore = new ExportPreferencesStore(
                 Path.Combine(applicationDataDirectory, "export-settings.json"));
             viewModel.ApplyExportPreferences(exportPreferencesStore.Load());
+            var internetMediaSettingsStore = new InternetMediaSettingsStore(
+                Path.Combine(applicationDataDirectory, "internet-media.json"));
+            var internetMediaSettings = internetMediaSettingsStore.Load();
+            var ytDlpToolManager = new YtDlpToolManager(
+                Path.Combine(applicationDataDirectory, "Tools", "yt-dlp"));
+            var internetMediaClient = new YtDlpInternetMediaClient(
+                ytDlpToolManager,
+                new InternetMediaCache(Path.Combine(applicationDataDirectory, "InternetMedia")),
+                () => ffmpegPath,
+                internetMediaSettings.ConcurrentFragments);
             var releaseAssetId = UpdateViewModel.GetCurrentReleaseAssetId();
             if (releaseAssetId is not null)
             {
@@ -144,7 +155,10 @@ public sealed partial class App : Avalonia.Application
                 {
                     hasShownProjectFileAssociationPrompt = true;
                     SaveInteractionSettings();
-                })
+                },
+                internetMediaClient,
+                internetMediaSettingsStore,
+                internetMediaSettings)
             {
                 DataContext = viewModel,
             };
@@ -215,6 +229,23 @@ public sealed partial class App : Avalonia.Application
                 }
 
                 await viewModel.Updates.InitializeAsync();
+                if (ytDlpToolManager.TryGetInstalledPath() is not null)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await ytDlpToolManager.EnsureAvailableAsync(
+                                checkForUpdate: true,
+                                CancellationToken.None);
+                        }
+                        catch (Exception exception) when (
+                            exception is HttpRequestException or IOException or InternetMediaException)
+                        {
+                            // Internet import keeps using the last verified yt-dlp version.
+                        }
+                    });
+                }
             };
         }
 

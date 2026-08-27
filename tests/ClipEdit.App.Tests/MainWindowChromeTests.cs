@@ -172,6 +172,27 @@ public sealed class MainWindowChromeTests
     }
 
     [AvaloniaFact]
+    public void Local_and_internet_media_actions_are_both_visible()
+    {
+        using var viewModel = new MainWindowViewModel(mediaProbe: null);
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+        };
+
+        var sideButton = window.FindControl<Button>("AddInternetMediaButton");
+        var welcomeButton = window.FindControl<Button>("WelcomeInternetMediaButton");
+
+        Assert.NotNull(sideButton);
+        Assert.NotNull(welcomeButton);
+        Assert.Equal("Paste link", sideButton.Content);
+        Assert.Equal("Paste link", welcomeButton.Content);
+        Assert.Equal("Drop media or paste a link", viewModel.EmptyStateTitle);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Encoder_combo_keeps_a_visible_selection_when_the_codec_probe_updates_options()
     {
         using var viewModel = new MainWindowViewModel(mediaProbe: null);

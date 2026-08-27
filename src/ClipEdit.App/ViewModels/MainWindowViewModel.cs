@@ -154,7 +154,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         $"{(ShowTimeline ? "Timeline edit" : "Create a short clip")} · {ProjectDisplayName}" +
         (IsProjectDirty ? " *" : string.Empty);
 
-    public string EmptyStateTitle => "Drop a video to begin";
+    public string EmptyStateTitle => "Drop media or paste a link";
 
     public ObservableCollection<MediaItemViewModel> MediaItems { get; } = [];
 

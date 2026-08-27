@@ -10,6 +10,8 @@ using Avalonia.VisualTree;
 using ClipEdit.App.ViewModels;
 using ClipEdit.App.Controls;
 using ClipEdit.App.Platform;
+using ClipEdit.App.InternetMedia;
+using ClipEdit.App.Settings;
 using ClipEdit.App.Updates;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Preview;
@@ -77,21 +79,30 @@ public sealed partial class MainWindow : Window
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly IProjectFileAssociationService? _projectFileAssociationService;
     private readonly Action? _markProjectFileAssociationPromptShown;
+    private readonly IInternetMediaClient? _internetMediaClient;
+    private readonly InternetMediaSettingsStore? _internetMediaSettingsStore;
+    private InternetMediaSettings _internetMediaSettings;
     private bool _hasShownProjectFileAssociationPrompt;
 
     public MainWindow()
-        : this(null, hasShownProjectFileAssociationPrompt: false, null)
+        : this(null, hasShownProjectFileAssociationPrompt: false, null, null, null, null)
     {
     }
 
     internal MainWindow(
         IProjectFileAssociationService? projectFileAssociationService,
         bool hasShownProjectFileAssociationPrompt,
-        Action? markProjectFileAssociationPromptShown)
+        Action? markProjectFileAssociationPromptShown,
+        IInternetMediaClient? internetMediaClient = null,
+        InternetMediaSettingsStore? internetMediaSettingsStore = null,
+        InternetMediaSettings? internetMediaSettings = null)
     {
         _projectFileAssociationService = projectFileAssociationService;
         _hasShownProjectFileAssociationPrompt = hasShownProjectFileAssociationPrompt;
         _markProjectFileAssociationPromptShown = markProjectFileAssociationPromptShown;
+        _internetMediaClient = internetMediaClient;
+        _internetMediaSettingsStore = internetMediaSettingsStore;
+        _internetMediaSettings = internetMediaSettings?.Normalize() ?? InternetMediaSettings.Default;
         InitializeComponent();
 
         RegisterProjectFileAssociationMenuItem.IsVisible =
@@ -396,6 +407,26 @@ public sealed partial class MainWindow : Window
         await ImportPathsAsync(paths);
     }
 
+    private async void PasteInternetLink_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (Clipboard is null)
+        {
+            ViewModel?.ReportStatus("Clipboard access is unavailable.");
+            return;
+        }
+
+        var text = await Clipboard.TryGetTextAsync();
+        if (!InternetMediaUrl.TryParse(text, out var uri))
+        {
+            ViewModel?.ReportStatus("Copy an HTTP or HTTPS media link first.");
+            return;
+        }
+
+        await ImportInternetMediaAsync(uri!);
+    }
+
     private async void PickFfmpegPath_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
@@ -483,12 +514,23 @@ public sealed partial class MainWindow : Window
         ViewModel?.Redo();
     }
 
-    private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
+    private async void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
     {
         _ = sender;
         if (!eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control) ||
             eventArgs.KeyModifiers.HasFlag(KeyModifiers.Alt))
         {
+            return;
+        }
+
+        if (eventArgs.Key == Key.V &&
+            !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift) &&
+            !IsNativePasteOrTimelineSource(eventArgs.Source) &&
+            Clipboard is { } clipboard &&
+            InternetMediaUrl.TryParse(await clipboard.TryGetTextAsync(), out var uri))
+        {
+            eventArgs.Handled = true;
+            await ImportInternetMediaAsync(uri!);
             return;
         }
 
@@ -648,7 +690,9 @@ public sealed partial class MainWindow : Window
     private static void OnDragOver(object? sender, DragEventArgs eventArgs)
     {
         _ = sender;
-        eventArgs.DragEffects = eventArgs.DataTransfer.Formats.Contains(DataFormat.File)
+        var containsLink = eventArgs.DataTransfer.Formats.Contains(DataFormat.Text) &&
+                           InternetMediaUrl.TryParse(eventArgs.DataTransfer.TryGetText(), out _);
+        eventArgs.DragEffects = eventArgs.DataTransfer.Formats.Contains(DataFormat.File) || containsLink
             ? DragDropEffects.Copy
             : DragDropEffects.None;
         eventArgs.Handled = true;
@@ -780,7 +824,58 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        await ImportPathsAsync(selection.MediaPaths);
+        if (selection.MediaPaths.Count > 0)
+        {
+            await ImportPathsAsync(selection.MediaPaths);
+            return;
+        }
+
+        if (InternetMediaUrl.TryParse(eventArgs.DataTransfer.TryGetText(), out var uri))
+        {
+            await ImportInternetMediaAsync(uri!);
+        }
+    }
+
+    private async Task ImportInternetMediaAsync(Uri uri)
+    {
+        if (_internetMediaClient is null || _internetMediaSettingsStore is null)
+        {
+            ViewModel?.ReportStatus("Internet import is unavailable in this build.");
+            return;
+        }
+        if (ViewModel?.IsImportAvailable != true)
+        {
+            ViewModel?.ReportStatus("Configure ffprobe before importing internet media.");
+            return;
+        }
+
+        var result = await new InternetMediaImportDialog(
+                uri,
+                _internetMediaClient,
+                _internetMediaSettings)
+            .ShowDialog<InternetMediaImportDialogResult?>(this);
+        if (result is null)
+        {
+            return;
+        }
+
+        _internetMediaSettings = _internetMediaSettings with
+        {
+            PreferredVideoHeight = result.PreferredVideoHeight,
+            PreferredAudioBitrateKbps = result.PreferredAudioBitrateKbps,
+        };
+        _internetMediaSettingsStore.Save(_internetMediaSettings);
+        await ImportPathsAsync([result.LocalPath]);
+    }
+
+    private static bool IsNativePasteOrTimelineSource(object? source)
+    {
+        if (source is TextBox or NumericUpDown or SequenceTimelineCanvas or SourceRangeCanvas)
+        {
+            return true;
+        }
+        return source is Visual visual && visual.GetVisualAncestors().Any(static ancestor =>
+            ancestor is TextBox or NumericUpDown or SequenceTimelineCanvas or SourceRangeCanvas);
     }
 
     private void GoToStart_Click(object? sender, RoutedEventArgs eventArgs)

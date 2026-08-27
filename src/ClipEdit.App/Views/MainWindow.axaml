@@ -239,6 +239,7 @@
               <MenuItem Header="New project" Click="NewProject_Click" IsEnabled="{Binding CanNewProject}" />
               <MenuItem Header="Open project…" Click="OpenProject_Click" IsEnabled="{Binding CanOpenProject}" />
               <MenuItem Header="Save project" Click="SaveProject_Click" IsEnabled="{Binding CanSaveProject}" />
+              <MenuItem Header="Paste media link" Click="PasteInternetLink_Click" />
               <Separator />
               <MenuItem
                   x:Name="UndoMenuItem"
@@ -1004,6 +1005,12 @@
                 Content="Add media"
                 IsEnabled="{Binding IsImportAvailable}" />
             <Button
+                x:Name="AddInternetMediaButton"
+                Classes="secondary"
+                Click="PasteInternetLink_Click"
+                Content="Paste link"
+                IsEnabled="{Binding IsImportAvailable}" />
+            <Button
                 Classes="secondary"
                 Click="RemoveSelectedMedia_Click"
                 Content="Remove selected"
@@ -1093,13 +1100,19 @@
                   </StackPanel>
                 </Border>
 
-                <Button
-                    Margin="0,8,0,0"
-                    HorizontalAlignment="Center"
-                    Classes="primary"
-                    Click="OpenMedia_Click"
-                    Content="Open media"
-                    IsEnabled="{Binding IsImportAvailable}" />
+                <StackPanel Margin="0,8,0,0" HorizontalAlignment="Center" Orientation="Horizontal" Spacing="7">
+                  <Button
+                      Classes="primary"
+                      Click="OpenMedia_Click"
+                      Content="Open media"
+                      IsEnabled="{Binding IsImportAvailable}" />
+                  <Button
+                      x:Name="WelcomeInternetMediaButton"
+                      Classes="secondary"
+                      Click="PasteInternetLink_Click"
+                      Content="Paste link"
+                      IsEnabled="{Binding IsImportAvailable}" />
+                </StackPanel>
 
                 <Button
                     x:Name="WelcomeUpdateButton"
