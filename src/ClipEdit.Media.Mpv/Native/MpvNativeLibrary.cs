@@ -16,6 +16,7 @@ internal sealed class MpvNativeLibrary : IDisposable
         ClientApiVersion = GetDelegate<ClientApiVersionDelegate>("mpv_client_api_version");
         Create = GetDelegate<CreateDelegate>("mpv_create");
         Initialize = GetDelegate<InitializeDelegate>("mpv_initialize");
+        RequestLogMessages = GetDelegate<RequestLogMessagesDelegate>("mpv_request_log_messages");
         SetOptionString = GetDelegate<SetStringDelegate>("mpv_set_option_string");
         SetPropertyString = GetDelegate<SetStringDelegate>("mpv_set_property_string");
         SetPropertyAsync = GetDelegate<SetPropertyAsyncDelegate>("mpv_set_property_async");
@@ -48,6 +49,8 @@ internal sealed class MpvNativeLibrary : IDisposable
     internal CreateDelegate Create { get; }
 
     internal InitializeDelegate Initialize { get; }
+
+    internal RequestLogMessagesDelegate RequestLogMessages { get; }
 
     internal SetStringDelegate SetOptionString { get; }
 
@@ -142,6 +145,9 @@ internal sealed class MpvNativeLibrary : IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int InitializeDelegate(nint handle);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int RequestLogMessagesDelegate(nint handle, nint minimumLevel);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int SetStringDelegate(nint handle, nint name, nint value);

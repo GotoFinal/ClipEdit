@@ -13,6 +13,7 @@ using ClipEdit.App.Platform;
 using ClipEdit.App.InternetMedia;
 using ClipEdit.App.Settings;
 using ClipEdit.App.Updates;
+using ClipEdit.Application.Media;
 using ClipEdit.Domain.Timeline;
 using ClipEdit.Media.Preview;
 
@@ -81,6 +82,7 @@ public sealed partial class MainWindow : Window
     private readonly Action? _markProjectFileAssociationPromptShown;
     private readonly IInternetMediaClient? _internetMediaClient;
     private readonly InternetMediaSettingsStore? _internetMediaSettingsStore;
+    private readonly Dictionary<MediaItemViewModel, CancellationTokenSource> _internetDownloads = [];
     private InternetMediaSettings _internetMediaSettings;
     private bool _hasShownProjectFileAssociationPrompt;
 
@@ -380,9 +382,12 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        await viewModel.NewProjectAsync(
+        if (await viewModel.NewProjectAsync(
             discardUnsavedChanges: true,
-            _lifetimeCancellation.Token);
+            _lifetimeCancellation.Token))
+        {
+            CancelAllInternetDownloads();
+        }
     }
 
     private async void OpenMedia_Click(object? sender, RoutedEventArgs eventArgs)
@@ -584,10 +589,15 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        return await viewModel.OpenProjectWithRelinkingAsync(
+        var opened = await viewModel.OpenProjectWithRelinkingAsync(
             projectPath,
             discardUnsavedChanges: true,
             cancellationToken: _lifetimeCancellation.Token);
+        if (opened)
+        {
+            CancelAllInternetDownloads();
+        }
+        return opened;
     }
 
     private async void RecoverCandidate_Click(object? sender, RoutedEventArgs eventArgs)
@@ -881,9 +891,154 @@ public sealed partial class MainWindow : Window
         {
             PreferredVideoHeight = result.PreferredVideoHeight,
             PreferredAudioBitrateKbps = result.PreferredAudioBitrateKbps,
+            PreviewVideoHeight = result.PreviewVideoHeight,
         };
         _internetMediaSettingsStore.Save(_internetMediaSettings);
-        await ImportPathsAsync([result.LocalPath]);
+        InternetMediaPreparedImport prepared;
+        try
+        {
+            prepared = await _internetMediaClient.PrepareImportAsync(
+                result.Request,
+                result.PreviewVideoHeight,
+                _lifetimeCancellation.Token);
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (InternetMediaException)
+        {
+            await DownloadAndImportInternetMediaAsync(result.Request);
+            return;
+        }
+        catch (Exception exception)
+        {
+            ViewModel?.ReportStatus($"Could not start internet import: {exception.Message}");
+            return;
+        }
+
+        if (prepared.CompletedLocalPath is { } completedPath)
+        {
+            await ImportPathsAsync([completedPath]);
+            return;
+        }
+
+        ImportedMedia imported;
+        try
+        {
+            imported = InternetMediaPreparedImportFactory.Create(prepared);
+        }
+        catch (InternetMediaException)
+        {
+            await DownloadAndImportInternetMediaAsync(prepared.Request);
+            return;
+        }
+
+        var item = ViewModel?.ImportPreparedInternetMedia(
+            imported,
+            prepared.PreviewVideoUri,
+            prepared.PreviewAudioUri);
+        if (item is null)
+        {
+            return;
+        }
+
+        StartInternetDownload(item, prepared.Request);
+    }
+
+    private async Task DownloadAndImportInternetMediaAsync(InternetMediaDownloadRequest request)
+    {
+        try
+        {
+            var progress = new Progress<InternetMediaDownloadProgress>(value =>
+                ViewModel?.ReportStatus(value.Fraction is { } fraction
+                    ? $"Downloading final source · {fraction:P0}"
+                    : "Downloading final source…"));
+            var downloaded = await _internetMediaClient!.DownloadAsync(
+                request,
+                progress,
+                _lifetimeCancellation.Token);
+            await ImportPathsAsync([downloaded.LocalPath]);
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            ViewModel?.ReportStatus($"Could not import internet media: {exception.Message}");
+        }
+    }
+
+    private void StartInternetDownload(
+        MediaItemViewModel item,
+        InternetMediaDownloadRequest request)
+    {
+        if (_internetMediaClient is null)
+        {
+            return;
+        }
+
+        if (_internetDownloads.Remove(item, out var previous))
+        {
+            previous.Cancel();
+            previous.Dispose();
+        }
+
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
+        _internetDownloads[item] = cancellation;
+        var progress = new Progress<InternetMediaDownloadProgress>(value =>
+            ViewModel?.UpdatePreparedInternetMediaProgress(item, value.Fraction));
+        _ = RunInternetDownloadAsync(item, request, progress, cancellation);
+    }
+
+    private async Task RunInternetDownloadAsync(
+        MediaItemViewModel item,
+        InternetMediaDownloadRequest request,
+        IProgress<InternetMediaDownloadProgress> progress,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await _internetMediaClient!.DownloadAsync(request, progress, cancellation.Token);
+            if (!cancellation.IsCancellationRequested && ViewModel is { } viewModel)
+            {
+                await viewModel.CompletePreparedInternetMediaAsync(item, cancellation.Token);
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            ViewModel?.ReportPreparedInternetMediaFailure(
+                item,
+                $"Final-quality download failed: {exception.Message}");
+        }
+        finally
+        {
+            if (_internetDownloads.TryGetValue(item, out var current) && ReferenceEquals(current, cancellation))
+            {
+                _internetDownloads.Remove(item);
+            }
+            cancellation.Dispose();
+        }
+    }
+
+    private void CancelInternetDownload(MediaItemViewModel item)
+    {
+        if (_internetDownloads.Remove(item, out var cancellation))
+        {
+            cancellation.Cancel();
+        }
+    }
+
+    private void CancelAllInternetDownloads()
+    {
+        foreach (var cancellation in _internetDownloads.Values)
+        {
+            cancellation.Cancel();
+        }
+        _internetDownloads.Clear();
     }
 
     private static bool IsNativePasteOrTimelineSource(object? source)
@@ -963,7 +1118,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        LivePreview.SetCurrentValue(MpvVideoView.SourcePathProperty, clip.SourcePath);
+        LivePreview.SetCurrentValue(MpvVideoView.SourcePathProperty, clip.Source.PreviewSource);
+        LivePreview.SetCurrentValue(
+            MpvVideoView.RemoteAudioSourceProperty,
+            clip.Source.RemotePreviewAudioSource);
         LivePreview.SetCurrentValue(MpvVideoView.PositionProperty, sourcePosition);
         LivePreview.SetCurrentValue(MpvVideoView.PlaybackRangesProperty, clip.PlaybackRanges);
         LivePreview.SetCurrentValue(MpvVideoView.SourceVideoSizeProperty, clip.VideoSize);
@@ -1274,6 +1432,7 @@ public sealed partial class MainWindow : Window
             "Remove from project");
         if (await confirmation.ShowDialog<bool>(this))
         {
+            CancelInternetDownload(selected);
             viewModel.RemoveSelectedMedia();
         }
     }
@@ -1294,6 +1453,7 @@ public sealed partial class MainWindow : Window
             "Remove from project");
         if (await confirmation.ShowDialog<bool>(this))
         {
+            CancelInternetDownload(selected);
             viewModel.RemoveSelectedMedia();
         }
     }
@@ -1843,6 +2003,7 @@ public sealed partial class MainWindow : Window
         _ = eventArgs;
         PropertyChanged -= OnWindowPropertyChanged;
         _lifetimeCancellation.Cancel();
+        CancelAllInternetDownloads();
         _ = LivePreview.ShutdownAsync();
         ViewModel?.Dispose();
         _lifetimeCancellation.Dispose();

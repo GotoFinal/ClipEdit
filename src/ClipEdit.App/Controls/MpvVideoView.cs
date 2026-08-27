@@ -20,6 +20,9 @@ public sealed class MpvVideoView : OpenGlControlBase
     public static readonly StyledProperty<string?> LibraryPathProperty =
         AvaloniaProperty.Register<MpvVideoView, string?>(nameof(LibraryPath));
 
+    public static readonly StyledProperty<string?> RemoteAudioSourceProperty =
+        AvaloniaProperty.Register<MpvVideoView, string?>(nameof(RemoteAudioSource));
+
     public static readonly StyledProperty<MediaTime> PositionProperty =
         AvaloniaProperty.Register<MpvVideoView, MediaTime>(nameof(Position), MediaTime.Zero);
 
@@ -137,6 +140,8 @@ public sealed class MpvVideoView : OpenGlControlBase
             static (view, _) => view.OnSourcePathChanged());
         LibraryPathProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.OnLibraryPathChanged());
+        RemoteAudioSourceProperty.Changed.AddClassHandler<MpvVideoView>(
+            static (view, _) => view.OnRemoteSourceOptionChanged());
         PositionProperty.Changed.AddClassHandler<MpvVideoView>(
             static (view, _) => view.StartSeek());
         IsPausedProperty.Changed.AddClassHandler<MpvVideoView>(
@@ -212,6 +217,12 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         get => GetValue(LibraryPathProperty);
         set => SetValue(LibraryPathProperty, value);
+    }
+
+    public string? RemoteAudioSource
+    {
+        get => GetValue(RemoteAudioSourceProperty);
+        set => SetValue(RemoteAudioSourceProperty, value);
     }
 
     public double FrameStepSeconds
@@ -476,6 +487,14 @@ public sealed class MpvVideoView : OpenGlControlBase
         StartLoad();
     }
 
+    private void OnRemoteSourceOptionChanged()
+    {
+        if (_isAttachedToVisualTree && !_shutdownStarted && IsRemoteLocation(SourcePath))
+        {
+            StartLoad();
+        }
+    }
+
     private void EnsureEngineInitialization()
     {
         if (_shutdownStarted ||
@@ -659,9 +678,12 @@ public sealed class MpvVideoView : OpenGlControlBase
 
         try
         {
-            PlaybackStatus = "Loading live preview…";
+            var previewSource = CreatePreviewMediaSource(sourcePath, RemoteAudioSource);
+            PlaybackStatus = previewSource.IsRemote
+                ? "Opening internet preview…"
+                : "Loading live preview…";
             var engine = await _engineTask!.WaitAsync(cancellationToken);
-            await engine.LoadAsync(sourcePath, cancellationToken);
+            await engine.LoadAsync(previewSource, cancellationToken);
             var initialVideoTransformRevision = _videoTransformRevision;
             await engine.SetVideoTransformAsync(
                 CalculatePreviewVideoTransform(
@@ -678,17 +700,20 @@ public sealed class MpvVideoView : OpenGlControlBase
             await engine.SetVolumeAsync(Volume, cancellationToken);
             await engine.SetPlaybackSpeedAsync(PlaybackSpeed, cancellationToken);
             string? audioWarning = null;
-            try
+            if (!previewSource.IsRemote)
             {
-                await engine.SetAudioTracksAsync(AudioTracks, cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                audioWarning = $"Live audio mix unavailable: {exception.Message}";
+                try
+                {
+                    await engine.SetAudioTracksAsync(AudioTracks, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    audioWarning = $"Live audio mix unavailable: {exception.Message}";
+                }
             }
 
             await engine.SetPausedAsync(IsPaused, cancellationToken);
@@ -697,7 +722,9 @@ public sealed class MpvVideoView : OpenGlControlBase
             cancellationToken.ThrowIfCancellationRequested();
             _mediaLoaded = true;
             IsPlaybackAvailable = true;
-            PlaybackStatus = audioWarning ?? "Live preview is ready";
+            PlaybackStatus = audioWarning ?? (previewSource.IsRemote
+                ? "Streaming preview · source download continues"
+                : "Live preview is ready");
             TryStartVideoTransformLoop();
             QueueRenderRequest();
         }
@@ -1142,7 +1169,7 @@ public sealed class MpvVideoView : OpenGlControlBase
 
     private void StartAudioMixChange()
     {
-        if (!_mediaLoaded || _engine is null || _shutdownStarted)
+        if (!_mediaLoaded || _engine is null || _shutdownStarted || IsRemoteLocation(SourcePath))
         {
             return;
         }
@@ -1176,6 +1203,33 @@ public sealed class MpvVideoView : OpenGlControlBase
     {
         QueueRenderRequest();
     }
+
+    internal static PreviewMediaSource CreatePreviewMediaSource(
+        string source,
+        string? remoteAudioSource)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(source);
+        if (!IsRemoteLocation(source))
+        {
+            return PreviewMediaSource.LocalFile(source);
+        }
+
+        if (!Uri.TryCreate(source, UriKind.Absolute, out var uri))
+        {
+            throw new InvalidOperationException("Internet preview has an invalid video URL.");
+        }
+
+        Uri? audioUri = null;
+        if (!string.IsNullOrWhiteSpace(remoteAudioSource) &&
+            !Uri.TryCreate(remoteAudioSource, UriKind.Absolute, out audioUri))
+        {
+            throw new InvalidOperationException("Internet preview has an invalid audio URL.");
+        }
+        return PreviewMediaSource.Internet(uri, audioUri);
+    }
+
+    private static bool IsRemoteLocation(string? source) =>
+        Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 
     private void QueueRenderRequest()
     {

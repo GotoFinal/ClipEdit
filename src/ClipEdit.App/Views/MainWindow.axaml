@@ -1166,13 +1166,14 @@
                       IsInteractiveTransformActive="{Binding IsClipTransformEditing}"
                       IsPaused="True"
                       LibraryPath="{Binding PreviewLibMpvPath}"
+                      RemoteAudioSource="{Binding SelectedMedia.RemotePreviewAudioSource}"
                       PlaybackCompleted="LivePreview_PlaybackCompleted"
                       PlaybackRanges="{Binding SelectedVideoClip.PlaybackRanges}"
                       PlaybackSpeed="{Binding SelectedVideoClip.PlaybackSpeed}"
                       FrameStepSeconds="{Binding SelectedMedia.FrameStepSeconds}"
                       Position="{Binding SelectedMedia.Playhead, Mode=TwoWay}"
                       SourceVideoSize="{Binding SelectedVideoClip.VideoSize}"
-                      SourcePath="{Binding SelectedMedia.SourcePath}" />
+                      SourcePath="{Binding SelectedMedia.PreviewSource}" />
 
                   <controls:CachedFrameCanvas
                       Margin="5"

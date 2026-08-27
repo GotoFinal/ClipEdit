@@ -5,16 +5,25 @@ namespace ClipEdit.App.Settings;
 internal sealed record InternetMediaSettings(
     int? PreferredVideoHeight,
     int? PreferredAudioBitrateKbps,
-    int ConcurrentFragments = 4)
+    int ConcurrentFragments = 4,
+    int PreviewVideoHeight = 720)
 {
     public const int DefaultConcurrentFragments = 4;
+    public const int DefaultPreviewVideoHeight = 720;
 
-    public static InternetMediaSettings Default { get; } = new(null, null, DefaultConcurrentFragments);
+    public static InternetMediaSettings Default { get; } = new(
+        null,
+        null,
+        DefaultConcurrentFragments,
+        DefaultPreviewVideoHeight);
 
     public InternetMediaSettings Normalize() => new(
         PreferredVideoHeight is >= 144 and <= 8_640 ? PreferredVideoHeight : null,
         PreferredAudioBitrateKbps is >= 16 and <= 1_536 ? PreferredAudioBitrateKbps : null,
-        Math.Clamp(ConcurrentFragments, 1, 16));
+        Math.Clamp(ConcurrentFragments, 1, 16),
+        PreviewVideoHeight is >= 144 and <= 2_160
+            ? PreviewVideoHeight
+            : DefaultPreviewVideoHeight);
 }
 
 internal sealed class InternetMediaSettingsStore

@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Avalonia.Headless.XUnit;
 using ClipEdit.App.ViewModels;
 using ClipEdit.Application.Export;
+using ClipEdit.Application.Media;
 using ClipEdit.Application.Projects;
 using ClipEdit.Domain.Geometry;
 using ClipEdit.Domain.Timeline;
@@ -17,6 +18,34 @@ public sealed class MainWindowViewModelTests
 {
     private static readonly byte[] TinyPng = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+
+    [Fact]
+    public async Task Internet_media_is_editable_from_remote_preview_but_export_waits_for_local_source()
+    {
+        var renderer = new RecordingExportRenderer();
+        var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        var localPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "remote-source.mkv"));
+        var media = new ImportedMedia("Remote source", CreateVideoProbe(localPath));
+        var item = viewModel.ImportPreparedInternetMedia(
+            media,
+            new Uri("https://cdn.example.test/video.webm"),
+            new Uri("https://cdn.example.test/audio.webm"));
+
+        Assert.NotNull(item);
+        Assert.True(item.IsInternetDownloadPending);
+        Assert.Equal("https://cdn.example.test/video.webm", item.PreviewSource);
+        Assert.Equal("https://cdn.example.test/audio.webm", item.RemotePreviewAudioSource);
+        Assert.True(viewModel.ShowTimeline);
+        Assert.Single(viewModel.VideoClips);
+        Assert.False(viewModel.CanExport);
+        Assert.Contains("finish downloading", viewModel.ExportAvailabilityText, StringComparison.OrdinalIgnoreCase);
+
+        await viewModel.CompletePreparedInternetMediaAsync(item);
+
+        Assert.False(item.IsInternetDownloadPending);
+        Assert.Equal(localPath, item.PreviewSource);
+        Assert.True(viewModel.CanExport);
+    }
 
     [Fact]
     public void Export_progress_text_includes_fps_and_estimated_remaining_time()

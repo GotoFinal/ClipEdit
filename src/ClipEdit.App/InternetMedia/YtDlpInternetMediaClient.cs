@@ -6,6 +6,11 @@ internal interface IInternetMediaClient
 {
     Task<InternetMediaInfo> ProbeAsync(Uri uri, CancellationToken cancellationToken);
 
+    Task<InternetMediaPreparedImport> PrepareImportAsync(
+        InternetMediaDownloadRequest request,
+        int previewMaximumHeight,
+        CancellationToken cancellationToken);
+
     Task<InternetMediaDownloadResult> DownloadAsync(
         InternetMediaDownloadRequest request,
         IProgress<InternetMediaDownloadProgress>? progress,
@@ -96,6 +101,73 @@ internal sealed class YtDlpInternetMediaClient : IInternetMediaClient
         var localPath = _cache.MarkCompleted(entryDirectory);
         progress?.Report(new InternetMediaDownloadProgress(1, null, null, TimeSpan.Zero));
         return new InternetMediaDownloadResult(localPath, request);
+    }
+
+    public async Task<InternetMediaPreparedImport> PrepareImportAsync(
+        InternetMediaDownloadRequest request,
+        int previewMaximumHeight,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var toolPath = await _toolProvider.EnsureAvailableAsync(
+                checkForUpdate: false,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var entryDirectory = _cache.GetEntryDirectory(request);
+        var completedPath = _cache.TryGetCompletedPath(entryDirectory);
+        var previewLocations = completedPath is null
+            ? await ResolvePreviewLocationsAsync(
+                    toolPath,
+                    request.Info.SourceUri,
+                    previewMaximumHeight,
+                    cancellationToken)
+                .ConfigureAwait(false)
+            : (request.Info.SourceUri, (Uri?)null);
+        return new InternetMediaPreparedImport(
+            request,
+            _cache.GetExpectedCompletedPath(request),
+            previewLocations.Item1,
+            previewLocations.Item2,
+            previewMaximumHeight,
+            completedPath);
+    }
+
+    private async Task<(Uri Video, Uri? Audio)> ResolvePreviewLocationsAsync(
+        string toolPath,
+        Uri sourceUri,
+        int previewMaximumHeight,
+        CancellationToken cancellationToken)
+    {
+        var result = await _processRunner.RunAsync(
+                toolPath,
+                YtDlpArguments.CreatePreviewResolve(sourceUri, previewMaximumHeight),
+                captureStandardOutput: true,
+                standardOutputLine: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            throw CreateProcessException("Could not prepare the streaming preview", result.StandardError);
+        }
+
+        var locations = result.StandardOutput
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(static value => Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+                                    uri.Scheme is "http" or "https" &&
+                                    uri.UserInfo.Length == 0
+                ? uri
+                : null)
+            .Where(static uri => uri is not null)
+            .Cast<Uri>()
+            .Take(3)
+            .ToArray();
+        return locations.Length switch
+        {
+            1 => (locations[0], null),
+            2 => (locations[0], locations[1]),
+            _ => throw new InternetMediaException(
+                "yt-dlp did not provide a usable streaming preview."),
+        };
     }
 
     internal static bool TryParseProgress(string line, out InternetMediaDownloadProgress? progress)

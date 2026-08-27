@@ -11,7 +11,7 @@ public sealed class InternetMediaSettingsStoreTests
         try
         {
             var store = new InternetMediaSettingsStore(Path.Combine(directory, "internet-media.json"));
-            var expected = new InternetMediaSettings(1080, 192, 8);
+            var expected = new InternetMediaSettings(1080, 192, 8, 480);
 
             Assert.True(store.Save(expected));
             Assert.Equal(expected, store.Load());
@@ -28,10 +28,11 @@ public sealed class InternetMediaSettingsStoreTests
     [Fact]
     public void Invalid_values_return_to_safe_defaults()
     {
-        var normalized = new InternetMediaSettings(20_000, 2, 500).Normalize();
+        var normalized = new InternetMediaSettings(20_000, 2, 500, 50_000).Normalize();
 
         Assert.Null(normalized.PreferredVideoHeight);
         Assert.Null(normalized.PreferredAudioBitrateKbps);
         Assert.Equal(16, normalized.ConcurrentFragments);
+        Assert.Equal(InternetMediaSettings.DefaultPreviewVideoHeight, normalized.PreviewVideoHeight);
     }
 }

@@ -14,6 +14,7 @@ public sealed class InternetMediaImportDialogTests
 
         Assert.NotNull(dialog.FindControl<ComboBox>("VideoQualityComboBox"));
         Assert.NotNull(dialog.FindControl<ComboBox>("AudioQualityComboBox"));
+        Assert.NotNull(dialog.FindControl<ComboBox>("PreviewQualityComboBox"));
         Assert.NotNull(dialog.FindControl<ProgressBar>("DownloadProgressBar"));
         Assert.NotNull(dialog.FindControl<TextBlock>("StatusText"));
         Assert.NotNull(dialog.FindControl<Button>("CancelButton"));
@@ -43,5 +44,24 @@ public sealed class InternetMediaImportDialogTests
         Assert.Equal(720, InternetMediaImportDialog.SelectVideoChoice(videoChoices, 1080).MaximumHeight);
         Assert.Equal(128, InternetMediaImportDialog.SelectAudioChoice(audioChoices, 192).MaximumBitrateKbps);
         Assert.Null(InternetMediaImportDialog.SelectVideoChoice(videoChoices, null).MaximumHeight);
+    }
+
+    [Fact]
+    public void Preview_quality_is_bounded_to_available_video_and_remembers_nearest_lower_choice()
+    {
+        var info = new InternetMediaInfo(
+            new Uri("https://example.test/video"),
+            "Example",
+            "Generic",
+            TimeSpan.FromMinutes(1),
+            [
+                new InternetMediaFormat("360", "mp4", "h264", "aac", 640, 360, 30, 96, null),
+                new InternetMediaFormat("1080", "webm", "vp9", "none", 1920, 1080, 30, null, null),
+            ]);
+
+        var choices = InternetMediaImportDialog.CreatePreviewQualityChoices(info);
+
+        Assert.Equal([360, 480, 720, 1080], choices);
+        Assert.Equal(720, InternetMediaImportDialog.SelectPreviewQuality(choices, 900));
     }
 }

@@ -53,6 +53,8 @@ internal static class YtDlpArguments
             CreateFormatSelector(request.VideoQuality.MaximumHeight, request.AudioQuality.MaximumBitrateKbps),
             "--merge-output-format",
             "mkv",
+            "--remux-video",
+            "mkv",
             "--embed-chapters",
             "--paths",
             Path.GetFullPath(outputDirectory),
@@ -93,6 +95,33 @@ internal static class YtDlpArguments
         }
 
         return $"{video}+ba[abr<={audioBitrate}]/{video}+ba/{combined}/b";
+    }
+
+    internal static string CreatePreviewFormatSelector(int maximumHeight)
+    {
+        if (maximumHeight is < 144 or > 2_160)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumHeight));
+        }
+
+        return $"b[height<={maximumHeight}]/bv*[height<={maximumHeight}]+ba/b";
+    }
+
+    public static IReadOnlyList<string> CreatePreviewResolve(Uri uri, int maximumHeight)
+    {
+        ValidateUri(uri);
+        return
+        [
+            "--ignore-config",
+            "--no-playlist",
+            "--no-warnings",
+            "--no-color",
+            "--get-url",
+            "--format",
+            CreatePreviewFormatSelector(maximumHeight),
+            "--",
+            uri.AbsoluteUri,
+        ];
     }
 
     private static void ValidateUri(Uri uri)

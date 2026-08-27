@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:internet="using:ClipEdit.App.InternetMedia"
     Width="540"
-    Height="390"
+    Height="420"
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner"
@@ -26,7 +26,7 @@
       <TextBlock x:Name="MediaDetailText" Classes="muted" FontSize="10" />
     </StackPanel>
 
-    <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="140,*" ColumnSpacing="10" RowSpacing="8">
+    <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto,Auto,*" ColumnDefinitions="140,*" ColumnSpacing="10" RowSpacing="8">
       <TextBlock VerticalAlignment="Center" Text="Video quality" />
       <ComboBox
           x:Name="VideoQualityComboBox"
@@ -54,13 +54,29 @@
 
       <TextBlock
           Grid.Row="2"
+          VerticalAlignment="Center"
+          Text="Streaming preview" />
+      <ComboBox
+          x:Name="PreviewQualityComboBox"
+          Grid.Row="2"
+          Grid.Column="1"
+          IsEnabled="True">
+        <ComboBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding StringFormat={}{0}p}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+
+      <TextBlock
+          Grid.Row="3"
           Grid.ColumnSpan="2"
           Classes="muted"
           FontSize="10"
-          Text="Your selection becomes the default for future links. Downloads resume and stay cached for reuse."
+          Text="Final quality downloads in the background and is used for export. Streaming quality only affects preview bandwidth."
           TextWrapping="Wrap" />
 
-      <StackPanel Grid.Row="3" Grid.ColumnSpan="2" VerticalAlignment="Bottom" Spacing="6">
+      <StackPanel Grid.Row="4" Grid.ColumnSpan="2" VerticalAlignment="Bottom" Spacing="6">
         <ProgressBar x:Name="DownloadProgressBar" Height="5" Minimum="0" Maximum="1" IsIndeterminate="True" />
         <TextBlock x:Name="StatusText" Classes="muted" FontSize="10" Text="Preparing yt-dlp…" TextWrapping="Wrap" />
       </StackPanel>
@@ -82,7 +98,7 @@
           Padding="12,6"
           Classes="primary"
           Click="Download_Click"
-          Content="Download"
+          Content="Start editing"
           IsEnabled="False" />
     </Grid>
   </Grid>

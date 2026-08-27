@@ -12,6 +12,10 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     private ImportedMedia? _media;
     private string _statusText = "Waiting…";
     private string? _errorText;
+    private string _previewSource;
+    private string? _remotePreviewAudioSource;
+    private bool _isInternetDownloadPending;
+    private double? _internetDownloadProgress;
     private bool _isProbing;
     private CropRegion _crop;
     private SourceEdit? _edit;
@@ -31,14 +35,15 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     private bool _isKeyframeIndexReady;
     private string? _keyframeIndexError;
 
-    public MediaItemViewModel(string sourcePath, Guid? id = null)
+    public MediaItemViewModel(string sourcePath, Guid? id = null, string? displayName = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         Id = id is { } requestedId && requestedId != Guid.Empty
             ? requestedId
             : Guid.NewGuid();
         SourcePath = sourcePath;
-        DisplayName = Path.GetFileName(sourcePath);
+        _previewSource = sourcePath;
+        DisplayName = string.IsNullOrWhiteSpace(displayName) ? Path.GetFileName(sourcePath) : displayName.Trim();
         if (string.IsNullOrWhiteSpace(DisplayName))
         {
             DisplayName = sourcePath;
@@ -50,6 +55,43 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
     public string SourcePath { get; }
 
     public string DisplayName { get; }
+
+    public string PreviewSource
+    {
+        get => _previewSource;
+        private set => SetProperty(ref _previewSource, value);
+    }
+
+    public string? RemotePreviewAudioSource
+    {
+        get => _remotePreviewAudioSource;
+        private set => SetProperty(ref _remotePreviewAudioSource, value);
+    }
+
+    public bool IsInternetDownloadPending
+    {
+        get => _isInternetDownloadPending;
+        private set
+        {
+            if (SetProperty(ref _isInternetDownloadPending, value))
+            {
+                OnPropertyChanged(nameof(Detail));
+            }
+        }
+    }
+
+    public double? InternetDownloadProgress
+    {
+        get => _internetDownloadProgress;
+        private set
+        {
+            double? normalized = value is { } progress ? Math.Clamp(progress, 0, 1) : null;
+            if (SetProperty(ref _internetDownloadProgress, normalized))
+            {
+                OnPropertyChanged(nameof(Detail));
+            }
+        }
+    }
 
     public ImportedMedia? Media
     {
@@ -466,9 +508,84 @@ public sealed class MediaItemViewModel : ViewModelBase, IDisposable
                 return ErrorText ?? StatusText;
             }
 
+            var download = IsInternetDownloadPending
+                ? InternetDownloadProgress is { } progress
+                    ? $" · source download {progress:P0}"
+                    : " · source downloading"
+                : string.Empty;
             return $"{FormatDuration(Media.Probe.Duration)} · " +
-                   $"{FormatSize(Media.Probe.FileSizeBytes)}";
+                   $"{FormatSize(Media.Probe.FileSizeBytes)}{download}";
         }
+    }
+
+    internal void UsePreparedInternetMedia(
+        ImportedMedia media,
+        Uri previewVideoUri,
+        Uri? previewAudioUri)
+    {
+        ArgumentNullException.ThrowIfNull(media);
+        ArgumentNullException.ThrowIfNull(previewVideoUri);
+        if (!string.Equals(
+                Path.GetFullPath(media.Probe.SourcePath),
+                Path.GetFullPath(SourcePath),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Prepared media must use this item's final local path.", nameof(media));
+        }
+
+        Media = media;
+        var video = Media.Probe.VideoStreams.First();
+        Crop = CropRegion.FullFrame(video.OrientedSize);
+        InitializeEditing(video);
+        PreviewSource = previewVideoUri.AbsoluteUri;
+        RemotePreviewAudioSource = previewAudioUri?.AbsoluteUri;
+        IsInternetDownloadPending = true;
+        InternetDownloadProgress = null;
+        ErrorText = null;
+        StatusText = "Streaming preview";
+        OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(Detail));
+    }
+
+    internal void UpdateInternetDownloadProgress(double? progress)
+    {
+        if (IsInternetDownloadPending)
+        {
+            InternetDownloadProgress = progress;
+        }
+    }
+
+    internal void CompleteInternetDownload(ImportedMedia localMedia)
+    {
+        ArgumentNullException.ThrowIfNull(localMedia);
+        var expectedSize = VideoSize;
+        var actualSize = localMedia.Probe.VideoStreams.FirstOrDefault()?.OrientedSize;
+        if (actualSize is null || actualSize.Value != expectedSize)
+        {
+            throw new InvalidOperationException(
+                $"The downloaded source is {actualSize?.ToString() ?? "not video"}; expected {expectedSize}.");
+        }
+
+        Media = localMedia;
+        PreviewSource = SourcePath;
+        RemotePreviewAudioSource = null;
+        IsInternetDownloadPending = false;
+        InternetDownloadProgress = 1;
+        ErrorText = null;
+        StatusText = "Ready";
+        OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(Detail));
+    }
+
+    internal void SetInternetDownloadError(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        IsInternetDownloadPending = true;
+        InternetDownloadProgress = null;
+        StatusText = "Source download failed";
+        ErrorText = message;
+        OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(Detail));
     }
 
     public async Task ProbeAsync(

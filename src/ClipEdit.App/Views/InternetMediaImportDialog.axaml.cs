@@ -6,9 +6,10 @@ using ClipEdit.App.Settings;
 namespace ClipEdit.App.Views;
 
 internal sealed record InternetMediaImportDialogResult(
-    string LocalPath,
+    InternetMediaDownloadRequest Request,
     int? PreferredVideoHeight,
-    int? PreferredAudioBitrateKbps);
+    int? PreferredAudioBitrateKbps,
+    int PreviewVideoHeight);
 
 public sealed partial class InternetMediaImportDialog : Window
 {
@@ -17,7 +18,6 @@ public sealed partial class InternetMediaImportDialog : Window
     private readonly InternetMediaSettings _settings = InternetMediaSettings.Default;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private InternetMediaInfo? _mediaInfo;
-    private bool _isDownloading;
 
     public InternetMediaImportDialog()
     {
@@ -57,12 +57,16 @@ public sealed partial class InternetMediaImportDialog : Window
             AudioQualityComboBox.ItemsSource = audioChoices;
             VideoQualityComboBox.SelectedItem = SelectVideoChoice(videoChoices, _settings.PreferredVideoHeight);
             AudioQualityComboBox.SelectedItem = SelectAudioChoice(audioChoices, _settings.PreferredAudioBitrateKbps);
+            PreviewQualityComboBox.ItemsSource = CreatePreviewQualityChoices(_mediaInfo);
+            PreviewQualityComboBox.SelectedItem = SelectPreviewQuality(
+                (IReadOnlyList<int>)PreviewQualityComboBox.ItemsSource!,
+                _settings.PreviewVideoHeight);
             VideoQualityComboBox.IsEnabled = videoChoices.Count > 1;
             AudioQualityComboBox.IsEnabled = audioChoices.Count > 1;
             MediaTitleText.Text = _mediaInfo.Title;
             MediaDetailText.Text = BuildMediaDetails(_mediaInfo);
             StatusText.Text = videoChoices.Count > 1 || audioChoices.Count > 1
-                ? "Choose quality, then download the local editing copy."
+                ? "Choose final quality. Editing starts from a streaming preview while the source downloads."
                 : "One suitable format is available."
                 ;
             DownloadProgressBar.IsIndeterminate = false;
@@ -84,74 +88,23 @@ public sealed partial class InternetMediaImportDialog : Window
         }
     }
 
-    private async void Download_Click(object? sender, RoutedEventArgs eventArgs)
+    private void Download_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        if (_isDownloading || _client is null || _mediaInfo is null ||
+        if (_client is null || _mediaInfo is null ||
             VideoQualityComboBox.SelectedItem is not InternetVideoQualityChoice videoQuality ||
-            AudioQualityComboBox.SelectedItem is not InternetAudioQualityChoice audioQuality)
+            AudioQualityComboBox.SelectedItem is not InternetAudioQualityChoice audioQuality ||
+            PreviewQualityComboBox.SelectedItem is not int previewHeight)
         {
             return;
         }
 
-        _isDownloading = true;
-        DownloadButton.IsEnabled = false;
-        VideoQualityComboBox.IsEnabled = false;
-        AudioQualityComboBox.IsEnabled = false;
-        DownloadProgressBar.IsIndeterminate = true;
-        StatusText.Text = "Starting download…";
-        try
-        {
-            var request = new InternetMediaDownloadRequest(_mediaInfo, videoQuality, audioQuality);
-            var progress = new Progress<InternetMediaDownloadProgress>(UpdateDownloadProgress);
-            var result = await _client.DownloadAsync(request, progress, _lifetimeCancellation.Token);
-            Close(new InternetMediaImportDialogResult(
-                result.LocalPath,
-                videoQuality.MaximumHeight,
-                audioQuality.MaximumBitrateKbps));
-        }
-        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
-        {
-        }
-        catch (InternetMediaException exception)
-        {
-            StatusText.Text = exception.Message;
-            DownloadButton.IsEnabled = true;
-            VideoQualityComboBox.IsEnabled = VideoQualityComboBox.ItemCount > 1;
-            AudioQualityComboBox.IsEnabled = AudioQualityComboBox.ItemCount > 1;
-        }
-        catch (Exception exception)
-        {
-            StatusText.Text = $"Could not download this media: {exception.Message}";
-            DownloadButton.IsEnabled = true;
-            VideoQualityComboBox.IsEnabled = VideoQualityComboBox.ItemCount > 1;
-            AudioQualityComboBox.IsEnabled = AudioQualityComboBox.ItemCount > 1;
-        }
-        finally
-        {
-            _isDownloading = false;
-        }
-    }
-
-    private void UpdateDownloadProgress(InternetMediaDownloadProgress progress)
-    {
-        DownloadProgressBar.IsIndeterminate = progress.Fraction is null;
-        if (progress.Fraction is { } fraction)
-        {
-            DownloadProgressBar.Value = fraction;
-        }
-
-        var percentage = progress.Fraction is { } value ? $"{value:P0}" : "Downloading";
-        var bytes = progress.DownloadedBytes is { } downloaded && progress.TotalBytes is { } total
-            ? $" · {FormatBytes(downloaded)} / {FormatBytes(total)}"
-            : progress.DownloadedBytes is { } partial
-                ? $" · {FormatBytes(partial)}"
-                : string.Empty;
-        var remaining = progress.Remaining is { } eta
-            ? $" · about {FormatRemaining(eta)} left"
-            : string.Empty;
-        StatusText.Text = $"{percentage}{bytes}{remaining}";
+        Close(new InternetMediaImportDialogResult(
+            new InternetMediaDownloadRequest(_mediaInfo, videoQuality, audioQuality),
+            videoQuality.MaximumHeight,
+            audioQuality.MaximumBitrateKbps,
+            previewHeight));
     }
 
     private void Cancel_Click(object? sender, RoutedEventArgs eventArgs)
@@ -198,6 +151,34 @@ public sealed partial class InternetMediaImportDialog : Window
               choices[0];
     }
 
+    internal static IReadOnlyList<int> CreatePreviewQualityChoices(InternetMediaInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        var availableMaximum = info.Formats
+            .Where(static format => format.HasVideo && format.Height is > 0)
+            .Max(static format => format.Height) ?? InternetMediaSettings.DefaultPreviewVideoHeight;
+        return new[] { 360, 480, 720, 1080 }
+            .Where(height => height <= availableMaximum)
+            .Append(Math.Min(availableMaximum, 1080))
+            .Where(static height => height >= 144)
+            .Distinct()
+            .Order()
+            .ToArray();
+    }
+
+    internal static int SelectPreviewQuality(IReadOnlyList<int> choices, int preferredHeight)
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+        if (choices.Count == 0)
+        {
+            return InternetMediaSettings.DefaultPreviewVideoHeight;
+        }
+
+        return choices.Contains(preferredHeight)
+            ? preferredHeight
+            : choices.Where(height => height <= preferredHeight).DefaultIfEmpty(choices[0]).Max();
+    }
+
     private static string BuildMediaDetails(InternetMediaInfo info)
     {
         var extractor = string.IsNullOrWhiteSpace(info.Extractor) ? info.SourceUri.Host : info.Extractor;
@@ -205,13 +186,4 @@ public sealed partial class InternetMediaImportDialog : Window
         return $"{extractor}{duration}";
     }
 
-    private static string FormatBytes(long bytes)
-    {
-        const double megabyte = 1024d * 1024d;
-        return bytes >= megabyte ? $"{bytes / megabyte:0.#} MB" : $"{Math.Max(1, bytes / 1024d):0.#} KB";
-    }
-
-    private static string FormatRemaining(TimeSpan remaining) => remaining.TotalMinutes >= 1
-        ? $"{Math.Ceiling(remaining.TotalMinutes):0} min"
-        : $"{Math.Max(1, Math.Ceiling(remaining.TotalSeconds)):0} sec";
 }

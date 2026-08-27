@@ -12,6 +12,7 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _lifetimeGate = new();
     private readonly MpvNativeLibrary _native;
+    private readonly string _videoOutput;
     private readonly Thread _ownerThread;
     private int _disposeStarted;
     private int _renderContextCount;
@@ -20,9 +21,10 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     private TaskCompletionSource? _renderContextsReleased;
     private Task? _disposeTask;
 
-    private MpvPreviewEngine(MpvNativeLibrary native)
+    private MpvPreviewEngine(MpvNativeLibrary native, string videoOutput)
     {
         _native = native;
+        _videoOutput = videoOutput;
         _ownerThread = new Thread(Run)
         {
             IsBackground = true,
@@ -41,7 +43,20 @@ public sealed class MpvPreviewEngine : IPreviewEngine
             ?? throw new MpvPreviewException(
                 "A compatible libmpv was not found. Configure it in Media runtime settings or set CLIPEDIT_LIBMPV_PATH.");
 
-        var engine = new MpvPreviewEngine(MpvNativeLibrary.Load(resolvedPath));
+        return await CreateCoreAsync(resolvedPath, "libmpv", cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static Task<MpvPreviewEngine> CreateHeadlessAsync(
+        string libraryPath,
+        CancellationToken cancellationToken = default) =>
+        CreateCoreAsync(libraryPath, "null", cancellationToken);
+
+    private static async Task<MpvPreviewEngine> CreateCoreAsync(
+        string resolvedPath,
+        string videoOutput,
+        CancellationToken cancellationToken)
+    {
+        var engine = new MpvPreviewEngine(MpvNativeLibrary.Load(resolvedPath), videoOutput);
         try
         {
             await engine._ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -54,18 +69,21 @@ public sealed class MpvPreviewEngine : IPreviewEngine
         }
     }
 
-    public Task LoadAsync(string sourcePath, CancellationToken cancellationToken)
+    public Task LoadAsync(PreviewMediaSource source, CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        ArgumentNullException.ThrowIfNull(source);
         Volatile.Write(ref _state, (int)PreviewState.Loading);
         return InvokeAsync(
             client =>
             {
-                client.Load(sourcePath, cancellationToken);
+                client.Load(source, cancellationToken);
                 Volatile.Write(ref _state, (int)PreviewState.Paused);
             },
             cancellationToken);
     }
+
+    public Task LoadAsync(string sourcePath, CancellationToken cancellationToken) =>
+        LoadAsync(PreviewMediaSource.LocalFile(sourcePath), cancellationToken);
 
     public Task SeekAsync(MediaTime position, CancellationToken cancellationToken) =>
         InvokeAsync(client => client.Seek(position, exact: true), cancellationToken);
@@ -199,7 +217,7 @@ public sealed class MpvPreviewEngine : IPreviewEngine
     {
         try
         {
-            using var client = new MpvClient(_native);
+            using var client = new MpvClient(_native, _videoOutput);
             lock (_lifetimeGate)
             {
                 _clientHandle = client.Handle;

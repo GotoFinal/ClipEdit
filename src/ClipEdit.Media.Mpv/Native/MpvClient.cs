@@ -10,6 +10,7 @@ internal sealed class MpvClient : IDisposable
 {
     private const int FileLoadedEvent = 8;
     private const int EndFileEvent = 7;
+    private const int LogMessageEvent = 2;
     private const int NoEvent = 0;
     private const int SetPropertyReplyEvent = 4;
     private const int EventQueueOverflowEvent = 24;
@@ -21,10 +22,11 @@ internal sealed class MpvClient : IDisposable
     private IReadOnlyList<string> _loadedExternalAudioSources = [];
     private readonly Dictionary<ulong, PendingAsyncPropertyBatch> _pendingAsyncProperties = [];
     private PreviewVideoTransform? _lastVideoTransform;
+    private readonly Queue<string> _loadDiagnostics = new();
     private ulong _nextAsyncRequestId;
     private nint _handle;
 
-    public MpvClient(MpvNativeLibrary native)
+    public MpvClient(MpvNativeLibrary native, string videoOutput = "libmpv")
     {
         _native = native;
         _handle = native.Create();
@@ -35,11 +37,13 @@ internal sealed class MpvClient : IDisposable
 
         try
         {
-            foreach (var option in GetInitializationOptions())
+            foreach (var option in GetInitializationOptions(videoOutput))
             {
                 SetOption(option.Name, option.Value);
             }
             Check(_native.Initialize(_handle), "initialize libmpv");
+            using var logLevel = new Utf8String("warn");
+            Check(_native.RequestLogMessages(_handle, logLevel.Pointer), "enable libmpv diagnostics");
         }
         catch
         {
@@ -50,7 +54,8 @@ internal sealed class MpvClient : IDisposable
 
     public nint Handle => _handle;
 
-    internal static IReadOnlyList<(string Name, string Value)> GetInitializationOptions() =>
+    internal static IReadOnlyList<(string Name, string Value)> GetInitializationOptions(
+        string videoOutput = "libmpv") =>
     [
         ("config", "no"),
         ("terminal", "no"),
@@ -60,10 +65,17 @@ internal sealed class MpvClient : IDisposable
         ("keep-open", "yes"),
         ("pause", "yes"),
         ("audio-pitch-correction", "yes"),
-        ("vo", "libmpv"),
+        ("vo", videoOutput is "libmpv" or "null"
+            ? videoOutput
+            : throw new ArgumentOutOfRangeException(nameof(videoOutput))),
         ("hwdec", "auto"),
         ("hr-seek-framedrop", "yes"),
         ("video-unscaled", "yes"),
+        ("cache", "auto"),
+        ("demuxer-readahead-secs", "20"),
+        ("demuxer-max-bytes", "67108864"),
+        ("demuxer-max-back-bytes", "33554432"),
+        ("demuxer-seekable-cache", "yes"),
         // Avalonia owns the final 8-bit desktop-composited surface, so libmpv
         // must render display-referred SDR instead of sending PQ/HLG values to
         // a framebuffer that cannot carry HDR swapchain metadata.
@@ -75,13 +87,13 @@ internal sealed class MpvClient : IDisposable
         ("hdr-compute-peak", "auto"),
     ];
 
-    public void Load(string sourcePath, CancellationToken cancellationToken)
+    public void Load(PreviewMediaSource source, CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
-        var fullPath = Path.GetFullPath(sourcePath);
-        if (!File.Exists(fullPath))
+        ArgumentNullException.ThrowIfNull(source);
+        var loadTarget = source.Location;
+        if (!source.IsRemote && !File.Exists(loadTarget))
         {
-            throw new FileNotFoundException("Preview source media was not found.", fullPath);
+            throw new FileNotFoundException("Preview source media was not found.", loadTarget);
         }
 
         foreach (var property in GetMediaLoadAudioResetProperties())
@@ -91,8 +103,18 @@ internal sealed class MpvClient : IDisposable
 
         _loadedExternalAudioSources = [];
         _lastVideoTransform = null;
-        RunCommand("loadfile", fullPath, "replace");
+        RunCommand("loadfile", loadTarget, "replace");
         WaitUntilLoaded(cancellationToken);
+        if (source.RemoteAudioLocation is { } remoteAudio)
+        {
+            RunCommand("audio-add", remoteAudio, "select", "Internet audio");
+            WaitUntilExternalAudioLoaded([remoteAudio], cancellationToken);
+            _loadedExternalAudioSources = [remoteAudio];
+        }
+        else if (source.IsRemote)
+        {
+            SetProperty("aid", "auto");
+        }
     }
 
     internal static IReadOnlyList<(string Name, string Value)> GetMediaLoadAudioResetProperties() =>
@@ -360,6 +382,7 @@ internal sealed class MpvClient : IDisposable
 
     private void WaitUntilLoaded(CancellationToken cancellationToken)
     {
+        _loadDiagnostics.Clear();
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed < TimeSpan.FromSeconds(30))
         {
@@ -371,17 +394,42 @@ internal sealed class MpvClient : IDisposable
                 return;
             }
 
+            if (eventData.EventId == LogMessageEvent && eventData.Data != nint.Zero)
+            {
+                RememberLoadDiagnostic(Marshal.PtrToStructure<MpvLogMessageEvent>(eventData.Data));
+                continue;
+            }
+
             if (eventData.EventId == EndFileEvent && eventData.Data != nint.Zero)
             {
                 var endFile = Marshal.PtrToStructure<MpvEndFileEvent>(eventData.Data);
                 if (endFile.Error < 0)
                 {
-                    Check(endFile.Error, "load preview media");
+                    var diagnostic = _loadDiagnostics.Count == 0
+                        ? string.Empty
+                        : $" {string.Join(" ", _loadDiagnostics)}";
+                    throw new MpvPreviewException(
+                        $"Could not load preview media: {_native.DescribeError(endFile.Error)}.{diagnostic}");
                 }
             }
         }
 
         throw new TimeoutException("libmpv did not load the preview media within 30 seconds.");
+    }
+
+    private void RememberLoadDiagnostic(MpvLogMessageEvent message)
+    {
+        var text = Marshal.PtrToStringUTF8(message.Text)?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        if (_loadDiagnostics.Count == 4)
+        {
+            _loadDiagnostics.Dequeue();
+        }
+        _loadDiagnostics.Enqueue(text.Length <= 300 ? text : text[..300]);
     }
 
     private void SetOption(string name, string value)
@@ -575,6 +623,12 @@ internal sealed class MpvClient : IDisposable
             return null;
         }
 
+        if (Uri.TryCreate(sourcePath, UriKind.Absolute, out var uri) &&
+            uri.Scheme is "http" or "https")
+        {
+            return uri.AbsoluteUri;
+        }
+
         try
         {
             return Path.GetFullPath(sourcePath);
@@ -686,6 +740,15 @@ internal sealed class MpvClient : IDisposable
     {
         public readonly int Reason;
         public readonly int Error;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct MpvLogMessageEvent
+    {
+        public readonly nint Prefix;
+        public readonly nint Level;
+        public readonly nint Text;
+        public readonly int LogLevel;
     }
 
     private readonly record struct MpvAudioTrackDescriptor(

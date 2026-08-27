@@ -6,7 +6,10 @@ public interface IPreviewEngine : IAsyncDisposable
 {
     PreviewState State { get; }
 
-    Task LoadAsync(string sourcePath, CancellationToken cancellationToken);
+    Task LoadAsync(PreviewMediaSource source, CancellationToken cancellationToken);
+
+    Task LoadAsync(string sourcePath, CancellationToken cancellationToken) =>
+        LoadAsync(PreviewMediaSource.LocalFile(sourcePath), cancellationToken);
 
     Task SeekAsync(MediaTime position, CancellationToken cancellationToken);
 

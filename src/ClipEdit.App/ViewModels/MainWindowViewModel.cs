@@ -211,7 +211,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     public bool CanSaveProject =>
-        IsProjectPersistenceAvailable && HasReadyMedia && !IsBusy && !IsExporting;
+        IsProjectPersistenceAvailable && HasReadyMedia && !HasPendingInternetDownloads && !IsBusy && !IsExporting;
 
     public bool CanOpenProject =>
         IsProjectPersistenceAvailable && !IsBusy && !IsExporting;
@@ -1136,6 +1136,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 return "FFmpeg was not found; export is unavailable";
             }
 
+            if (HasPendingInternetDownloads)
+            {
+                return "Wait for the final-quality internet source to finish downloading";
+            }
+
             var slices = GetSequenceExportSlices();
             if (slices.Count == 0)
             {
@@ -1222,6 +1227,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public void ReportUpdateStatus() => StatusText = Updates.StatusText;
 
     public bool HasReadyMedia => MediaItems.Any(item => item.IsReady);
+
+    public bool HasPendingInternetDownloads => MediaItems.Any(item => item.IsInternetDownloadPending);
 
     public bool ShowEmptyState => !HasReadyMedia;
 
@@ -1443,6 +1450,105 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             MarkProjectDirty();
         }
 
+        RaiseWorkspaceStateChanged();
+    }
+
+    public MediaItemViewModel? ImportPreparedInternetMedia(
+        ImportedMedia media,
+        Uri previewVideoUri,
+        Uri? previewAudioUri)
+    {
+        ArgumentNullException.ThrowIfNull(media);
+        ArgumentNullException.ThrowIfNull(previewVideoUri);
+        var fullPath = Path.GetFullPath(media.Probe.SourcePath);
+        if (_knownPaths.Contains(fullPath))
+        {
+            var existing = MediaItems.FirstOrDefault(item => PathComparer.Equals(item.SourcePath, fullPath));
+            if (existing is not null)
+            {
+                SelectedMedia = existing;
+                return existing;
+            }
+        }
+
+        _knownPaths.Add(fullPath);
+        var item = new MediaItemViewModel(fullPath, displayName: media.DisplayName);
+        item.UsePreparedInternetMedia(media, previewVideoUri, previewAudioUri);
+        MediaItems.Add(item);
+        AddAudioTracks(item);
+        AddInitialVideoClip(item);
+        SelectedMedia = item;
+        StatusText = $"Editing {item.DisplayName} from a streaming preview · downloading final source";
+        MarkProjectDirty();
+        RaiseWorkspaceStateChanged();
+        return item;
+    }
+
+    public async Task CompletePreparedInternetMediaAsync(
+        MediaItemViewModel item,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (_importMedia is null || !MediaItems.Contains(item))
+        {
+            return;
+        }
+
+        var localMedia = await _importMedia.ExecuteAsync(item.SourcePath, cancellationToken);
+        if (!MediaItems.Contains(item))
+        {
+            return;
+        }
+
+        item.CompleteInternetDownload(localMedia);
+        var localAudioStreams = localMedia.Probe.AudioStreams.ToArray();
+        foreach (var track in AudioTracks.Where(static track => !track.IsExternal).ToArray())
+        {
+            var stream = track.EmbeddedLaneIndex is { } laneIndex && laneIndex < localAudioStreams.Length
+                ? localAudioStreams[laneIndex]
+                : null;
+            if (stream is not null)
+            {
+                track.RefreshEmbeddedSource(localMedia, stream);
+            }
+            else if (track.RemoveEmbeddedSource(item.SourcePath, rebuildTimeline: false) &&
+                     track.EmbeddedSourcePaths.Count == 0)
+            {
+                RemoveAudioTrackCore(track);
+            }
+        }
+        AddAudioTracks(item);
+        StartKeyframeIndexing(item);
+        StatusText = $"{item.DisplayName} finished downloading · final-quality source ready";
+        StartPreviewRefresh(item, debounce: false, clearExisting: true);
+        StartSequenceTimelineAnalysis(debounce: false);
+        RaiseWorkspaceStateChanged();
+    }
+
+    public void UpdatePreparedInternetMediaProgress(MediaItemViewModel item, double? progress)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (!MediaItems.Contains(item))
+        {
+            return;
+        }
+
+        item.UpdateInternetDownloadProgress(progress);
+        OnPropertyChanged(nameof(CanSaveProject));
+        RaiseExportStateChanged();
+    }
+
+    public void ReportPreparedInternetMediaFailure(MediaItemViewModel item, string message)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (!MediaItems.Contains(item))
+        {
+            return;
+        }
+
+        item.SetInternetDownloadError(message);
+        StatusText = $"{item.DisplayName}: {message}";
         RaiseWorkspaceStateChanged();
     }
 
@@ -3225,6 +3331,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private void RaiseWorkspaceStateChanged()
     {
         OnPropertyChanged(nameof(HasReadyMedia));
+        OnPropertyChanged(nameof(HasPendingInternetDownloads));
         OnPropertyChanged(nameof(ShowEmptyState));
         OnPropertyChanged(nameof(ShowQuickWorkspace));
         OnPropertyChanged(nameof(ShowTimeline));
@@ -4943,7 +5050,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         PreviewErrorText = null;
 
         var video = mediaItem?.Media?.Probe.VideoStreams.FirstOrDefault();
-        if (video is null || _frameDecoder is null)
+        if (video is null || _frameDecoder is null || mediaItem!.IsInternetDownloadPending)
         {
             return;
         }
@@ -4997,7 +5104,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         _timelineAnalysisCancellation?.Cancel();
         _timelineAnalysisCancellation = null;
-        if (mediaItem?.Media?.Probe.VideoStreams.FirstOrDefault() is null || _frameDecoder is null)
+        if (mediaItem?.Media?.Probe.VideoStreams.FirstOrDefault() is null ||
+            _frameDecoder is null ||
+            mediaItem.IsInternetDownloadPending)
         {
             return;
         }
@@ -5147,7 +5256,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     Segment: segment,
                     Start: Math.Max(segment.TimelineStartSeconds, viewportStart),
                     End: Math.Min(segment.TimelineEndSeconds, viewportEnd)))
-                .Where(item => item.End > item.Start)
+                .Where(item =>
+                    item.End > item.Start &&
+                    !IsPendingInternetSource(item.Segment.SourcePath ?? track.SourcePath))
                 .ToList();
             track.IsWaveformDecimated = visibleSegments.Count > maximumRenderedSegments;
             if (visibleSegments.Count > maximumRenderedSegments)
@@ -5254,6 +5365,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             request.Cancel();
         }
     }
+
+    private bool IsPendingInternetSource(string sourcePath) =>
+        MediaItems.Any(item =>
+            item.IsInternetDownloadPending &&
+            PathsEqual(item.SourcePath, sourcePath));
 
     private static MediaTime ToMediaTime(double seconds)
     {

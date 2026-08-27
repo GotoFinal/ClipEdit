@@ -7,7 +7,8 @@ internal sealed record InternetMediaInfo(
     string Title,
     string? Extractor,
     TimeSpan? Duration,
-    ImmutableArray<InternetMediaFormat> Formats)
+    ImmutableArray<InternetMediaFormat> Formats,
+    ImmutableArray<InternetMediaChapter> Chapters = default)
 {
     public IReadOnlyList<InternetVideoQualityChoice> CreateVideoQualityChoices()
     {
@@ -86,6 +87,8 @@ internal sealed record InternetMediaFormat(
                             !string.Equals(AudioCodec, "none", StringComparison.OrdinalIgnoreCase);
 }
 
+internal sealed record InternetMediaChapter(string Title, TimeSpan Start, TimeSpan End);
+
 internal sealed record InternetVideoQualityChoice(int? MaximumHeight, string DisplayName);
 
 internal sealed record InternetAudioQualityChoice(int? MaximumBitrateKbps, string DisplayName);
@@ -102,6 +105,14 @@ internal sealed record InternetMediaDownloadProgress(
     TimeSpan? Remaining);
 
 internal sealed record InternetMediaDownloadResult(string LocalPath, InternetMediaDownloadRequest Request);
+
+internal sealed record InternetMediaPreparedImport(
+    InternetMediaDownloadRequest Request,
+    string ExpectedLocalPath,
+    Uri PreviewVideoUri,
+    Uri? PreviewAudioUri,
+    int PreviewMaximumHeight,
+    string? CompletedLocalPath);
 
 internal sealed class InternetMediaException : Exception
 {

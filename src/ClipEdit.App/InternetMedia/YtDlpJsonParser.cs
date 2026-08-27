@@ -71,12 +71,15 @@ internal static class YtDlpJsonParser
                 throw new InternetMediaException("The link did not expose any downloadable media formats.");
             }
 
+            var chapters = ParseChapters(root, duration);
+
             return new InternetMediaInfo(
                 resolvedUri,
                 title.Trim(),
                 GetString(root, "extractor_key") ?? GetString(root, "extractor"),
                 duration,
-                formats.ToImmutable());
+                formats.ToImmutable(),
+                chapters);
         }
         catch (InternetMediaException)
         {
@@ -86,6 +89,56 @@ internal static class YtDlpJsonParser
         {
             throw new InternetMediaException("yt-dlp returned invalid media information.", exception);
         }
+    }
+
+    private static ImmutableArray<InternetMediaChapter> ParseChapters(
+        JsonElement root,
+        TimeSpan? mediaDuration)
+    {
+        if (!root.TryGetProperty("chapters", out var values) || values.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var chapters = ImmutableArray.CreateBuilder<InternetMediaChapter>();
+        foreach (var value in values.EnumerateArray().Take(10_000))
+        {
+            var startSeconds = GetDouble(value, "start_time");
+            var endSeconds = GetDouble(value, "end_time");
+            if (startSeconds is not (>= 0) ||
+                endSeconds is null ||
+                endSeconds <= startSeconds ||
+                endSeconds > TimeSpan.MaxValue.TotalSeconds)
+            {
+                continue;
+            }
+
+            var start = TimeSpan.FromSeconds(startSeconds.Value);
+            var end = TimeSpan.FromSeconds(endSeconds.Value);
+            if (mediaDuration is { } duration)
+            {
+                if (start >= duration)
+                {
+                    continue;
+                }
+                end = end > duration ? duration : end;
+            }
+            if (end <= start)
+            {
+                continue;
+            }
+
+            var title = GetString(value, "title")?.Trim();
+            chapters.Add(new InternetMediaChapter(
+                string.IsNullOrWhiteSpace(title) ? $"Chapter {chapters.Count + 1}" : title,
+                start,
+                end));
+        }
+
+        return chapters
+            .OrderBy(static chapter => chapter.Start)
+            .ThenBy(static chapter => chapter.End)
+            .ToImmutableArray();
     }
 
     private static string? GetString(JsonElement element, string name) =>

@@ -29,6 +29,26 @@ public sealed class YtDlpArgumentsTests
         Assert.Equal(expected, YtDlpArguments.CreateFormatSelector(height, audioBitrate));
     }
 
+    [Theory]
+    [InlineData(360, "b[height<=360]/bv*[height<=360]+ba/b")]
+    [InlineData(720, "b[height<=720]/bv*[height<=720]+ba/b")]
+    public void Preview_selector_caps_bandwidth_but_keeps_audio_fallbacks(int height, string expected)
+    {
+        Assert.Equal(expected, YtDlpArguments.CreatePreviewFormatSelector(height));
+    }
+
+    [Fact]
+    public void Preview_resolve_requests_direct_seekable_locations_without_downloading()
+    {
+        var arguments = YtDlpArguments.CreatePreviewResolve(
+            new Uri("https://example.test/watch/1"),
+            720);
+
+        Assert.Contains("--get-url", arguments);
+        Assert.Equal("b[height<=720]/bv*[height<=720]+ba/b", ValueAfter(arguments, "--format"));
+        Assert.Equal("https://example.test/watch/1", arguments[^1]);
+    }
+
     [Fact]
     public void Download_is_resumable_concurrent_and_uses_configured_ffmpeg()
     {
@@ -50,6 +70,7 @@ public sealed class YtDlpArgumentsTests
         Assert.Contains("--continue", arguments);
         Assert.Contains("--part", arguments);
         Assert.Contains("--embed-chapters", arguments);
+        Assert.Equal("mkv", ValueAfter(arguments, "--remux-video"));
         Assert.Equal("6", ValueAfter(arguments, "--concurrent-fragments"));
         Assert.Equal(Path.GetFullPath(ffmpeg), ValueAfter(arguments, "--ffmpeg-location"));
         Assert.Equal(Path.GetFullPath(output), ValueAfter(arguments, "--paths"));

@@ -5,7 +5,7 @@ namespace ClipEdit.App.InternetMedia;
 
 internal sealed class InternetMediaCache
 {
-    private const string CacheFormatVersion = "2-embedded-chapters";
+    private const string CacheFormatVersion = "3-streaming-preview";
     private readonly string _cacheRoot;
 
     public InternetMediaCache(string cacheRoot)
@@ -57,23 +57,21 @@ internal sealed class InternetMediaCache
         }
     }
 
+    public string GetExpectedCompletedPath(InternetMediaDownloadRequest request) =>
+        Path.Combine(GetEntryDirectory(request), "media.mkv");
+
     public string MarkCompleted(string entryDirectory)
     {
-        var candidates = Directory.EnumerateFiles(entryDirectory, "media.*", SearchOption.TopDirectoryOnly)
-            .Where(static path =>
-                !path.EndsWith(".part", StringComparison.OrdinalIgnoreCase) &&
-                !path.EndsWith(".ytdl", StringComparison.OrdinalIgnoreCase) &&
-                !path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) &&
-                new FileInfo(path).Length > 0)
-            .OrderByDescending(static path => new FileInfo(path).LastWriteTimeUtc)
-            .ThenByDescending(static path => new FileInfo(path).Length)
-            .ToArray();
-        if (candidates.Length == 0)
+        var selected = Path.Combine(entryDirectory, "media.mkv");
+        if (new FileInfo(selected) is not { Exists: true, Length: > 0 })
         {
-            throw new InternetMediaException("yt-dlp completed without producing a usable media file.");
+            throw new InternetMediaException("yt-dlp did not produce the expected Matroska editing copy.");
         }
 
-        var selected = candidates[0];
+        if (!IsWithin(Path.GetFullPath(selected), Path.GetFullPath(entryDirectory)))
+        {
+            throw new InternetMediaException("The completed internet-media cache path is invalid.");
+        }
         var markerPath = Path.Combine(entryDirectory, "complete.txt");
         var temporaryPath = $"{markerPath}.{Guid.NewGuid():N}.saving";
         try

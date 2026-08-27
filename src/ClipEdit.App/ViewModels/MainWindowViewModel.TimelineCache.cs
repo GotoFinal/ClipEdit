@@ -21,7 +21,7 @@ public sealed partial class MainWindowViewModel
         var bucketDuration = TimelineFrameCache.ChooseBucketDuration(
             Math.Max(0.000001, viewportEnd - viewportStart) / SequenceViewportThumbnailCount);
         var frameRequests = CreateSequenceFrameRequests(
-            clips,
+            clips.Where(static clip => !clip.Source.IsInternetDownloadPending).ToArray(),
             viewportStart,
             viewportEnd,
             SequenceViewportThumbnailCount,
@@ -179,6 +179,7 @@ public sealed partial class MainWindowViewModel
             var visibleStart = Math.Max(viewportStart, clip.TimelineStartSeconds);
             var visibleEnd = Math.Min(viewportEnd, clip.TimelineEndSeconds);
             if (visibleEnd <= visibleStart ||
+                clip.Source.IsInternetDownloadPending ||
                 clip.Source.Media?.Probe.VideoStreams.FirstOrDefault() is not { } video)
             {
                 continue;

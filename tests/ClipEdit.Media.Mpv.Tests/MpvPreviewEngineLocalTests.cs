@@ -18,7 +18,7 @@ public sealed class MpvPreviewEngineLocalTests
             return;
         }
 
-        await using var engine = await MpvPreviewEngine.CreateAsync(libraryPath);
+        await using var engine = await MpvPreviewEngine.CreateHeadlessAsync(libraryPath);
 
         await engine.LoadAsync(sourcePath, CancellationToken.None);
         await engine.SetAudioTracksAsync(
@@ -53,5 +53,41 @@ public sealed class MpvPreviewEngineLocalTests
         Assert.True(afterStep > beforeStep.Value);
         await engine.StepFrameAsync(PreviewFrameStepDirection.Backward, CancellationToken.None);
         Assert.Equal(PreviewState.Paused, engine.State);
+    }
+
+    [Fact]
+    [Trait("Category", "LiveInternet")]
+    public async Task Engine_streams_and_seeks_an_opt_in_internet_page_through_ytdlp()
+    {
+        var sourceUrl = Environment.GetEnvironmentVariable("CLIPEDIT_LIVE_INTERNET_VIDEO_URL");
+        var audioUrl = Environment.GetEnvironmentVariable("CLIPEDIT_LIVE_INTERNET_AUDIO_URL");
+        var libraryPath = MpvNativeLibraryLocator.Find();
+        if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out var sourceUri) ||
+            sourceUri.Scheme is not ("http" or "https") ||
+            libraryPath is null)
+        {
+            return;
+        }
+
+        await using var engine = await MpvPreviewEngine.CreateHeadlessAsync(libraryPath);
+        var remoteAudioUri = Uri.TryCreate(audioUrl, UriKind.Absolute, out var parsedAudioUri)
+            ? parsedAudioUri
+            : null;
+        var source = PreviewMediaSource.Internet(sourceUri, remoteAudioUri);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        await engine.LoadAsync(source, timeout.Token);
+        await engine.SeekFastAsync(new MediaTime(5, 1), timeout.Token);
+        await engine.SetPausedAsync(false, timeout.Token);
+
+        MediaTime? position = null;
+        for (var attempt = 0; attempt < 40 && position is null; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(100), timeout.Token);
+            position = await engine.GetPositionAsync(timeout.Token);
+        }
+
+        Assert.NotNull(position);
+        Assert.True(position >= MediaTime.Zero);
     }
 }

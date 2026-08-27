@@ -160,14 +160,40 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         RefreshEmbeddedDisplayName();
     }
 
-    internal bool RemoveEmbeddedSource(string sourcePath)
+    internal bool RefreshEmbeddedSource(ImportedMedia media, AudioStreamInfo stream)
+    {
+        ArgumentNullException.ThrowIfNull(media);
+        ArgumentNullException.ThrowIfNull(stream);
+        if (IsExternal || media.IsExternalAudio ||
+            !_embeddedSources.TryGetValue(media.Probe.SourcePath, out var existing))
+        {
+            return false;
+        }
+
+        var quantum = stream.TimeBase is { } timeBase && timeBase > MediaTime.Zero
+            ? timeBase
+            : new MediaTime(1, stream.SampleRate ?? 48_000);
+        _embeddedSources[media.Probe.SourcePath] = new EmbeddedAudioSourceBinding(
+            media.Probe.SourcePath,
+            stream.Index,
+            quantum,
+            existing.Edit,
+            BuildStreamDetail(stream));
+        RefreshEmbeddedDisplayName();
+        return true;
+    }
+
+    internal bool RemoveEmbeddedSource(string sourcePath, bool rebuildTimeline = true)
     {
         var removed = !IsExternal && _embeddedSources.Remove(sourcePath);
         if (removed)
         {
             OnPropertyChanged(nameof(EmbeddedSourcePaths));
             RefreshEmbeddedDisplayName();
-            RebuildTimelineKeptRanges();
+            if (rebuildTimeline)
+            {
+                RebuildTimelineKeptRanges();
+            }
         }
         return removed;
     }
