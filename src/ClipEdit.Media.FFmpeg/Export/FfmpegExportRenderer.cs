@@ -82,7 +82,7 @@ public sealed class FfmpegExportRenderer :
             }
         }
 
-        if (RequiresHevcKeyframeCopyValidation(plan))
+        if (RequiresKeyframeCopyValidation(plan))
         {
             try
             {
@@ -90,14 +90,14 @@ public sealed class FfmpegExportRenderer :
                         plan,
                         progress,
                         cancellationToken,
-                        validateHevcKeyframeCopy: true)
+                        validateKeyframeCopy: true)
                     .ConfigureAwait(false);
             }
             catch (ExportException)
             {
                 progress?.Report(new ExportProgress(
                     0,
-                    "HEVC fast trim rejected · encoding exactly",
+                    "Fast trim rejected · encoding exactly",
                     TimeSpan.Zero));
                 return await RenderSingleProcessWithHardwareFallbackAsync(
                         plan,
@@ -117,7 +117,7 @@ public sealed class FfmpegExportRenderer :
         IProgress<ExportProgress>? progress,
         CancellationToken cancellationToken,
         bool forceExactTranscode = false,
-        bool validateHevcKeyframeCopy = false)
+        bool validateKeyframeCopy = false)
     {
         var usesExactTranscode = forceExactTranscode || plan.Strategy == ExportStrategy.ExactTranscode;
         var requestedVideoEncoder = FfmpegExportArguments.ResolveVideoEncoder(plan);
@@ -128,7 +128,7 @@ public sealed class FfmpegExportRenderer :
                     progress,
                     cancellationToken,
                     forceExactTranscode,
-                    validateHevcKeyframeCopy)
+                    validateKeyframeCopy)
                 .ConfigureAwait(false);
         }
         catch (ExportException exception) when (
@@ -160,7 +160,7 @@ public sealed class FfmpegExportRenderer :
         IProgress<ExportProgress>? progress,
         CancellationToken cancellationToken,
         bool forceExactTranscode = false,
-        bool validateHevcKeyframeCopy = false,
+        bool validateKeyframeCopy = false,
         ExportHardwareAcceleration? hardwareAccelerationOverride = null,
         ExportVideoEncoder? videoEncoderOverride = null)
     {
@@ -239,13 +239,13 @@ public sealed class FfmpegExportRenderer :
                     "FFmpeg completed without producing a usable output file.");
             }
 
-            if (validateHevcKeyframeCopy)
+            if (validateKeyframeCopy)
             {
                 progress?.Report(new ExportProgress(
                     0.99,
-                    "Validating HEVC fast trim",
+                    "Validating fast trim",
                     plan.ExpectedDurationToTimeSpan()));
-                await ValidateHevcKeyframeCopyOutputAsync(plan, temporaryPath, cancellationToken)
+                await ValidateKeyframeCopyOutputAsync(plan, temporaryPath, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -338,23 +338,20 @@ public sealed class FfmpegExportRenderer :
         }
     }
 
-    internal static bool RequiresHevcKeyframeCopyValidation(ExportPlan plan)
+    internal static bool RequiresKeyframeCopyValidation(ExportPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
         return plan.Strategy == ExportStrategy.VideoStreamCopy &&
-               plan.Preset.Container == ExportContainer.Matroska &&
-               plan.Preset.VideoCodec == VideoCodecFamily.Hevc &&
                plan.VideoSegments is
                [
                    {
                        IsCompleteSource: false,
-                       StreamCopyInfo.Video.CodecName: var codecName,
+                       StreamCopyInfo.Video: not null,
                    },
-               ] &&
-               string.Equals(codecName, "hevc", StringComparison.OrdinalIgnoreCase);
+               ];
     }
 
-    private async Task ValidateHevcKeyframeCopyOutputAsync(
+    private async Task ValidateKeyframeCopyOutputAsync(
         ExportPlan plan,
         string candidatePath,
         CancellationToken cancellationToken)
@@ -363,7 +360,7 @@ public sealed class FfmpegExportRenderer :
         {
             throw new ExportException(
                 ExportFailure.ToolUnavailable,
-                "HEVC fast-trim validation requires ffprobe.");
+                "Fast-trim validation requires ffprobe.");
         }
 
         var validationDuration = Math.Min(2, plan.ExpectedDuration.TotalSeconds);
@@ -371,12 +368,12 @@ public sealed class FfmpegExportRenderer :
         {
             throw new ExportException(
                 ExportFailure.ToolFailed,
-                "HEVC fast-trim validation requires a non-empty output range.");
+                "Fast-trim validation requires a non-empty output range.");
         }
 
         await RunUtilityProcessAsync(
                 _executablePath,
-                CreateHevcKeyframeValidationArguments(candidatePath, validationDuration),
+                CreateKeyframeCopyValidationArguments(candidatePath, validationDuration),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -388,7 +385,7 @@ public sealed class FfmpegExportRenderer :
                         "-v", "error",
                         "-select_streams", "v:0",
                         "-count_packets",
-                        "-show_entries", "stream=codec_name,nb_read_packets",
+                        "-show_entries", "stream=codec_name,nb_read_packets,start_time,duration:format=start_time,duration",
                         "-of", "json",
                         candidatePath,
                     ],
@@ -406,16 +403,51 @@ public sealed class FfmpegExportRenderer :
             var packetCount = GetRequiredInt64(stream, "nb_read_packets");
             var segment = plan.VideoSegments.Single();
             var expectedCodec = segment.StreamCopyInfo!.Video!.CodecName;
-            var expectedPacketCount = plan.ExpectedDuration.TotalSeconds *
-                                      segment.StreamCopyInfo.Video.AverageFrameRate.FramesPerSecond;
-            var roundedExpectedPacketCount = checked((long)Math.Round(expectedPacketCount));
-            if (!string.Equals(codec, expectedCodec, StringComparison.OrdinalIgnoreCase) ||
-                Math.Abs(expectedPacketCount - roundedExpectedPacketCount) > 0.05 ||
-                Math.Abs(packetCount - roundedExpectedPacketCount) > 1)
+            if (!string.Equals(codec, expectedCodec, StringComparison.OrdinalIgnoreCase) || packetCount <= 0)
             {
                 throw new InvalidDataException(
-                    $"Expected about {roundedExpectedPacketCount} {expectedCodec} video packets, " +
-                    $"but received {packetCount} {codec} packets.");
+                    $"Expected {expectedCodec} video packets, but received {packetCount} {codec} packets.");
+            }
+
+            var format = document.RootElement.TryGetProperty("format", out var formatElement)
+                ? formatElement
+                : default;
+            var startTime = TryGetSeconds(stream, "start_time") ??
+                            (format.ValueKind == JsonValueKind.Object
+                                ? TryGetSeconds(format, "start_time")
+                                : null);
+            var duration = TryGetSeconds(stream, "duration") ??
+                           (format.ValueKind == JsonValueKind.Object
+                               ? TryGetSeconds(format, "duration")
+                               : null);
+            var frameDuration = 1d / segment.StreamCopyInfo.Video.AverageFrameRate.FramesPerSecond;
+            var startTolerance = Math.Max(frameDuration + 0.005, 0.1);
+            var durationTolerance = Math.Max(frameDuration + 0.005, 0.1);
+            if (startTime is null || Math.Abs(startTime.Value) > startTolerance)
+            {
+                throw new InvalidDataException(
+                    $"The first video timestamp is " +
+                    $"{startTime?.ToString("0.###", CultureInfo.InvariantCulture) ?? "missing"}; expected zero.");
+            }
+            if (duration is null ||
+                Math.Abs(duration.Value - plan.ExpectedDuration.TotalSeconds) > durationTolerance)
+            {
+                throw new InvalidDataException(
+                    $"Expected about {plan.ExpectedDuration.TotalSeconds:0.###} seconds, but the candidate reports " +
+                    $"{duration?.ToString("0.###", CultureInfo.InvariantCulture) ?? "no duration"}.");
+            }
+
+            if (string.Equals(expectedCodec, "hevc", StringComparison.OrdinalIgnoreCase))
+            {
+                var expectedPacketCount = plan.ExpectedDuration.TotalSeconds *
+                                          segment.StreamCopyInfo.Video.AverageFrameRate.FramesPerSecond;
+                var roundedExpectedPacketCount = checked((long)Math.Round(expectedPacketCount));
+                if (Math.Abs(expectedPacketCount - roundedExpectedPacketCount) <= 0.05 &&
+                    Math.Abs(packetCount - roundedExpectedPacketCount) > 1)
+                {
+                    throw new InvalidDataException(
+                        $"Expected about {roundedExpectedPacketCount} HEVC video packets, but received {packetCount}.");
+                }
             }
         }
         catch (ExportException)
@@ -426,12 +458,12 @@ public sealed class FfmpegExportRenderer :
         {
             throw new ExportException(
                 ExportFailure.ToolFailed,
-                $"HEVC fast-trim candidate was rejected: {exception.Message}",
+                $"Fast-trim candidate was rejected: {exception.Message}",
                 exception);
         }
     }
 
-    internal static IReadOnlyList<string> CreateHevcKeyframeValidationArguments(
+    internal static IReadOnlyList<string> CreateKeyframeCopyValidationArguments(
         string candidatePath,
         double validationDuration)
     {

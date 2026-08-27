@@ -49,16 +49,22 @@ public sealed class FfmpegExportRendererTests
             "No device available")));
     }
 
-    [Fact]
-    public void Hevc_mkv_keyframe_trim_requires_a_bounded_decoder_validation()
+    [Theory]
+    [InlineData(VideoCodecFamily.Hevc, "hevc")]
+    [InlineData(VideoCodecFamily.Vp9, "vp9")]
+    public void Incomplete_keyframe_copy_requires_a_bounded_decoder_validation(
+        VideoCodecFamily codecFamily,
+        string codecName)
     {
         var plan = CreateHevcKeyframeTrimPlan(
             TestPath("source.mkv"),
-            TestPath("trimmed.mkv"));
+            TestPath("trimmed.mkv"),
+            codecFamily,
+            codecName);
 
-        Assert.True(FfmpegExportRenderer.RequiresHevcKeyframeCopyValidation(plan));
+        Assert.True(FfmpegExportRenderer.RequiresKeyframeCopyValidation(plan));
 
-        var arguments = FfmpegExportRenderer.CreateHevcKeyframeValidationArguments(
+        var arguments = FfmpegExportRenderer.CreateKeyframeCopyValidationArguments(
             TestPath("candidate.mkv"),
             2);
         Assert.Contains("-xerror", arguments);
@@ -167,13 +173,15 @@ public sealed class FfmpegExportRendererTests
 
     private static ExportPlan CreateHevcKeyframeTrimPlan(
         string sourcePath,
-        string destinationPath)
+        string destinationPath,
+        VideoCodecFamily codecFamily = VideoCodecFamily.Hevc,
+        string codecName = "hevc")
     {
         var canvas = new PixelSize(1_920, 1_080);
         var range = new MediaRange(new MediaTime(5, 1), new MediaTime(30, 1));
         var signature = new VideoStreamCopySignature(
-            "hevc",
-            "hev1",
+            codecName,
+            codecFamily == VideoCodecFamily.Hevc ? "hev1" : "vp09",
             "SHA256:video",
             canvas,
             new MediaTime(1, 1_000),
@@ -212,7 +220,7 @@ public sealed class FfmpegExportRendererTests
                 "HEVC MKV",
                 ".mkv",
                 ExportContainer.Matroska,
-                VideoCodecFamily.Hevc,
+                codecFamily,
                 AudioCodecFamily.None,
                 requiresEvenDimensions: true),
             sequenceTimelineStart: range.Start,

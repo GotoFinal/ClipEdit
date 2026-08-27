@@ -205,8 +205,8 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Equal("24.9", ValueAfter(arguments, "-t"));
         var argumentList = arguments.ToList();
         Assert.True(argumentList.IndexOf("-noaccurate_seek") < argumentList.IndexOf("-i"));
-        Assert.True(argumentList.IndexOf("-copyts") < argumentList.IndexOf("-i"));
-        Assert.True(argumentList.IndexOf("-start_at_zero") < argumentList.IndexOf("-i"));
+        Assert.DoesNotContain("-copyts", arguments);
+        Assert.DoesNotContain("-start_at_zero", arguments);
         Assert.True(argumentList.IndexOf("-t") > argumentList.LastIndexOf("-i"));
         Assert.Equal(2, arguments.Count(argument => argument == segment.SourcePath));
         Assert.Equal("0:0", ValueAfter(arguments, "-map"));

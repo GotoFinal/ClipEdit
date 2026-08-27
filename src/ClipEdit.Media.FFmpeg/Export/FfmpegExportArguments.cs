@@ -319,8 +319,6 @@ internal static class FfmpegExportArguments
             arguments.Add("-ss");
             arguments.Add(FormatTime(segment.SourceRange.Start));
             arguments.Add("-noaccurate_seek");
-            arguments.Add("-copyts");
-            arguments.Add("-start_at_zero");
         }
         arguments.Add("-i");
         arguments.Add(segment.SourcePath);
