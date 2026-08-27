@@ -10,5 +10,6 @@ namespace ClipEdit.App.Settings;
 [JsonSerializable(typeof(CanvasInteractionSettings))]
 [JsonSerializable(typeof(ExportPreferences))]
 [JsonSerializable(typeof(MediaRuntimeSettings))]
+[JsonSerializable(typeof(InternetMediaSettings))]
 [JsonSerializable(typeof(UpdateSettings))]
 internal sealed partial class AppSettingsJsonContext : JsonSerializerContext;
