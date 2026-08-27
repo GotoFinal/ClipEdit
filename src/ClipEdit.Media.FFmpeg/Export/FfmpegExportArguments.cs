@@ -318,11 +318,9 @@ internal static class FfmpegExportArguments
         {
             arguments.Add("-ss");
             arguments.Add(FormatTime(segment.SourceRange.Start));
-            if (segment.StreamCopyInfo?.EndDecodeTimestamp is { } endDecodeTimestamp)
-            {
-                arguments.Add("-t");
-                arguments.Add(FormatTime(endDecodeTimestamp - segment.SourceRange.Start));
-            }
+            arguments.Add("-noaccurate_seek");
+            arguments.Add("-copyts");
+            arguments.Add("-start_at_zero");
         }
         arguments.Add("-i");
         arguments.Add(segment.SourcePath);
@@ -335,6 +333,12 @@ internal static class FfmpegExportArguments
         {
             arguments.Add("-i");
             arguments.Add(externalSourcePath);
+        }
+        if (usesKeyframeTrim &&
+            segment.StreamCopyInfo?.EndDecodeTimestamp is { } endDecodeTimestamp)
+        {
+            arguments.Add("-t");
+            arguments.Add(FormatTime(endDecodeTimestamp - segment.SourceRange.Start));
         }
 
         arguments.Add("-map");

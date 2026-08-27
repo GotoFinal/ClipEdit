@@ -171,32 +171,44 @@ public sealed partial class MainWindowViewModel
             !PathsEqual(validation.LibMpv.ResolvedPath, PreviewLibMpvPath);
         LibMpvRuntimeStatus.Apply(validation.LibMpv, libMpvRequiresRestart);
 
-        if (validation.Ffmpeg is { IsValid: true, ResolvedPath: { } ffmpegPath } &&
-            !PathsEqual(ffmpegPath, _activeFfmpegPath))
+        var resolvedFfmpegPath = validation.Ffmpeg is { IsValid: true, ResolvedPath: { } ffmpegPath }
+            ? ffmpegPath
+            : null;
+        var resolvedFfprobePath = validation.Ffprobe is { IsValid: true, ResolvedPath: { } ffprobePath }
+            ? ffprobePath
+            : null;
+        var ffmpegChanged = resolvedFfmpegPath is not null &&
+                            !PathsEqual(resolvedFfmpegPath, _activeFfmpegPath);
+        var ffprobeChanged = resolvedFfprobePath is not null &&
+                             !PathsEqual(resolvedFfprobePath, _activeFfprobePath);
+        if (ffmpegChanged)
         {
-            _frameDecoder = new FfmpegFrameDecoder(ffmpegPath);
-            _waveformRenderer = new FfmpegWaveformRenderer(ffmpegPath);
-            var renderer = new FfmpegExportRenderer(ffmpegPath);
-            _exportRenderer = renderer;
-            ConfigureExportHardwareCapabilityProbe(renderer);
-            _activeFfmpegPath = ffmpegPath;
+            _frameDecoder = new FfmpegFrameDecoder(resolvedFfmpegPath!);
+            _waveformRenderer = new FfmpegWaveformRenderer(resolvedFfmpegPath!);
+            _activeFfmpegPath = resolvedFfmpegPath;
             OnPropertyChanged(nameof(IsExportAvailable));
             OnPropertyChanged(nameof(ExportAvailabilityText));
             OnPropertyChanged(nameof(CanExport));
         }
 
-        if (validation.Ffprobe is { IsValid: true, ResolvedPath: { } ffprobePath } &&
-            !PathsEqual(ffprobePath, _activeFfprobePath))
+        if (ffprobeChanged)
         {
-            var probe = new FfprobeMediaProbe(ffprobePath);
+            var probe = new FfprobeMediaProbe(resolvedFfprobePath!);
             _importMedia = new ImportMediaUseCase(probe);
             _keyframeProbe = probe;
-            _activeFfprobePath = ffprobePath;
+            _activeFfprobePath = resolvedFfprobePath;
             OnPropertyChanged(nameof(IsImportAvailable));
             foreach (var media in MediaItems.Where(static media => media is { IsReady: true, HasVideo: true }))
             {
                 StartKeyframeIndexing(media);
             }
+        }
+
+        if ((ffmpegChanged || ffprobeChanged) && resolvedFfmpegPath is not null)
+        {
+            var renderer = new FfmpegExportRenderer(resolvedFfmpegPath, resolvedFfprobePath);
+            _exportRenderer = renderer;
+            ConfigureExportHardwareCapabilityProbe(renderer);
         }
     }
 

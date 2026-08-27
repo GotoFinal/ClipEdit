@@ -50,6 +50,24 @@ public sealed class FfmpegExportRendererTests
     }
 
     [Fact]
+    public void Hevc_mkv_keyframe_trim_requires_a_bounded_decoder_validation()
+    {
+        var plan = CreateHevcKeyframeTrimPlan(
+            TestPath("source.mkv"),
+            TestPath("trimmed.mkv"));
+
+        Assert.True(FfmpegExportRenderer.RequiresHevcKeyframeCopyValidation(plan));
+
+        var arguments = FfmpegExportRenderer.CreateHevcKeyframeValidationArguments(
+            TestPath("candidate.mkv"),
+            2);
+        Assert.Contains("-xerror", arguments);
+        Assert.Equal("2", ValueAfter(arguments, "-t"));
+        Assert.Equal("0:v:0", ValueAfter(arguments, "-map"));
+        Assert.Equal("null", ValueAfter(arguments, "-f"));
+    }
+
+    [Fact]
     public async Task Existing_destination_is_rejected_before_launch_and_remains_unchanged()
     {
         var sourcePath = Path.GetTempFileName();
@@ -145,5 +163,69 @@ public sealed class FfmpegExportRendererTests
             ImmutableArray.Create(new MediaRange(MediaTime.Zero, new MediaTime(1, 1))),
             preset,
             replaceExistingDestination);
+    }
+
+    private static ExportPlan CreateHevcKeyframeTrimPlan(
+        string sourcePath,
+        string destinationPath)
+    {
+        var canvas = new PixelSize(1_920, 1_080);
+        var range = new MediaRange(new MediaTime(5, 1), new MediaTime(30, 1));
+        var signature = new VideoStreamCopySignature(
+            "hevc",
+            "hev1",
+            "SHA256:video",
+            canvas,
+            new MediaTime(1, 1_000),
+            new FrameRate(30, 1),
+            "yuv420p10le",
+            "Main 10",
+            120,
+            "1:1",
+            "tv",
+            "bt2020nc",
+            "smpte2084",
+            "bt2020",
+            "progressive");
+        var segment = new ExportVideoSegmentPlan(
+            sourcePath,
+            0,
+            range,
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity,
+            timelineStart: range.Start,
+            isCompleteSource: false,
+            streamCopyInfo: new SegmentStreamCopyInfo(
+                signature,
+                null,
+                true,
+                true,
+                new MediaTime(49, 10),
+                new MediaTime(299, 10)));
+        return new ExportPlan(
+            [segment],
+            canvas,
+            destinationPath,
+            new ExportPreset(
+                "hevc-mkv",
+                "HEVC MKV",
+                ".mkv",
+                ExportContainer.Matroska,
+                VideoCodecFamily.Hevc,
+                AudioCodecFamily.None,
+                requiresEvenDimensions: true),
+            sequenceTimelineStart: range.Start,
+            sequenceDuration: range.Duration,
+            strategy: ExportStrategy.VideoStreamCopy);
+    }
+
+    private static string TestPath(string fileName) => Path.GetFullPath(Path.Combine(Path.GetTempPath(), fileName));
+
+    private static string ValueAfter(IReadOnlyList<string> arguments, string option)
+    {
+        var index = arguments.ToList().IndexOf(option);
+        Assert.True(index >= 0 && index + 1 < arguments.Count, $"Missing argument {option}.");
+        return arguments[index + 1];
     }
 }

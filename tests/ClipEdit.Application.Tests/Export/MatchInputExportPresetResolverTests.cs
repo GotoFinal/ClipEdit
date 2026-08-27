@@ -46,6 +46,25 @@ public sealed class MatchInputExportPresetResolverTests
         Assert.Equal(".webm", resolution.Preset.FileExtension);
     }
 
+    [Fact]
+    public void Matroska_hevc_preserves_the_video_codec_while_explaining_an_audio_fallback()
+    {
+        var resolution = MatchInputExportPresetResolver.Resolve(CreateProbe(
+            "source.mkv",
+            "hevc",
+            "flac",
+            videoBitRate: 12_000_000,
+            audioBitRate: 900_000));
+
+        Assert.True(resolution.UsedFallback);
+        Assert.Equal(ExportContainer.Matroska, resolution.Preset.Container);
+        Assert.Equal(VideoCodecFamily.Hevc, resolution.Preset.VideoCodec);
+        Assert.Equal(AudioCodecFamily.Aac, resolution.Preset.AudioCodec);
+        Assert.Contains("audio codec", resolution.Explanation, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("video codec", resolution.Explanation, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(".mkv", resolution.Preset.FileExtension);
+    }
+
     [Theory]
     [InlineData("source.webm", ExportContainer.WebM, AudioCodecFamily.Opus, ".webm")]
     [InlineData("source.mp4", ExportContainer.Mp4, AudioCodecFamily.Aac, ".mp4")]

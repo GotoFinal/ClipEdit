@@ -448,6 +448,8 @@ public sealed partial class MainWindowViewModel
         {
             "h264" => preset.VideoCodec == VideoCodecFamily.H264 &&
                       preset.Container is ExportContainer.Mp4 or ExportContainer.Matroska,
+            "hevc" => preset.VideoCodec == VideoCodecFamily.Hevc &&
+                      preset.Container == ExportContainer.Matroska,
             "vp9" => preset.VideoCodec == VideoCodecFamily.Vp9 &&
                      preset.Container is ExportContainer.WebM or ExportContainer.Matroska,
             "av1" => preset.VideoCodec == VideoCodecFamily.Av1 &&

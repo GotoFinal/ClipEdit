@@ -432,7 +432,7 @@ public sealed class FfmpegExportRendererLocalTests
 
     [Fact]
     [Trait("Category", "LocalMedia")]
-    public async Task Renderer_packet_copies_keyframe_trimmed_h264_vp9_or_av1_video_and_rebuilds_audio()
+    public async Task Renderer_packet_copies_keyframe_trimmed_h264_hevc_vp9_or_av1_video_and_rebuilds_audio()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_KEYFRAME_COPY_MEDIA") ??
                          Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MEDIA");
@@ -451,7 +451,9 @@ public sealed class FfmpegExportRendererLocalTests
         var video = probe.VideoStreams.FirstOrDefault();
         var sourceDuration = video?.Duration ?? probe.Duration;
         if (video is null ||
-            video.CodecName is not ("h264" or "vp9" or "av1") ||
+            video.CodecName is not ("h264" or "hevc" or "vp9" or "av1") ||
+            (video.CodecName == "hevc" &&
+             !Path.GetExtension(sourcePath).Equals(".mkv", StringComparison.OrdinalIgnoreCase)) ||
             video.RotationDegrees != 0 ||
             sourceDuration is null ||
             video.TimeBase is not { } timeBase ||
@@ -504,11 +506,17 @@ public sealed class FfmpegExportRendererLocalTests
                 video.ColorPrimaries,
                 video.FieldOrder);
         var isH264 = video.CodecName == "h264";
-        var usesMp4 = isH264 || Path.GetExtension(sourcePath).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
-        var extension = usesMp4 ? ".mp4" : ".webm";
-        var container = usesMp4 ? ExportContainer.Mp4 : ExportContainer.WebM;
+        var isHevc = video.CodecName == "hevc";
+        var usesMp4 = isH264 ||
+                      (!isHevc && Path.GetExtension(sourcePath).Equals(".mp4", StringComparison.OrdinalIgnoreCase));
+        var extension = isHevc ? ".mkv" : usesMp4 ? ".mp4" : ".webm";
+        var container = isHevc
+            ? ExportContainer.Matroska
+            : usesMp4 ? ExportContainer.Mp4 : ExportContainer.WebM;
         var videoCodec = video.CodecName == "h264"
             ? VideoCodecFamily.H264
+            : video.CodecName == "hevc"
+                ? VideoCodecFamily.Hevc
             : video.CodecName == "vp9"
                 ? VideoCodecFamily.Vp9
                 : VideoCodecFamily.Av1;
@@ -545,7 +553,9 @@ public sealed class FfmpegExportRendererLocalTests
                 videoCodec,
                 audioPlans.IsEmpty
                     ? AudioCodecFamily.None
-                    : usesMp4 ? AudioCodecFamily.Aac : AudioCodecFamily.Opus,
+                    : usesMp4
+                        ? AudioCodecFamily.Aac
+                        : isHevc ? AudioCodecFamily.Flac : AudioCodecFamily.Opus,
                 requiresEvenDimensions: true),
             sequenceTimelineStart: range.Start,
             sequenceDuration: range.Duration,
@@ -553,7 +563,7 @@ public sealed class FfmpegExportRendererLocalTests
 
         try
         {
-            await new FfmpegExportRenderer(ffmpegPath).RenderAsync(plan);
+            await new FfmpegExportRenderer(ffmpegPath, ffprobePath).RenderAsync(plan);
             var rendered = await mediaProbe.ProbeAsync(destinationPath);
             var renderedVideo = Assert.Single(rendered.VideoStreams);
             var tolerance = new MediaTime(1, 10);

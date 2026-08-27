@@ -1623,15 +1623,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             ExportProgress = 1;
             var usedBoundaryFallback = exportStrategy == ExportStrategy.BoundaryGop &&
                                        result.ActualStrategy == ExportStrategy.ExactTranscode;
+            var usedHevcFastTrimFallback = exportStrategy == ExportStrategy.VideoStreamCopy &&
+                                           exportPreset.VideoCodec == VideoCodecFamily.Hevc &&
+                                           result.ActualStrategy == ExportStrategy.ExactTranscode;
             var usedEncoderFallback = EffectiveExportVideoEncoder != ExportVideoEncoder.Software &&
                                       result.ActualVideoEncoder == ExportVideoEncoder.Software;
-            ExportPhaseText = usedBoundaryFallback
+            ExportPhaseText = usedBoundaryFallback || usedHevcFastTrimFallback
                 ? "Complete · exact fallback · 100%"
                 : usedEncoderFallback
                     ? "Complete · software fallback · 100%"
                 : "Complete · 100%";
             StatusText = usedBoundaryFallback
                 ? $"Exported {Path.GetFileName(result.DestinationPath)} using exact fallback after Boundary-GOP validation failed"
+                : usedHevcFastTrimFallback
+                    ? $"Exported {Path.GetFileName(result.DestinationPath)} using exact fallback after HEVC fast-trim validation failed"
                 : usedEncoderFallback
                     ? $"Exported {Path.GetFileName(result.DestinationPath)} after the hardware encoder failed and software encoding succeeded"
                 : $"Exported {Path.GetFileName(result.DestinationPath)}";

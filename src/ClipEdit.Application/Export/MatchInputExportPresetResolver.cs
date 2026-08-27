@@ -149,6 +149,11 @@ public static class MatchInputExportPresetResolver
             codec = VideoCodecFamily.H264;
             return true;
         }
+        if (string.Equals(codecName, "hevc", StringComparison.OrdinalIgnoreCase))
+        {
+            codec = VideoCodecFamily.Hevc;
+            return true;
+        }
         if (string.Equals(codecName, "vp9", StringComparison.OrdinalIgnoreCase))
         {
             codec = VideoCodecFamily.Vp9;
@@ -268,6 +273,7 @@ public static class MatchInputExportPresetResolver
     private static string VideoCodecLabel(VideoCodecFamily codec) => codec switch
     {
         VideoCodecFamily.H264 => "H.264",
+        VideoCodecFamily.Hevc => "HEVC",
         VideoCodecFamily.Vp9 => "VP9",
         VideoCodecFamily.Av1 => "AV1",
         _ => throw new ArgumentOutOfRangeException(nameof(codec)),

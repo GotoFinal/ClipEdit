@@ -176,6 +176,61 @@ public sealed class PacketCopyExportTests
         Assert.Equal(includeVideoExtradata, copyInfo.Video is not null);
     }
 
+    [Fact]
+    public async Task Keyframe_aligned_hevc_mkv_trim_copies_video_packets()
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(
+            new CompatibleCopyProbe(
+                "hevc",
+                "flac",
+                "matroska",
+                includePacketTimestamps: true),
+            exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([TestPath("source-hevc.mkv")]);
+        viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 30;
+
+        Assert.True(viewModel.IsVideoStreamCopyExport);
+        Assert.False(viewModel.IsBoundaryGopExport);
+        Assert.Equal("Fast video copy", viewModel.ExportMethodTitle);
+
+        var result = await viewModel.ExportAsync(
+            TestPath("keyframe-trim-hevc.mkv"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(ExportStrategy.VideoStreamCopy, renderer.Plan!.Strategy);
+        Assert.Equal(VideoCodecFamily.Hevc, renderer.Plan.Preset.VideoCodec);
+        Assert.Equal(ExportContainer.Matroska, renderer.Plan.Preset.Container);
+    }
+
+    [Fact]
+    public async Task Hevc_fast_trim_validation_fallback_is_reported_after_exact_export()
+    {
+        var renderer = new RecordingExportRenderer(ExportStrategy.ExactTranscode);
+        using var viewModel = new MainWindowViewModel(
+            new CompatibleCopyProbe(
+                "hevc",
+                "flac",
+                "matroska",
+                includePacketTimestamps: true),
+            exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([TestPath("source-hevc.mkv")]);
+        viewModel.SelectedExportPreset = BuiltInExportPresets.MatchInput;
+        viewModel.SequenceSelectionStartSeconds = 5;
+        viewModel.SequenceSelectionEndSeconds = 30;
+
+        var result = await viewModel.ExportAsync(
+            TestPath("keyframe-trim-hevc-fallback.mkv"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Contains("exact fallback", viewModel.ExportPhaseText, StringComparison.Ordinal);
+        Assert.Contains("HEVC fast-trim validation failed", viewModel.StatusText, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("h264", "aac", "mov,mp4,m4a,3gp,3g2,mj2", "mp4")]
     [InlineData("vp9", "opus", "webm", "webm")]
