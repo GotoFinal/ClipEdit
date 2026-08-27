@@ -20,7 +20,9 @@ namespace ClipEdit.App.ViewModels;
 
 public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
-    private const int SequenceViewportThumbnailCount = 14;
+    private const int DefaultSequenceViewportThumbnailCount = 14;
+    private const double SequenceThumbnailTargetWidth = 72;
+    private const int MaximumSequenceViewportThumbnailCount = 64;
     private static readonly PixelSize TimelineThumbnailSize = new(240, 120);
     private static readonly PixelSize TimelineHoverSize = new(360, 202);
     private static readonly int AnalysisConcurrency = Math.Clamp(Environment.ProcessorCount / 2, 2, 4);
@@ -60,6 +62,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private TimelineFrameCacheKey? _timelineHoverRequestKey;
     private double _timelineHoverTime = -1;
     private int _sequenceTimelineVisualRevision;
+    private int _sequenceViewportThumbnailCount = DefaultSequenceViewportThumbnailCount;
     private readonly Dictionary<AudioTrackViewModel, CancellationTokenSource> _waveformCancellations = [];
     private readonly SemaphoreSlim _analysisSlots = new(AnalysisConcurrency, AnalysisConcurrency);
     private readonly TimelineFrameCache _timelineFrameCache = new();
@@ -989,6 +992,31 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public double SequenceTimelineViewportEnd =>
         SequenceTimelineViewportStart + SequenceTimelineViewportDuration;
+
+    public void SetSequenceTimelineViewportWidth(double width)
+    {
+        var thumbnailCount = CalculateSequenceViewportThumbnailCount(width);
+        if (_sequenceViewportThumbnailCount == thumbnailCount)
+        {
+            return;
+        }
+
+        _sequenceViewportThumbnailCount = thumbnailCount;
+        StartSequenceTimelineAnalysis(debounce: true);
+    }
+
+    internal static int CalculateSequenceViewportThumbnailCount(double width)
+    {
+        if (!double.IsFinite(width) || width <= 0)
+        {
+            return DefaultSequenceViewportThumbnailCount;
+        }
+
+        var desiredCount = Math.Ceiling(width / SequenceThumbnailTargetWidth);
+        return desiredCount >= MaximumSequenceViewportThumbnailCount
+            ? MaximumSequenceViewportThumbnailCount
+            : Math.Max(4, (int)desiredCount);
+    }
 
     public string SequenceTimelineZoomText => $"{SequenceTimelineZoom:0.#}×";
 
@@ -4087,7 +4115,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         CancellationTokenSource request,
         bool debounce)
     {
-        const int viewportThumbnailCount = 14;
+        var viewportThumbnailCount = _sequenceViewportThumbnailCount;
         var token = request.Token;
         var generated = new Dictionary<VideoClipViewModel, List<TimelineThumbnailFrame>>();
         try
@@ -5017,7 +5045,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var sourceSeconds = mediaItem.Playhead.TotalSeconds;
         var maximumDistance = Math.Max(
             1,
-            mediaItem.TimelineViewportDurationSeconds / SequenceViewportThumbnailCount);
+            mediaItem.TimelineViewportDurationSeconds / _sequenceViewportThumbnailCount);
         if (!_timelineFrameCache.TryGetNearest(
                 mediaItem.SourcePath,
                 video.Index,

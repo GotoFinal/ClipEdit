@@ -19,12 +19,12 @@ public sealed partial class MainWindowViewModel
         var viewportStart = SequenceTimelineViewportStart;
         var viewportEnd = SequenceTimelineViewportEnd;
         var bucketDuration = TimelineFrameCache.ChooseBucketDuration(
-            Math.Max(0.000001, viewportEnd - viewportStart) / SequenceViewportThumbnailCount);
+            Math.Max(0.000001, viewportEnd - viewportStart) / _sequenceViewportThumbnailCount);
         var frameRequests = CreateSequenceFrameRequests(
             clips.Where(static clip => !clip.Source.IsInternetDownloadPending).ToArray(),
             viewportStart,
             viewportEnd,
-            SequenceViewportThumbnailCount,
+            _sequenceViewportThumbnailCount,
             bucketDuration);
 
         // Zoom and pan can repaint from warm encoded images synchronously. Missing
@@ -85,7 +85,7 @@ public sealed partial class MainWindowViewModel
                     clips,
                     viewportStart,
                     viewportEnd,
-                    SequenceViewportThumbnailCount * 2,
+                    _sequenceViewportThumbnailCount * 2,
                     finerBucketDuration);
                 await FillTimelineCacheAsync(prefetchRequests, token);
             }
@@ -341,7 +341,7 @@ public sealed partial class MainWindowViewModel
 
         var maximumDistance = Math.Max(
             0.5,
-            SequenceTimelineViewportDuration / SequenceViewportThumbnailCount);
+            SequenceTimelineViewportDuration / _sequenceViewportThumbnailCount);
         if (_timelineFrameCache.TryGetNearest(
                 clip.SourcePath,
                 video.Index,

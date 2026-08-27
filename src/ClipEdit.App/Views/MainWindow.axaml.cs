@@ -1347,6 +1347,12 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void SequenceTimeline_SizeChanged(object? sender, SizeChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        ViewModel?.SetSequenceTimelineViewportWidth(eventArgs.NewSize.Width);
+    }
+
     private void SequenceTimeline_PointerMoved(object? sender, PointerEventArgs eventArgs)
     {
         _ = sender;

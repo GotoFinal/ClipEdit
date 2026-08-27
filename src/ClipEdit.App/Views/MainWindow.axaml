@@ -1464,6 +1464,7 @@
                   </Grid>
                   <controls:SequenceTimelineCanvas
                       x:Name="SequenceTimeline"
+                      SizeChanged="SequenceTimeline_SizeChanged"
                       PointerMoved="SequenceTimeline_PointerMoved"
                       Grid.Column="1"
                       Grid.Row="1"

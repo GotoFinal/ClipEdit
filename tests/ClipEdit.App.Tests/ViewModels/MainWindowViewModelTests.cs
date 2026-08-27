@@ -1941,6 +1941,35 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(43, zoomedTimestamps[13], 3);
     }
 
+    [Fact]
+    public void Sequence_filmstrip_density_tracks_the_visible_timeline_width()
+    {
+        Assert.Equal(14, MainWindowViewModel.CalculateSequenceViewportThumbnailCount(double.NaN));
+        Assert.Equal(4, MainWindowViewModel.CalculateSequenceViewportThumbnailCount(250));
+        Assert.Equal(14, MainWindowViewModel.CalculateSequenceViewportThumbnailCount(1_008));
+        Assert.Equal(20, MainWindowViewModel.CalculateSequenceViewportThumbnailCount(1_440));
+        Assert.Equal(64, MainWindowViewModel.CalculateSequenceViewportThumbnailCount(10_000));
+    }
+
+    [AvaloniaFact]
+    public async Task Wider_sequence_timeline_requests_more_filmstrip_frames()
+    {
+        var decoder = new RecordingFrameDecoder();
+        using var viewModel = new MainWindowViewModel(new StubProbe(), frameDecoder: decoder);
+
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "timeline-resize.mkv")]);
+        await decoder.WaitForCallCountAsync(14);
+
+        viewModel.SetSequenceTimelineViewportWidth(1_440);
+        await decoder.WaitForCallCountAsync(34);
+
+        Assert.Equal(20, viewModel.SelectedVideoClip!.TimelineThumbnails.Count);
+        var resizedTimestamps = decoder.TimelineTimestamps.Skip(14).Take(20).Order().ToArray();
+        Assert.Equal(20, resizedTimestamps.Length);
+        Assert.True(resizedTimestamps[0] <= 1.5);
+        Assert.True(resizedTimestamps[^1] >= 58.5);
+    }
+
     [AvaloniaFact]
     public async Task Timeline_hover_uses_a_warm_filmstrip_frame_before_exact_refinement()
     {
