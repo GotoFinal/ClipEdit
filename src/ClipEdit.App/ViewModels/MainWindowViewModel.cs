@@ -827,6 +827,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _sequenceSelectionStart, next, nameof(SequenceSelectionStartSeconds)))
             {
                 RaiseSequenceSelectionChanged();
+                MarkProjectDirty("timeline:selection");
             }
         }
     }
@@ -840,6 +841,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _sequenceSelectionEnd, next, nameof(SequenceSelectionEndSeconds)))
             {
                 RaiseSequenceSelectionChanged();
+                MarkProjectDirty("timeline:selection");
             }
         }
     }
@@ -1863,6 +1865,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SequenceSelectionStartSeconds));
         OnPropertyChanged(nameof(SequenceSelectionEndSeconds));
         RaiseSequenceSelectionChanged();
+        MarkProjectDirty("timeline:selection");
     }
 
     public void MarkSequenceSelectionEnd()
@@ -1876,6 +1879,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SequenceSelectionStartSeconds));
         OnPropertyChanged(nameof(SequenceSelectionEndSeconds));
         RaiseSequenceSelectionChanged();
+        MarkProjectDirty("timeline:selection");
     }
 
     public bool RemoveSequenceSelection()
@@ -2152,6 +2156,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         StatusText = selectedRange == current.TimelineRange
             ? $"Selected chapter: {current.Title}"
             : $"Selected chapter on keyframes: {current.Title}";
+        MarkProjectDirty("timeline:selection");
         return true;
     }
 
@@ -3208,17 +3213,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                                    BuiltInExportPresets.Mp4Compatible;
             if (document.SchemaVersion >= 8 && document.ExportSettings is { } exportSettings)
             {
-                if (document.SchemaVersion >= 9)
-                {
-                    ApplyCustomExportSettings(
-                        exportSettings.CustomContainer,
-                        exportSettings.CustomVideoCodec,
-                        exportSettings.CustomAudioCodec,
-                        exportSettings.CustomUseSourceFrameRate,
-                        exportSettings.CustomFrameRate);
-                }
+                ApplyProjectExportSettings(exportSettings, document.SchemaVersion);
             }
-            if (!RememberExportAdjustments)
+            if (document.SchemaVersion < 13 && !RememberExportAdjustments)
             {
                 ResetTransientExportAdjustments();
             }
@@ -3339,15 +3336,53 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 CanvasCrop.Width,
                 CanvasCrop.Height),
             new ProjectExportSettingsDocument(
-                ExportEncodingSettings.DefaultQuality,
-                ExportEncodingSettings.DefaultScalePercent,
-                ExportEncodingSettings.DefaultGifFrameRate,
+                ExportQuality,
+                ExportScalePercent,
+                GifFrameRate,
                 CustomExportContainer.Value,
                 CustomVideoCodec.Value,
                 CustomAudioCodec.Value,
                 CustomUseSourceFrameRate,
                 CustomFrameRate,
-                ExportEncodingSettings.DefaultPlaybackSpeedPercent));
+                ExportPlaybackSpeedPercent,
+                ExportQualityMode,
+                ExportEncodingSpeed,
+                ExportHardwareAcceleration,
+                PreferredExportVideoEncoder,
+                ExportVideoBitRateKbps),
+            new ProjectTimelineStateDocument(
+                _sequencePlayhead.Numerator,
+                _sequencePlayhead.Denominator,
+                CreateRangeDocument(NormalizedSequenceSelection())));
+    }
+
+    private void ApplyProjectExportSettings(ProjectExportSettingsDocument settings, int schemaVersion)
+    {
+        if (schemaVersion >= 9)
+        {
+            ApplyCustomExportSettings(
+                settings.CustomContainer,
+                settings.CustomVideoCodec,
+                settings.CustomAudioCodec,
+                settings.CustomUseSourceFrameRate,
+                settings.CustomFrameRate);
+        }
+
+        if (schemaVersion < 13)
+        {
+            return;
+        }
+
+        ExportQuality = settings.Quality;
+        ExportScalePercent = settings.ScalePercent;
+        GifFrameRate = settings.GifFrameRate;
+        ExportPlaybackSpeedPercent = settings.PlaybackSpeedPercent;
+        ExportVideoBitRateKbps = settings.VideoBitRateKbps;
+        SelectedExportQuality = ExportQualityChoice.FromValue(settings.QualityMode);
+        SelectedExportEncodingSpeed = ExportEncodingSpeedChoice.FromValue(settings.EncodingSpeed);
+        SelectedExportHardwareAcceleration = ExportHardwareAccelerationChoice.FromValue(
+            settings.HardwareAcceleration);
+        SelectPreferredExportVideoEncoder(settings.VideoEncoder);
     }
 
     public void Dispose()
@@ -4673,16 +4708,35 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         ReplaceVideoClips(replacements, replacements.FirstOrDefault()?.Id);
-        _sequencePlayhead = MediaTime.Zero;
-        _sequenceSelectionStart = MediaTime.Zero;
-        _sequenceSelectionEnd = SequenceTimeFromSeconds(SequenceDurationSeconds);
+        RestoreProjectTimelineState(document);
         _sequenceTimelineZoom = 1;
         _sequenceTimelineViewportStart = 0;
         OnPropertyChanged(nameof(SelectedCropAspectPreset));
         OnPropertyChanged(nameof(IsCropAspectLocked));
         RaiseSequenceStateChanged();
-        SyncSourcePreviewToSequenceTime(MediaTime.Zero, selectClip: true);
+        SyncSourcePreviewToSequenceTime(_sequencePlayhead, selectClip: true);
         StartSequenceTimelineAnalysis(debounce: false);
+    }
+
+    private void RestoreProjectTimelineState(ProjectDocument document)
+    {
+        if (document.SchemaVersion < 13 || document.TimelineState is not { } savedState)
+        {
+            _sequencePlayhead = MediaTime.Zero;
+            _sequenceSelectionStart = MediaTime.Zero;
+            _sequenceSelectionEnd = SequenceTimeFromSeconds(SequenceDurationSeconds);
+            return;
+        }
+
+        var duration = VideoClips.Count == 0
+            ? MediaTime.Zero
+            : VideoClips.Max(static clip => clip.TimelineEnd);
+        var selection = CreateMediaRange(savedState.Selection);
+        _sequencePlayhead = Min(
+            new MediaTime(savedState.PlayheadNumerator, savedState.PlayheadDenominator),
+            duration);
+        _sequenceSelectionStart = Min(selection.Start, duration);
+        _sequenceSelectionEnd = Min(selection.End, duration);
     }
 
     private bool TryRestoreMedia(

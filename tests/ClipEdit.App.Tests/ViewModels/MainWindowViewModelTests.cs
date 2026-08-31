@@ -1052,7 +1052,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(new MediaTime(180, 1), renderer.Plan.ExpectedDuration);
         var document = viewModel.CreateProjectDocument();
         Assert.Equal(200, document.VideoClips![0].PlaybackSpeedPercent);
-        Assert.Equal(100, document.ExportSettings!.PlaybackSpeedPercent);
+        Assert.Equal(50, document.ExportSettings!.PlaybackSpeedPercent);
     }
 
     [Theory]
@@ -1586,7 +1586,16 @@ public sealed class MainWindowViewModelTests
             original.CustomFrameRate = 48;
             original.ExportScalePercent = 43;
             original.ExportQuality = 58;
+            original.ExportVideoBitRateKbps = 8_500;
             original.GifFrameRate = 21;
+            original.ExportPlaybackSpeedPercent = 125;
+            original.SelectedExportQuality = ExportQualityChoice.BitRate;
+            original.SelectedExportEncodingSpeed = ExportEncodingSpeedChoice.Faster;
+            original.SelectedExportHardwareAcceleration = ExportHardwareAccelerationChoice.Vulkan;
+            original.SelectPreferredExportVideoEncoder(ExportVideoEncoder.NvidiaNvenc);
+            original.SequencePlayheadSeconds = 9;
+            original.SequenceSelectionStartSeconds = 7;
+            original.SequenceSelectionEndSeconds = 13;
             Assert.True(await original.SaveProjectAsync(projectPath));
             Assert.False(original.IsProjectDirty);
 
@@ -1599,10 +1608,18 @@ public sealed class MainWindowViewModelTests
             Assert.Same(AudioCodecChoice.Opus, restored.CustomAudioCodec);
             Assert.False(restored.CustomUseSourceFrameRate);
             Assert.Equal(48, restored.CustomFrameRate);
-            Assert.Equal(100, restored.ExportScalePercent);
-            Assert.Equal(75, restored.ExportQuality);
-            Assert.Equal(15, restored.GifFrameRate);
-            Assert.Equal(ExportQualityMode.MatchSource, restored.ExportQualityMode);
+            Assert.Equal(43, restored.ExportScalePercent);
+            Assert.Equal(58, restored.ExportQuality);
+            Assert.Equal(8_500, restored.ExportVideoBitRateKbps);
+            Assert.Equal(21, restored.GifFrameRate);
+            Assert.Equal(125, restored.ExportPlaybackSpeedPercent);
+            Assert.Equal(ExportQualityMode.BitRate, restored.ExportQualityMode);
+            Assert.Equal(ExportEncodingSpeed.Faster, restored.ExportEncodingSpeed);
+            Assert.Equal(ExportHardwareAcceleration.Vulkan, restored.ExportHardwareAcceleration);
+            Assert.Equal(ExportVideoEncoder.NvidiaNvenc, restored.PreferredExportVideoEncoder);
+            Assert.Equal(9, restored.SequencePlayheadSeconds);
+            Assert.Equal(7, restored.SequenceSelectionStartSeconds);
+            Assert.Equal(13, restored.SequenceSelectionEndSeconds);
             Assert.Equal(media.Crop, restored.SelectedMedia!.Crop);
             Assert.Equal(media.Edit!.SourceDuration, restored.SelectedMedia.Edit!.SourceDuration);
             Assert.Equal<MediaRange>(media.KeptRanges, restored.SelectedMedia.KeptRanges);
@@ -1620,6 +1637,34 @@ public sealed class MainWindowViewModelTests
             Assert.True(await recovered.RecoverProjectAsync(projectPath));
             Assert.Null(recovered.ProjectPath);
             Assert.True(recovered.IsProjectDirty);
+        }
+        finally
+        {
+            File.Delete(projectPath);
+        }
+    }
+
+    [Fact]
+    public async Task Playhead_is_saved_without_dirtying_playback_while_selection_and_export_changes_are_edits()
+    {
+        var projectPath = Path.Combine(Path.GetTempPath(), $"clipedit-state-{Guid.NewGuid():N}.clipedit");
+        var store = new JsonProjectStore();
+        using var viewModel = new MainWindowViewModel(new StubProbe(), projectStore: store);
+
+        try
+        {
+            await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "saved-state.mkv")]);
+            Assert.True(await viewModel.SaveProjectAsync(projectPath));
+
+            viewModel.SequencePlayheadSeconds = 11;
+            Assert.False(viewModel.IsProjectDirty);
+
+            viewModel.SequenceSelectionStartSeconds = 5;
+            Assert.True(viewModel.IsProjectDirty);
+            Assert.True(await viewModel.SaveProjectAsync(projectPath));
+
+            viewModel.SelectedExportQuality = ExportQualityChoice.Custom;
+            Assert.True(viewModel.IsProjectDirty);
         }
         finally
         {

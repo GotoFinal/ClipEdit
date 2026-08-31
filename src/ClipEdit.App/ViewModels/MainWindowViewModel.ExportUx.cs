@@ -183,6 +183,7 @@ public sealed partial class MainWindowViewModel
                 OnPropertyChanged(nameof(UsesMatchedInputQuality));
                 OnPropertyChanged(nameof(UsesTargetBitRate));
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }
@@ -200,6 +201,7 @@ public sealed partial class MainWindowViewModel
                 OnPropertyChanged(nameof(ExportEncodingSpeed));
                 OnPropertyChanged(nameof(ExportEncodingSpeedDescription));
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }
@@ -219,6 +221,7 @@ public sealed partial class MainWindowViewModel
                 OnPropertyChanged(nameof(ExportHardwareAcceleration));
                 OnPropertyChanged(nameof(ExportHardwareAccelerationDescription));
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }
@@ -258,6 +261,7 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ExportScaleSliderValue));
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }
@@ -278,6 +282,7 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ExportQualitySliderValue));
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }
@@ -300,6 +305,7 @@ public sealed partial class MainWindowViewModel
             if (SetProperty(ref _exportVideoBitRateKbps, next))
             {
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }
@@ -314,6 +320,7 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(GifFrameRateSliderValue));
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }
@@ -337,6 +344,7 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ExportPlaybackSpeedSliderValue));
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }

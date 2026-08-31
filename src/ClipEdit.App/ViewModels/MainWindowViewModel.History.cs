@@ -132,12 +132,7 @@ public sealed partial class MainWindowViewModel
                                    BuiltInExportPresets.Mp4Compatible;
             if (document.ExportSettings is { } exportSettings)
             {
-                ApplyCustomExportSettings(
-                    exportSettings.CustomContainer,
-                    exportSettings.CustomVideoCodec,
-                    exportSettings.CustomAudioCodec,
-                    exportSettings.CustomUseSourceFrameRate,
-                    exportSettings.CustomFrameRate);
+                ApplyProjectExportSettings(exportSettings, document.SchemaVersion);
             }
 
             var warnings = new List<string>();
@@ -227,6 +222,7 @@ public sealed partial class MainWindowViewModel
                left.CropSettings == right.CropSettings &&
                left.Canvas == right.Canvas &&
                left.ExportSettings == right.ExportSettings &&
+               left.TimelineState == right.TimelineState &&
                left.Media.Count == right.Media.Count &&
                left.Media.Zip(right.Media).All(pair => MediaDocumentsEquivalent(pair.First, pair.Second)) &&
                (left.VideoClips ?? []).Count == (right.VideoClips ?? []).Count &&

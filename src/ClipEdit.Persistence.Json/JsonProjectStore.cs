@@ -247,7 +247,54 @@ public sealed class JsonProjectStore : IProjectStore
                 "The saved export playback speed is invalid.");
         }
 
+        if (document.SchemaVersion >= 13)
+        {
+            if (document.ExportSettings is not { } completeExportSettings ||
+                !Enum.IsDefined(completeExportSettings.QualityMode) ||
+                !Enum.IsDefined(completeExportSettings.EncodingSpeed) ||
+                !Enum.IsDefined(completeExportSettings.HardwareAcceleration) ||
+                !Enum.IsDefined(completeExportSettings.VideoEncoder) ||
+                completeExportSettings.VideoBitRateKbps is < ExportEncodingSettings.MinimumVideoBitRateKbps or
+                    > ExportEncodingSettings.MaximumVideoBitRateKbps)
+            {
+                throw new ProjectStoreException(
+                    ProjectStoreFailure.InvalidDocument,
+                    "The saved export settings are invalid.");
+            }
+
+            ValidateTimelineState(document.TimelineState);
+        }
+
         return document;
+    }
+
+    private static void ValidateTimelineState(ProjectTimelineStateDocument? timelineState)
+    {
+        if (timelineState?.Selection is not { } selection)
+        {
+            throw new ProjectStoreException(
+                ProjectStoreFailure.InvalidDocument,
+                "The saved timeline state is missing.");
+        }
+
+        try
+        {
+            var playhead = new MediaTime(timelineState.PlayheadNumerator, timelineState.PlayheadDenominator);
+            var range = new MediaRange(
+                new MediaTime(selection.StartNumerator, selection.StartDenominator),
+                new MediaTime(selection.EndNumerator, selection.EndDenominator));
+            if (playhead < MediaTime.Zero || range.Start < MediaTime.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(timelineState));
+            }
+        }
+        catch (Exception exception) when (exception is ArgumentException or ArithmeticException)
+        {
+            throw new ProjectStoreException(
+                ProjectStoreFailure.InvalidDocument,
+                "The saved timeline state is invalid.",
+                exception);
+        }
     }
 
     private static bool IsCompatibleCustomExport(ProjectExportSettingsDocument settings) =>

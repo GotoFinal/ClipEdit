@@ -150,6 +150,7 @@ public sealed partial class MainWindowViewModel
                 OnPropertyChanged(nameof(ExportVideoEncoderStatus));
                 OnPropertyChanged(nameof(ExportVideoEncoderDescription));
                 RaiseExportStateChanged();
+                MarkProjectDirty("export-settings");
             }
         }
     }

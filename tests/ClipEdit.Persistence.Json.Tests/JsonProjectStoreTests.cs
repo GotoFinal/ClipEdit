@@ -111,6 +111,60 @@ public sealed class JsonProjectStoreTests
     }
 
     [Fact]
+    public async Task Invalid_timeline_state_is_rejected()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
+        try
+        {
+            var store = new JsonProjectStore();
+            await store.SaveAsync(path, CreateDocument());
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            root["timelineState"]!["playheadDenominator"] = 0;
+            await File.WriteAllTextAsync(path, root.ToJsonString());
+
+            var exception = await Assert.ThrowsAsync<ProjectStoreException>(() => store.LoadAsync(path));
+
+            Assert.Equal(ProjectStoreFailure.InvalidDocument, exception.Failure);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Schema_twelve_without_timeline_state_or_complete_export_settings_still_loads()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
+        try
+        {
+            var store = new JsonProjectStore();
+            await store.SaveAsync(path, CreateDocument());
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            root["schemaVersion"] = 12;
+            root.Remove("timelineState");
+            var exportSettings = root["exportSettings"]!.AsObject();
+            exportSettings.Remove("qualityMode");
+            exportSettings.Remove("encodingSpeed");
+            exportSettings.Remove("hardwareAcceleration");
+            exportSettings.Remove("videoEncoder");
+            exportSettings.Remove("videoBitRateKbps");
+            await File.WriteAllTextAsync(path, root.ToJsonString());
+
+            var loaded = await store.LoadAsync(path);
+
+            Assert.Equal(12, loaded.SchemaVersion);
+            Assert.Null(loaded.TimelineState);
+            Assert.Equal(ExportQualityMode.MatchSource, loaded.ExportSettings!.QualityMode);
+            Assert.Equal(ExportEncodingSettings.DefaultVideoBitRateKbps, loaded.ExportSettings.VideoBitRateKbps);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task Repeated_save_atomically_replaces_the_previous_document()
     {
         var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
@@ -261,6 +315,19 @@ public sealed class JsonProjectStoreTests
             ],
             new ProjectCropSettingsDocument("1-1", true),
             new ProjectCanvasDocument(1_920, 1_080, 420, 0, 1_080, 1_080),
-            new ProjectExportSettingsDocument(62, 47, 18, PlaybackSpeedPercent: 75));
+            new ProjectExportSettingsDocument(
+                62,
+                47,
+                18,
+                PlaybackSpeedPercent: 75,
+                QualityMode: ExportQualityMode.BitRate,
+                EncodingSpeed: ExportEncodingSpeed.Faster,
+                HardwareAcceleration: ExportHardwareAcceleration.Vulkan,
+                VideoEncoder: ExportVideoEncoder.NvidiaNvenc,
+                VideoBitRateKbps: 8_500),
+            new ProjectTimelineStateDocument(
+                7,
+                2,
+                new ProjectRangeDocument(5, 2, 19, 2)));
     }
 }

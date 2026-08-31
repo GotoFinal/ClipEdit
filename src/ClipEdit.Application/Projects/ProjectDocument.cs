@@ -10,9 +10,10 @@ public sealed record ProjectDocument(
     IReadOnlyList<ProjectVideoClipDocument>? VideoClips = null,
     ProjectCropSettingsDocument? CropSettings = null,
     ProjectCanvasDocument? Canvas = null,
-    ProjectExportSettingsDocument? ExportSettings = null)
+    ProjectExportSettingsDocument? ExportSettings = null,
+    ProjectTimelineStateDocument? TimelineState = null)
 {
-    public const int CurrentSchemaVersion = 12;
+    public const int CurrentSchemaVersion = 13;
 }
 
 public sealed record ProjectExportSettingsDocument(
@@ -24,7 +25,17 @@ public sealed record ProjectExportSettingsDocument(
     AudioCodecFamily CustomAudioCodec = AudioCodecFamily.Aac,
     bool CustomUseSourceFrameRate = true,
     int CustomFrameRate = 30,
-    int PlaybackSpeedPercent = 100);
+    int PlaybackSpeedPercent = ExportEncodingSettings.DefaultPlaybackSpeedPercent,
+    ExportQualityMode QualityMode = ExportEncodingSettings.DefaultQualityMode,
+    ExportEncodingSpeed EncodingSpeed = ExportEncodingSettings.DefaultEncodingSpeed,
+    ExportHardwareAcceleration HardwareAcceleration = ExportEncodingSettings.DefaultHardwareAcceleration,
+    ExportVideoEncoder VideoEncoder = ExportEncodingSettings.DefaultVideoEncoder,
+    int VideoBitRateKbps = ExportEncodingSettings.DefaultVideoBitRateKbps);
+
+public sealed record ProjectTimelineStateDocument(
+    long PlayheadNumerator,
+    int PlayheadDenominator,
+    ProjectRangeDocument Selection);
 
 public sealed record ProjectMediaDocument(
     string SourcePath,
