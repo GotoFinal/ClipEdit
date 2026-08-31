@@ -1064,14 +1064,11 @@ public sealed partial class MainWindow : Window
         return source is Visual visual && visual.GetVisualAncestors().Any(IsEditingControl);
     }
 
-    private void GoToStart_Click(object? sender, RoutedEventArgs eventArgs)
+    private void PreviousEditPoint_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        if (ViewModel is { } viewModel)
-        {
-            viewModel.SequencePlayheadSeconds = 0;
-        }
+        ViewModel?.JumpToAdjacentEditPoint(-1);
     }
 
     private async void TogglePlayback_Click(object? sender, RoutedEventArgs eventArgs)
@@ -1150,14 +1147,11 @@ public sealed partial class MainWindow : Window
             _lifetimeCancellation.Token);
     }
 
-    private void GoToEnd_Click(object? sender, RoutedEventArgs eventArgs)
+    private void NextEditPoint_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        if (ViewModel is { } viewModel)
-        {
-            viewModel.SequencePlayheadSeconds = viewModel.SequenceDurationSeconds;
-        }
+        ViewModel?.JumpToAdjacentEditPoint(1);
     }
 
     private void MarkIn_Click(object? sender, RoutedEventArgs eventArgs)

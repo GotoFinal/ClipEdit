@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
@@ -424,6 +425,31 @@ public sealed class MainWindowChromeTests
             Assert.Equal(11, toggle.FontSize);
             Assert.Equal(HorizontalAlignment.Center, toggle.HorizontalContentAlignment);
             Assert.Equal(VerticalAlignment.Center, toggle.VerticalContentAlignment);
+        }
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Transport_buttons_have_icons_accessible_names_and_tooltips()
+    {
+        var window = new MainWindow();
+        var names = new[]
+        {
+            "PreviousEditPointButton",
+            "PreviousFrameButton",
+            "PlaybackToggleButton",
+            "NextFrameButton",
+            "NextEditPointButton",
+        };
+
+        foreach (var name in names)
+        {
+            var button = window.FindControl<Button>(name);
+            Assert.NotNull(button);
+            Assert.NotNull(button.Content);
+            Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(button)));
+            Assert.NotNull(ToolTip.GetTip(button));
         }
 
         window.Close();

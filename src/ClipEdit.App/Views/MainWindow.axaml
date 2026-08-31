@@ -1316,18 +1316,25 @@
               <Grid Grid.Row="2" ColumnDefinitions="*,Auto,*">
                 <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="11" Text="{Binding SequencePlayheadText}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
-                  <Button AutomationProperties.Name="Go to start" Classes="secondary icon" Click="GoToStart_Click">
+                  <Button
+                      x:Name="PreviousEditPointButton"
+                      AutomationProperties.Name="Previous edit point"
+                      Classes="secondary icon"
+                      Click="PreviousEditPoint_Click"
+                      ToolTip.Tip="Previous edit point: Mark In/Out, clip edge, or timeline start">
                     <PathIcon Width="14" Height="14" Data="M2,2 H4 V14 H2 Z M14,2 L6,8 L14,14 Z" />
                   </Button>
                   <Button
+                      x:Name="PreviousFrameButton"
                       AutomationProperties.Name="Previous source frame"
                       Classes="secondary icon"
                       Click="StepFrameBackward_Click"
                       IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
-                      ToolTip.Tip="Previous source frame (best effort)">
+                      ToolTip.Tip="Previous frame (best effort)">
                     <PathIcon Width="13" Height="13" Data="M13,2 L4,8 L13,14 Z" />
                   </Button>
                   <Button
+                      x:Name="PlaybackToggleButton"
                       Width="36"
                       Height="30"
                       Padding="8"
@@ -1335,21 +1342,27 @@
                       Classes="primary"
                       Click="TogglePlayback_Click"
                       IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
-                      ToolTip.Tip="{Binding PlaybackStatus, ElementName=LivePreview}">
+                      ToolTip.Tip="Play or pause preview (Space)">
                     <Grid>
                       <PathIcon Width="14" Height="14" Data="M3,2 L14,8 L3,14 Z" IsVisible="{Binding IsPaused, ElementName=LivePreview}" />
                       <PathIcon Width="14" Height="14" Data="M3,2 H7 V14 H3 Z M10,2 H14 V14 H10 Z" IsVisible="{Binding !IsPaused, ElementName=LivePreview}" />
                     </Grid>
                   </Button>
                   <Button
+                      x:Name="NextFrameButton"
                       AutomationProperties.Name="Next source frame"
                       Classes="secondary icon"
                       Click="StepFrameForward_Click"
                       IsEnabled="{Binding IsPlaybackAvailable, ElementName=LivePreview}"
-                      ToolTip.Tip="Next source frame">
+                      ToolTip.Tip="Next frame">
                     <PathIcon Width="13" Height="13" Data="M3,2 L12,8 L3,14 Z" />
                   </Button>
-                  <Button AutomationProperties.Name="Go to end" Classes="secondary icon" Click="GoToEnd_Click">
+                  <Button
+                      x:Name="NextEditPointButton"
+                      AutomationProperties.Name="Next edit point"
+                      Classes="secondary icon"
+                      Click="NextEditPoint_Click"
+                      ToolTip.Tip="Next edit point: Mark In/Out, clip edge, or timeline end">
                     <PathIcon Width="14" Height="14" Data="M2,2 L10,8 L2,14 Z M12,2 H14 V14 H12 Z" />
                   </Button>
                 </StackPanel>

@@ -2169,6 +2169,45 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         return target is not null && SelectSequenceChapter(target);
     }
 
+    public bool JumpToAdjacentEditPoint(int direction)
+    {
+        if (direction == 0 || VideoClips.Count == 0)
+        {
+            return false;
+        }
+
+        var editPoints = VideoClips
+            .SelectMany(static clip => new[] { clip.TimelineStart, clip.TimelineEnd })
+            .Append(MediaTime.Zero)
+            .ToList();
+        if (_sequenceSelectionStart != _sequenceSelectionEnd)
+        {
+            editPoints.Add(Min(_sequenceSelectionStart, _sequenceSelectionEnd));
+            editPoints.Add(Max(_sequenceSelectionStart, _sequenceSelectionEnd));
+        }
+
+        var orderedEditPoints = editPoints.Distinct().Order();
+        MediaTime? target = direction < 0
+            ? orderedEditPoints
+                .Where(point => point < _sequencePlayhead)
+                .Select(static point => (MediaTime?)point)
+                .LastOrDefault()
+            : orderedEditPoints
+                .Where(point => point > _sequencePlayhead)
+                .Select(static point => (MediaTime?)point)
+                .FirstOrDefault();
+        if (target is not { } timelinePosition)
+        {
+            return false;
+        }
+
+        SetSequencePlaybackPosition(timelinePosition);
+        StatusText = direction < 0
+            ? "Moved to previous edit point"
+            : "Moved to next edit point";
+        return true;
+    }
+
     public bool DeleteSelectedVideoClip()
     {
         if (SelectedVideoClip is not { } clip || IsBusy || IsExporting)

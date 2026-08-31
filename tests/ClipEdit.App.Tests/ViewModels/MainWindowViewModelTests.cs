@@ -735,6 +735,33 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Edit_point_navigation_visits_marks_clip_edges_and_sequence_boundaries()
+    {
+        using var viewModel = new MainWindowViewModel(new StubProbe());
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "edit-point-navigation.mkv")]);
+        viewModel.SequencePlayheadSeconds = 30;
+        Assert.True(viewModel.SplitSelectedVideoClip());
+        viewModel.SequenceSelectionStartSeconds = 10;
+        viewModel.SequenceSelectionEndSeconds = 20;
+
+        viewModel.SequencePlayheadSeconds = 25;
+        Assert.True(viewModel.JumpToAdjacentEditPoint(-1));
+        Assert.Equal(20, viewModel.SequencePlayheadSeconds);
+        Assert.True(viewModel.JumpToAdjacentEditPoint(-1));
+        Assert.Equal(10, viewModel.SequencePlayheadSeconds);
+        Assert.True(viewModel.JumpToAdjacentEditPoint(-1));
+        Assert.Equal(0, viewModel.SequencePlayheadSeconds);
+        Assert.False(viewModel.JumpToAdjacentEditPoint(-1));
+
+        viewModel.SequencePlayheadSeconds = 25;
+        Assert.True(viewModel.JumpToAdjacentEditPoint(1));
+        Assert.Equal(30, viewModel.SequencePlayheadSeconds);
+        Assert.True(viewModel.JumpToAdjacentEditPoint(1));
+        Assert.Equal(60, viewModel.SequencePlayheadSeconds);
+        Assert.False(viewModel.JumpToAdjacentEditPoint(1));
+    }
+
+    [Fact]
     public async Task Undo_and_redo_restore_keep_selection_while_preserving_other_clips()
     {
         var viewModel = new MainWindowViewModel(new StubProbe());
