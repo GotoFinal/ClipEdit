@@ -455,6 +455,18 @@ public sealed class MainWindowChromeTests
         window.Close();
     }
 
+    [Theory]
+    [InlineData(KeyModifiers.None, false)]
+    [InlineData(KeyModifiers.Control, false)]
+    [InlineData(KeyModifiers.Shift, true)]
+    [InlineData(KeyModifiers.Shift | KeyModifiers.Control, true)]
+    public void Shift_modifies_edit_point_buttons_to_jump_to_timeline_boundaries(
+        KeyModifiers modifiers,
+        bool expected)
+    {
+        Assert.Equal(expected, MainWindow.ShouldJumpToTimelineBoundary(modifiers));
+    }
+
     [AvaloniaFact]
     public void Space_always_toggles_playback_even_when_text_input_has_focus()
     {

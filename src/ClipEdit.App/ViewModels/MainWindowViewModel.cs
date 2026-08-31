@@ -2213,6 +2213,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         return true;
     }
 
+    public bool JumpToSequenceBoundary(int direction)
+    {
+        if (direction == 0 || VideoClips.Count == 0)
+        {
+            return false;
+        }
+
+        var target = direction < 0
+            ? MediaTime.Zero
+            : VideoClips.Max(static clip => clip.TimelineEnd);
+        if (_sequencePlayhead == target)
+        {
+            return false;
+        }
+
+        SetSequencePlaybackPosition(target);
+        StatusText = direction < 0
+            ? "Moved to timeline start"
+            : "Moved to timeline end";
+        return true;
+    }
+
     public bool DeleteSelectedVideoClip()
     {
         if (SelectedVideoClip is not { } clip || IsBusy || IsExporting)

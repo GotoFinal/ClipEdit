@@ -1321,7 +1321,7 @@
                       AutomationProperties.Name="Previous edit point"
                       Classes="secondary icon"
                       Click="PreviousEditPoint_Click"
-                      ToolTip.Tip="Previous edit point: Mark In/Out, clip edge, or timeline start">
+                      ToolTip.Tip="Previous edit point: Mark In/Out or clip edge. Shift-click: timeline start">
                     <PathIcon Width="14" Height="14" Data="M2,2 H4 V14 H2 Z M14,2 L6,8 L14,14 Z" />
                   </Button>
                   <Button
@@ -1362,7 +1362,7 @@
                       AutomationProperties.Name="Next edit point"
                       Classes="secondary icon"
                       Click="NextEditPoint_Click"
-                      ToolTip.Tip="Next edit point: Mark In/Out, clip edge, or timeline end">
+                      ToolTip.Tip="Next edit point: Mark In/Out or clip edge. Shift-click: timeline end">
                     <PathIcon Width="14" Height="14" Data="M2,2 L10,8 L2,14 Z M12,2 H14 V14 H12 Z" />
                   </Button>
                 </StackPanel>

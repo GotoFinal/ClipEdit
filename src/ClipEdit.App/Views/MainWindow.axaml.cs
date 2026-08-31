@@ -86,6 +86,8 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<MediaItemViewModel, CancellationTokenSource> _internetDownloads = [];
     private InternetMediaSettings _internetMediaSettings;
     private bool _hasShownProjectFileAssociationPrompt;
+    private KeyModifiers _previousEditPointClickModifiers;
+    private KeyModifiers _nextEditPointClickModifiers;
 
     public MainWindow()
         : this(null, hasShownProjectFileAssociationPrompt: false, null, null, null, null)
@@ -126,6 +128,16 @@ public sealed partial class MainWindow : Window
         AddHandler(
             KeyDownEvent,
             OnWindowKeyDown,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        PreviousEditPointButton.AddHandler(
+            PointerPressedEvent,
+            EditPointButton_PointerPressed,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        NextEditPointButton.AddHandler(
+            PointerPressedEvent,
+            EditPointButton_PointerPressed,
             RoutingStrategies.Tunnel,
             handledEventsToo: true);
         PropertyChanged += OnWindowPropertyChanged;
@@ -1068,8 +1080,32 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.JumpToAdjacentEditPoint(-1);
+        if (ShouldJumpToTimelineBoundary(_previousEditPointClickModifiers))
+        {
+            ViewModel?.JumpToSequenceBoundary(-1);
+        }
+        else
+        {
+            ViewModel?.JumpToAdjacentEditPoint(-1);
+        }
+
+        _previousEditPointClickModifiers = KeyModifiers.None;
     }
+
+    private void EditPointButton_PointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (ReferenceEquals(sender, PreviousEditPointButton))
+        {
+            _previousEditPointClickModifiers = eventArgs.KeyModifiers;
+        }
+        else if (ReferenceEquals(sender, NextEditPointButton))
+        {
+            _nextEditPointClickModifiers = eventArgs.KeyModifiers;
+        }
+    }
+
+    internal static bool ShouldJumpToTimelineBoundary(KeyModifiers modifiers) =>
+        modifiers.HasFlag(KeyModifiers.Shift);
 
     private async void TogglePlayback_Click(object? sender, RoutedEventArgs eventArgs)
     {
@@ -1151,7 +1187,16 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = eventArgs;
-        ViewModel?.JumpToAdjacentEditPoint(1);
+        if (ShouldJumpToTimelineBoundary(_nextEditPointClickModifiers))
+        {
+            ViewModel?.JumpToSequenceBoundary(1);
+        }
+        else
+        {
+            ViewModel?.JumpToAdjacentEditPoint(1);
+        }
+
+        _nextEditPointClickModifiers = KeyModifiers.None;
     }
 
     private void MarkIn_Click(object? sender, RoutedEventArgs eventArgs)
