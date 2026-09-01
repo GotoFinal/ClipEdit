@@ -165,6 +165,30 @@ public sealed class JsonProjectStoreTests
     }
 
     [Fact]
+    public async Task Schema_thirteen_audio_without_output_routing_defaults_to_first_track()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
+        try
+        {
+            var store = new JsonProjectStore();
+            await store.SaveAsync(path, CreateDocument());
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            root["schemaVersion"] = 13;
+            var audioTrack = root["media"]![0]!["audioTracks"]![0]!.AsObject();
+            audioTrack.Remove("outputTrackIndex");
+            await File.WriteAllTextAsync(path, root.ToJsonString());
+
+            var loaded = await store.LoadAsync(path);
+
+            Assert.Equal(0, Assert.Single(Assert.Single(loaded.Media).AudioTracks!).OutputTrackIndex);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task Repeated_save_atomically_replaces_the_previous_document()
     {
         var path = Path.Combine(Path.GetTempPath(), $"clipedit-{Guid.NewGuid():N}.clipedit");
@@ -275,7 +299,8 @@ public sealed class JsonProjectStoreTests
                             1_000,
                             [new ProjectRangeDocument(0, 1, 60_001, 1_000)],
                             13,
-                            4),
+                            4,
+                            OutputTrackIndex: 1),
                     ],
                     mediaId),
             ],

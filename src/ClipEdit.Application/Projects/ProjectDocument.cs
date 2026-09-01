@@ -13,7 +13,7 @@ public sealed record ProjectDocument(
     ProjectExportSettingsDocument? ExportSettings = null,
     ProjectTimelineStateDocument? TimelineState = null)
 {
-    public const int CurrentSchemaVersion = 13;
+    public const int CurrentSchemaVersion = 14;
 }
 
 public sealed record ProjectExportSettingsDocument(
@@ -110,4 +110,5 @@ public sealed record ProjectAudioTrackDocument(
     long TimelineOffsetNumerator = 0,
     int TimelineOffsetDenominator = 1,
     int? LaneIndex = null,
-    IReadOnlyList<ProjectRangeDocument>? TimelineSilencedRanges = null);
+    IReadOnlyList<ProjectRangeDocument>? TimelineSilencedRanges = null,
+    int OutputTrackIndex = 0);

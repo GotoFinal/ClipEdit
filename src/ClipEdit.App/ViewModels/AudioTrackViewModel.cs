@@ -26,6 +26,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private MediaTime _selectionEnd;
     private double _gainDb;
     private bool _isMuted;
+    private bool _isPreviewEnabled = true;
     private MediaTime _timelineOffset;
     private double _timelineZoom = 1;
     private double _timelineViewportStart;
@@ -47,14 +48,18 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     private string? _waveformErrorText;
     private double _waveformAmplitudeScale = WaveformAmplitudeMath.Automatic;
     private string _displayName = string.Empty;
+    private int _outputTrackIndex;
+    private IReadOnlyList<int> _outputTrackChoices = [1];
 
     public AudioTrackViewModel(
         ImportedMedia media,
         AudioStreamInfo stream,
-        int? embeddedLaneIndex = null)
+        int? embeddedLaneIndex = null,
+        int outputTrackIndex = 0)
     {
         ArgumentNullException.ThrowIfNull(media);
         ArgumentNullException.ThrowIfNull(stream);
+        ArgumentOutOfRangeException.ThrowIfNegative(outputTrackIndex);
         var duration = stream.Duration ?? media.Probe.Duration;
         if (duration is null || duration <= MediaTime.Zero)
         {
@@ -65,6 +70,7 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
         StreamIndex = stream.Index;
         IsExternal = media.IsExternalAudio;
         EmbeddedLaneIndex = IsExternal ? null : embeddedLaneIndex ?? 0;
+        _outputTrackIndex = outputTrackIndex;
         DisplayName = IsExternal
             ? BuildDisplayName(media, stream)
             : BuildEmbeddedDisplayName(embeddedLaneIndex ?? 0, BuildStreamDetail(stream));
@@ -101,6 +107,42 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
     }
 
     public string StableId => $"{SourcePath}|{StreamIndex}";
+
+    public int OutputTrackIndex => _outputTrackIndex;
+
+    public int OutputTrackNumber
+    {
+        get => _outputTrackIndex + 1;
+        set
+        {
+            var index = value - 1;
+            if (index < 0 || !_outputTrackChoices.Contains(value) ||
+                !SetProperty(ref _outputTrackIndex, index, nameof(OutputTrackIndex)))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(OutputTrackNumber));
+        }
+    }
+
+    public IReadOnlyList<int> OutputTrackChoices => _outputTrackChoices;
+
+    internal void SetOutputTrackIndex(int outputTrackIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(outputTrackIndex);
+        if (SetProperty(ref _outputTrackIndex, outputTrackIndex, nameof(OutputTrackIndex)))
+        {
+            OnPropertyChanged(nameof(OutputTrackNumber));
+        }
+    }
+
+    internal void SetOutputTrackChoiceCount(int count)
+    {
+        _outputTrackChoices = Enumerable.Range(1, Math.Max(1, count)).ToArray();
+        OnPropertyChanged(nameof(OutputTrackChoices));
+        OnPropertyChanged(nameof(OutputTrackNumber));
+    }
 
     public IReadOnlyCollection<string> EmbeddedSourcePaths => _embeddedSources.Keys;
 
@@ -428,6 +470,12 @@ public sealed class AudioTrackViewModel : ViewModelBase, IDisposable
                 RebuildTimelineKeptRanges();
             }
         }
+    }
+
+    public bool IsPreviewEnabled
+    {
+        get => _isPreviewEnabled;
+        set => SetProperty(ref _isPreviewEnabled, value);
     }
 
     public MediaTime TimelineOffset

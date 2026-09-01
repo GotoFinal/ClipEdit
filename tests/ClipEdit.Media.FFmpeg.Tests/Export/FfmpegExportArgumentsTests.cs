@@ -149,6 +149,42 @@ public sealed class FfmpegExportArgumentsTests
     }
 
     [Fact]
+    public void Video_copy_preserves_separately_routed_audio_outputs()
+    {
+        var duration = new MediaTime(10, 1);
+        var canvas = new PixelSize(1_920, 1_080);
+        var segment = new ExportVideoSegmentPlan(
+            TestPath("C:\\source.mp4"),
+            0,
+            new MediaRange(MediaTime.Zero, duration),
+            canvas,
+            CropRegion.FullFrame(canvas),
+            ClipCanvasTransform.Identity,
+            [
+                new ExportAudioTrackPlan(1, 0, new SourceEdit(duration), outputTrackIndex: 0),
+                new ExportAudioTrackPlan(2, 0, new SourceEdit(duration), outputTrackIndex: 1),
+            ],
+            MediaTime.Zero,
+            isCompleteSource: true);
+        var plan = new ExportPlan(
+            [segment],
+            canvas,
+            TestPath("C:\\audio-preserved.mp4"),
+            Mp4Compatible,
+            sequenceDuration: duration,
+            strategy: ExportStrategy.VideoStreamCopy);
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.audio-preserved.partial"));
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.Equal("copy", ValueAfter(arguments, "-c:v"));
+        Assert.Contains("[emb0]anull[aout0]", graph);
+        Assert.Contains("[emb1]anull[aout1]", graph);
+        Assert.Contains("[aout0]", arguments);
+        Assert.Contains("[aout1]", arguments);
+    }
+
+    [Fact]
     public void Keyframe_trim_seeks_video_by_pts_stops_by_dts_and_reads_audio_separately()
     {
         var sourceDuration = new MediaTime(60, 1);
@@ -282,7 +318,8 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Contains("[vseg0][vseg1]concat=n=2:v=1:a=0[vbase]", graph);
         Assert.Contains("[vbase]scale=1080:1080:flags=lanczos,format=yuv420p,setsar=1[vout]", graph);
         Assert.Contains("[aseg0_0][aseg0_1]concat=n=2:v=0:a=1[atrack0]", graph);
-        Assert.Contains("[atrack0]volume=0dB[aout]", graph);
+        Assert.Contains("[atrack0]volume=0dB[amixin0]", graph);
+        Assert.Contains("[amixin0]anull[aout]", graph);
         Assert.Contains("libx264", arguments);
         Assert.Contains("+faststart", arguments);
     }
@@ -357,7 +394,42 @@ public sealed class FfmpegExportArgumentsTests
 
         Assert.Contains("[aseg0_0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=-6dB[amixin0]", graph);
         Assert.Contains("[aseg1_0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=3.5dB[amixin1]", graph);
-        Assert.Contains("[amixin0][amixin1]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[aout]", graph);
+        Assert.Contains("[amixin0][amixin1]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[aoutmixed]", graph);
+        Assert.Contains("[aoutmixed]anull[aout]", graph);
+    }
+
+    [Fact]
+    public void Routed_audio_lanes_export_as_separate_output_streams_by_default()
+    {
+        var canvas = new PixelSize(1_280, 720);
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    TestPath("C:\\multi-audio.mkv"),
+                    0,
+                    new MediaRange(MediaTime.Zero, new MediaTime(2, 1)),
+                    canvas,
+                    CropRegion.FullFrame(canvas),
+                    ClipCanvasTransform.Identity,
+                    [
+                        new ExportAudioTrackPlan(1, 0, outputTrackIndex: 0),
+                        new ExportAudioTrackPlan(2, 0, outputTrackIndex: 1),
+                    ]),
+            ],
+            canvas,
+            TestPath("C:\\multi-audio.mp4"),
+            Mp4Compatible);
+
+        var arguments = FfmpegExportArguments.Create(plan, TestPath("C:\\.multi-audio.partial"));
+        var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        Assert.Contains("[seg0a0]anull[aseg0o0]", graph);
+        Assert.Contains("[seg0a1]anull[aseg0o1]", graph);
+        Assert.Contains("[abase0]anull[aout0]", graph);
+        Assert.Contains("[abase1]anull[aout1]", graph);
+        Assert.Contains("[aout0]", arguments);
+        Assert.Contains("[aout1]", arguments);
+        Assert.DoesNotContain("[seg0a0][seg0a1]amix", graph);
     }
 
     [Fact]
@@ -413,10 +485,11 @@ public sealed class FfmpegExportArgumentsTests
         AssertInputSeek(arguments, TestPath("C:\\second.mkv"), null, "4");
         Assert.Contains("[0:0]trim=start=0:end=3,setpts=PTS-STARTPTS,crop=1080:1080:420:0,scale=1080:1080", graph);
         Assert.Contains("[1:2]trim=start=0:end=4,setpts=PTS-STARTPTS,crop=1680:2160:1080:0,scale=1080:1080", graph);
-        Assert.Contains("[vseg0][aseg0][vseg1][aseg1]concat=n=2:v=1:a=1[vbase][abase]", graph);
+        Assert.Contains("[vseg0][vseg1]concat=n=2:v=1:a=0[vbase]", graph);
+        Assert.Contains("[aseg0o0][aseg1o0]concat=n=2:v=0:a=1[abase0]", graph);
         Assert.Contains("[vbase]format=yuv420p,setsar=1[vout]", graph);
         Assert.DoesNotContain("[vbase]scale=1080:1080", graph);
-        Assert.Contains("[abase]anull[aout]", graph);
+        Assert.Contains("[abase0]anull[aout]", graph);
     }
 
     [Fact]
@@ -786,11 +859,12 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Contains(
             "color=c=black:s=1280x720:r=30:d=2,format=yuv420p,setsar=1[vgap1]",
             graph);
-        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=3,aformat=sample_fmts=fltp:channel_layouts=stereo[agap0]", graph);
-        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2,aformat=sample_fmts=fltp:channel_layouts=stereo[agap1]", graph);
+        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=3,aformat=sample_fmts=fltp:channel_layouts=stereo[agap0o0]", graph);
+        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2,aformat=sample_fmts=fltp:channel_layouts=stereo[agap1o0]", graph);
         Assert.Contains(
-            "[vgap0][agap0][vseg0][aseg0][vgap1][agap1]concat=n=3:v=1:a=1[vbase][abase]",
+            "[vgap0][vseg0][vgap1]concat=n=3:v=1:a=0[vbase]",
             graph);
+        Assert.Contains("[agap0o0][aseg0o0][agap1o0]concat=n=3:v=0:a=1[abase0]", graph);
     }
 
     [Fact]
@@ -824,12 +898,12 @@ public sealed class FfmpegExportArgumentsTests
         Assert.Contains("asetpts=PTS-STARTPTS,atempo=2,aresample=48000", graph);
         Assert.Contains("[vbase]setpts=(PTS-STARTPTS)/4,format=yuv420p,setsar=1[vout]", graph);
         Assert.DoesNotContain("[vbase]setpts=(PTS-STARTPTS)/4,scale=1280:720", graph);
-        Assert.Contains("[abase]atempo=2,atempo=2[aout]", graph);
+        Assert.Contains("[abase0]atempo=2,atempo=2[aout]", graph);
     }
 
     [Theory]
-    [InlineData(1, "[abase]atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.64[aout]")]
-    [InlineData(10000, "[abase]atempo=2,atempo=2,atempo=2,atempo=2,atempo=2,atempo=2,atempo=1.5625[aout]")]
+    [InlineData(1, "[abase0]atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.64[aout]")]
+    [InlineData(10000, "[abase0]atempo=2,atempo=2,atempo=2,atempo=2,atempo=2,atempo=2,atempo=1.5625[aout]")]
     public void Extreme_supported_export_speeds_chain_pitch_preserving_audio_stages(
         int playbackSpeedPercent,
         string expectedAudioFilter)
@@ -1018,7 +1092,7 @@ public sealed class FfmpegExportArgumentsTests
             "apad,atrim=start=0:end=5",
             graph);
         Assert.Contains("[vseg0]null[vbase]", graph);
-        Assert.Contains("[aseg0]anull[abase]", graph);
+        Assert.Contains("[aseg0o0]anull[abase0]", graph);
         Assert.DoesNotContain("concat=n=1", graph);
     }
 

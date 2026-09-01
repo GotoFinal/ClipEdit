@@ -118,8 +118,7 @@ internal static class FfmpegExportArguments
 
         if (HasAnyAudio(plan))
         {
-            arguments.Add("-map");
-            arguments.Add("[aout]");
+            AddAudioOutputMaps(arguments, plan);
         }
         else
         {
@@ -345,8 +344,7 @@ internal static class FfmpegExportArguments
         {
             arguments.Add("-filter_complex");
             arguments.Add(CreateVideoStreamCopyAudioFilterGraph(plan, usesSeparateAudioInput));
-            arguments.Add("-map");
-            arguments.Add("[aout]");
+            AddAudioOutputMaps(arguments, plan);
         }
         else
         {
@@ -383,7 +381,8 @@ internal static class FfmpegExportArguments
         var segment = plan.VideoSegments.Single();
         var range = segment.SourceRange;
         var filters = new List<string>();
-        var mixInputs = new List<string>();
+        var outputTracks = GetAudioOutputTrackIndices(plan);
+        var mixInputs = outputTracks.ToDictionary(index => index, _ => new List<string>());
         var embeddedInputIndex = usesSeparateAudioInput ? 1 : 0;
         for (var trackIndex = 0; trackIndex < segment.AudioTracks.Length; trackIndex++)
         {
@@ -396,7 +395,7 @@ internal static class FfmpegExportArguments
                 "asetpts=PTS-STARTPTS,aresample=48000," +
                 "aformat=sample_fmts=fltp:channel_layouts=stereo," +
                 $"volume={FormatGain(track.GainDb)}dB[{output}]");
-            mixInputs.Add(output);
+            mixInputs[track.OutputTrackIndex].Add(output);
         }
 
         var externalSources = GetSequenceExternalAudioSources(plan);
@@ -415,19 +414,16 @@ internal static class FfmpegExportArguments
                 "asetpts=PTS-STARTPTS,aresample=48000," +
                 "aformat=sample_fmts=fltp:channel_layouts=stereo," +
                 $"volume={FormatGain(track.GainDb)}dB[{output}]");
-            mixInputs.Add(output);
+            mixInputs[track.OutputTrackIndex].Add(output);
         }
 
-        if (mixInputs.Count == 1)
+        foreach (var outputTrackIndex in outputTracks)
         {
-            filters.Add($"[{mixInputs[0]}]anull[aout]");
-        }
-        else
-        {
-            filters.Add(
-                string.Concat(mixInputs.Select(input => $"[{input}]")) +
-                $"amix=inputs={mixInputs.Count}:duration=longest:normalize=0," +
-                "alimiter=limit=0.95[aout]");
+            AddMixedAudioOutput(
+                filters,
+                mixInputs[outputTrackIndex],
+                GetAudioOutputLabel(outputTrackIndex, outputTracks),
+                plan);
         }
 
         return string.Join(';', filters);
@@ -442,8 +438,15 @@ internal static class FfmpegExportArguments
 
         var filters = new List<string>();
         var includeAudio = plan.Preset.SupportsAudio;
-        var hasEmbeddedAudio = includeAudio &&
-                               plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty);
+        var outputTracks = GetAudioOutputTrackIndices(plan);
+        var embeddedOutputTracks = includeAudio
+            ? plan.VideoSegments
+                .SelectMany(segment => segment.AudioTracks)
+                .Select(track => track.OutputTrackIndex)
+                .Distinct()
+                .Order()
+                .ToArray()
+            : [];
         var videoPixelFormat = GetOutputPixelFormat(plan);
         var overlayPixelFormat = plan.PreservesHdr ? "yuv420p10" : "yuv420";
         for (var segmentIndex = 0; segmentIndex < plan.VideoSegments.Length; segmentIndex++)
@@ -473,15 +476,8 @@ internal static class FfmpegExportArguments
                     $"scale={plan.OutputSize.Width}:{plan.OutputSize.Height}:flags=lanczos,format={videoPixelFormat},setsar=1[vseg{segmentIndex}]");
             }
 
-            if (!hasEmbeddedAudio)
+            if (embeddedOutputTracks.Length == 0)
             {
-                continue;
-            }
-
-            if (segment.AudioTracks.IsEmpty)
-            {
-                filters.Add(
-                    $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(segment.TimelineDuration)},aformat=sample_fmts=fltp:channel_layouts=stereo[aseg{segmentIndex}]");
                 continue;
             }
 
@@ -497,21 +493,37 @@ internal static class FfmpegExportArguments
                     $"volume={FormatGain(track.GainDb)}dB[seg{segmentIndex}a{trackIndex}]");
             }
 
-            if (segment.AudioTracks.Length == 1)
+            foreach (var outputTrackIndex in embeddedOutputTracks)
             {
-                filters.Add($"[seg{segmentIndex}a0]anull[aseg{segmentIndex}]");
-            }
-            else
-            {
-                filters.Add(
-                    string.Concat(Enumerable.Range(0, segment.AudioTracks.Length)
-                        .Select(index => $"[seg{segmentIndex}a{index}]")) +
-                    $"amix=inputs={segment.AudioTracks.Length}:duration=longest:normalize=0," +
-                    $"alimiter=limit=0.95[aseg{segmentIndex}]");
+                var routedInputs = segment.AudioTracks
+                    .Select((track, index) => (track, index))
+                    .Where(item => item.track.OutputTrackIndex == outputTrackIndex)
+                    .Select(item => $"seg{segmentIndex}a{item.index}")
+                    .ToArray();
+                var output = $"aseg{segmentIndex}o{outputTrackIndex}";
+                if (routedInputs.Length == 0)
+                {
+                    filters.Add(
+                        $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(segment.TimelineDuration)},aformat=sample_fmts=fltp:channel_layouts=stereo[{output}]");
+                }
+                else if (routedInputs.Length == 1)
+                {
+                    filters.Add($"[{routedInputs[0]}]anull[{output}]");
+                }
+                else
+                {
+                    filters.Add(
+                        string.Concat(routedInputs.Select(input => $"[{input}]")) +
+                        $"amix=inputs={routedInputs.Length}:duration=longest:normalize=0," +
+                        $"alimiter=limit=0.95[{output}]");
+                }
             }
         }
 
-        var sequenceInputs = new List<(string Video, string? Audio)>();
+        var sequenceVideoInputs = new List<string>();
+        var sequenceAudioInputs = embeddedOutputTracks.ToDictionary(
+            outputTrackIndex => outputTrackIndex,
+            _ => new List<string>());
         var sequenceCursor = plan.SequenceTimelineStart;
         var gapIndex = 0;
         for (var segmentIndex = 0; segmentIndex < plan.VideoSegments.Length; segmentIndex++)
@@ -522,7 +534,11 @@ internal static class FfmpegExportArguments
                 AddGap(segmentStart - sequenceCursor);
             }
 
-            sequenceInputs.Add(($"vseg{segmentIndex}", hasEmbeddedAudio ? $"aseg{segmentIndex}" : null));
+            sequenceVideoInputs.Add($"vseg{segmentIndex}");
+            foreach (var outputTrackIndex in embeddedOutputTracks)
+            {
+                sequenceAudioInputs[outputTrackIndex].Add($"aseg{segmentIndex}o{outputTrackIndex}");
+            }
             sequenceCursor = segmentStart + plan.VideoSegments[segmentIndex].TimelineDuration;
         }
 
@@ -532,26 +548,30 @@ internal static class FfmpegExportArguments
             AddGap(sequenceEnd - sequenceCursor);
         }
 
-        if (sequenceInputs.Count == 1 && hasEmbeddedAudio)
+        if (sequenceVideoInputs.Count == 1)
         {
-            filters.Add($"[{sequenceInputs[0].Video}]null[vbase]");
-            filters.Add($"[{sequenceInputs[0].Audio}]anull[abase]");
-        }
-        else if (sequenceInputs.Count == 1)
-        {
-            filters.Add($"[{sequenceInputs[0].Video}]null[vbase]");
-        }
-        else if (hasEmbeddedAudio)
-        {
-            filters.Add(
-                string.Concat(sequenceInputs.Select(input => $"[{input.Video}][{input.Audio}]")) +
-                $"concat=n={sequenceInputs.Count}:v=1:a=1[vbase][abase]");
+            filters.Add($"[{sequenceVideoInputs[0]}]null[vbase]");
         }
         else
         {
             filters.Add(
-                string.Concat(sequenceInputs.Select(input => $"[{input.Video}]")) +
-                $"concat=n={sequenceInputs.Count}:v=1:a=0[vbase]");
+                string.Concat(sequenceVideoInputs.Select(input => $"[{input}]")) +
+                $"concat=n={sequenceVideoInputs.Count}:v=1:a=0[vbase]");
+        }
+
+        foreach (var outputTrackIndex in embeddedOutputTracks)
+        {
+            var inputs = sequenceAudioInputs[outputTrackIndex];
+            if (inputs.Count == 1)
+            {
+                filters.Add($"[{inputs[0]}]anull[abase{outputTrackIndex}]");
+            }
+            else
+            {
+                filters.Add(
+                    string.Concat(inputs.Select(input => $"[{input}]")) +
+                    $"concat=n={inputs.Count}:v=0:a=1[abase{outputTrackIndex}]");
+            }
         }
 
         void AddGap(MediaTime duration)
@@ -564,23 +584,23 @@ internal static class FfmpegExportArguments
                 $"color=c=black:s={plan.OutputSize.Width}x{plan.OutputSize.Height}:" +
                 $"r=30:d={FormatTime(duration)},format={videoPixelFormat}{colorProperties}," +
                 $"setsar=1[{videoLabel}]");
-            string? audioLabel = null;
-            if (hasEmbeddedAudio)
+            sequenceVideoInputs.Add(videoLabel);
+            foreach (var outputTrackIndex in embeddedOutputTracks)
             {
-                audioLabel = $"agap{gapIndex}";
+                var audioLabel = $"agap{gapIndex}o{outputTrackIndex}";
                 filters.Add(
                     $"anullsrc=r=48000:cl=stereo,atrim=duration={FormatTime(duration)},aformat=sample_fmts=fltp:channel_layouts=stereo[{audioLabel}]");
+                sequenceAudioInputs[outputTrackIndex].Add(audioLabel);
             }
 
-            sequenceInputs.Add((videoLabel, audioLabel));
             gapIndex++;
         }
 
         var externalSources = GetSequenceExternalAudioSources(plan);
-        var mixInputs = new List<string>();
-        if (hasEmbeddedAudio)
+        var mixInputs = outputTracks.ToDictionary(index => index, _ => new List<string>());
+        foreach (var outputTrackIndex in embeddedOutputTracks)
         {
-            mixInputs.Add("abase");
+            mixInputs[outputTrackIndex].Add($"abase{outputTrackIndex}");
         }
 
         for (var trackIndex = 0; includeAudio && trackIndex < plan.AudioTracks.Length; trackIndex++)
@@ -597,32 +617,17 @@ internal static class FfmpegExportArguments
                 $"end={FormatTime(plan.SequenceTimelineStart + plan.TimelineDuration)},asetpts=PTS-STARTPTS," +
                 "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo," +
                 $"volume={FormatGain(track.GainDb)}dB[{output}]");
-            mixInputs.Add(output);
+            mixInputs[track.OutputTrackIndex].Add(output);
         }
 
         AddSequenceVideoOutputFilters(filters, "vbase", plan);
-        if (mixInputs.Count == 1)
+        foreach (var outputTrackIndex in outputTracks)
         {
-            if (plan.EncodingSettings.PlaybackSpeedPercent == 100)
-            {
-                filters.Add($"[{mixInputs[0]}]anull[aout]");
-            }
-            else
-            {
-                AddAudioOutputFilters(filters, mixInputs[0], plan);
-            }
-        }
-        else if (mixInputs.Count > 1)
-        {
-            var mixedOutput = plan.EncodingSettings.PlaybackSpeedPercent == 100 ? "aout" : "amixed";
-            filters.Add(
-                string.Concat(mixInputs.Select(input => $"[{input}]")) +
-                $"amix=inputs={mixInputs.Count}:duration=longest:normalize=0," +
-                $"alimiter=limit=0.95[{mixedOutput}]");
-            if (mixedOutput == "amixed")
-            {
-                AddAudioOutputFilters(filters, mixedOutput, plan);
-            }
+            AddMixedAudioOutput(
+                filters,
+                mixInputs[outputTrackIndex],
+                GetAudioOutputLabel(outputTrackIndex, outputTracks),
+                plan);
         }
 
         return string.Join(';', filters);
@@ -923,6 +928,12 @@ internal static class FfmpegExportArguments
 
         AddVideoOutputFilters(filters, "vbase", plan);
 
+        var outputTracks = audioTracks
+            .Select(track => track.OutputTrackIndex)
+            .Distinct()
+            .Order()
+            .ToArray();
+        var mixInputs = outputTracks.ToDictionary(index => index, _ => new List<string>());
         for (var trackIndex = 0; trackIndex < audioTracks.Length; trackIndex++)
         {
             var trackInput = $"aseg{trackIndex}_0";
@@ -934,27 +945,23 @@ internal static class FfmpegExportArguments
                     $"concat=n={rangeCount}:v=0:a=1[{trackInput}]");
             }
 
-            var mixedInput = audioTracks.Length == 1
-                ? plan.EncodingSettings.PlaybackSpeedPercent == 100 ? "aout" : "amixed"
-                : $"amixin{trackIndex}";
-            var conform = audioTracks.Length == 1
-                ? string.Empty
-                : "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,";
+            var mixedInput = $"amixin{trackIndex}";
+            var conform = audioTracks.Count(candidate =>
+                    candidate.OutputTrackIndex == audioTracks[trackIndex].OutputTrackIndex) > 1
+                ? "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                : string.Empty;
             filters.Add(
                 $"[{trackInput}]{conform}volume={FormatGain(audioTracks[trackIndex].GainDb)}dB[{mixedInput}]");
+            mixInputs[audioTracks[trackIndex].OutputTrackIndex].Add(mixedInput);
         }
 
-        if (audioTracks.Length > 1)
+        foreach (var outputTrackIndex in outputTracks)
         {
-            var mixedOutput = plan.EncodingSettings.PlaybackSpeedPercent == 100 ? "aout" : "amixed";
-            filters.Add(
-                string.Concat(Enumerable.Range(0, audioTracks.Length).Select(index => $"[amixin{index}]")) +
-                $"amix=inputs={audioTracks.Length}:duration=longest:normalize=0,alimiter=limit=0.95[{mixedOutput}]");
-        }
-
-        if (audioTracks.Length > 0 && plan.EncodingSettings.PlaybackSpeedPercent != 100)
-        {
-            AddAudioOutputFilters(filters, "amixed", plan);
+            AddMixedAudioOutput(
+                filters,
+                mixInputs[outputTrackIndex],
+                GetAudioOutputLabel(outputTrackIndex, outputTracks),
+                plan);
         }
 
         return string.Join(';', filters);
@@ -1584,6 +1591,58 @@ internal static class FfmpegExportArguments
             ? plan.VideoSegments.Any(segment => !segment.AudioTracks.IsEmpty) || !plan.AudioTracks.IsEmpty
             : !plan.AudioTracks.IsEmpty);
 
+    internal static IReadOnlyList<int> GetAudioOutputTrackIndices(ExportPlan plan)
+    {
+        if (!plan.Preset.SupportsAudio)
+        {
+            return [];
+        }
+
+        return (plan.IsSequence
+                ? plan.VideoSegments.SelectMany(segment => segment.AudioTracks).Concat(plan.AudioTracks)
+                : plan.AudioTracks)
+            .Select(track => track.OutputTrackIndex)
+            .Distinct()
+            .Order()
+            .ToArray();
+    }
+
+    internal static void AddAudioOutputMaps(ICollection<string> arguments, ExportPlan plan)
+    {
+        var outputTracks = GetAudioOutputTrackIndices(plan);
+        foreach (var outputTrackIndex in outputTracks)
+        {
+            arguments.Add("-map");
+            arguments.Add($"[{GetAudioOutputLabel(outputTrackIndex, outputTracks)}]");
+        }
+    }
+
+    private static string GetAudioOutputLabel(
+        int outputTrackIndex,
+        IReadOnlyList<int> outputTracks)
+    {
+        if (outputTracks.Count == 1)
+        {
+            return "aout";
+        }
+
+        var ordinal = -1;
+        for (var index = 0; index < outputTracks.Count; index++)
+        {
+            if (outputTracks[index] == outputTrackIndex)
+            {
+                ordinal = index;
+                break;
+            }
+        }
+        if (ordinal < 0)
+        {
+            throw new ExportPlanException("An audio lane refers to an unknown output track.");
+        }
+
+        return $"aout{ordinal}";
+    }
+
     internal static IReadOnlyList<string> GetSequenceExternalAudioSources(ExportPlan plan)
     {
         if (!plan.Preset.SupportsAudio)
@@ -1842,11 +1901,37 @@ internal static class FfmpegExportArguments
     private static void AddAudioOutputFilters(
         ICollection<string> filters,
         string input,
-        ExportPlan plan)
+        ExportPlan plan,
+        string output = "aout")
     {
         filters.Add(plan.EncodingSettings.PlaybackSpeedPercent == 100
-            ? $"[{input}]anull[aout]"
-            : $"[{input}]{CreateAudioSpeedFilter(plan.EncodingSettings.PlaybackSpeed)}[aout]");
+            ? $"[{input}]anull[{output}]"
+            : $"[{input}]{CreateAudioSpeedFilter(plan.EncodingSettings.PlaybackSpeed)}[{output}]");
+    }
+
+    private static void AddMixedAudioOutput(
+        ICollection<string> filters,
+        IReadOnlyList<string> inputs,
+        string output,
+        ExportPlan plan)
+    {
+        if (inputs.Count == 0)
+        {
+            throw new ExportPlanException("An output audio track has no routed input lanes.");
+        }
+
+        if (inputs.Count == 1)
+        {
+            AddAudioOutputFilters(filters, inputs[0], plan, output);
+            return;
+        }
+
+        var mixedOutput = $"{output}mixed";
+        filters.Add(
+            string.Concat(inputs.Select(input => $"[{input}]")) +
+            $"amix=inputs={inputs.Count}:duration=longest:normalize=0," +
+            $"alimiter=limit=0.95[{mixedOutput}]");
+        AddAudioOutputFilters(filters, mixedOutput, plan, output);
     }
 
     private static string CreateVideoSpeedFilter(double speed) =>

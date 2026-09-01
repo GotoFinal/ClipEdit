@@ -1366,14 +1366,45 @@
                     <PathIcon Width="14" Height="14" Data="M2,2 L10,8 L2,14 Z M12,2 H14 V14 H12 Z" />
                   </Button>
                 </StackPanel>
-                <Grid Grid.Column="2" ColumnDefinitions="Auto,70,Auto" ColumnSpacing="6" HorizontalAlignment="Right">
+                <Grid Grid.Column="2" ColumnDefinitions="Auto,Auto,70,Auto" ColumnSpacing="6" HorizontalAlignment="Right">
+                  <Button
+                      Padding="7,3"
+                      AutomationProperties.Name="Choose preview audio tracks"
+                      Classes="secondary"
+                      Content="{Binding PreviewAudioSelectionText}"
+                      IsVisible="{Binding HasAudioTracks}"
+                      ToolTip.Tip="Choose which audio tracks are heard in preview; export is unchanged">
+                    <Button.Flyout>
+                      <Flyout Placement="TopEdgeAlignedRight">
+                        <Border MinWidth="250" MaxWidth="420" Padding="9" Background="#20242D" CornerRadius="7">
+                          <StackPanel Spacing="6">
+                            <TextBlock FontSize="11" FontWeight="SemiBold" Text="Preview audio" />
+                            <ItemsControl ItemsSource="{Binding AudioTracks}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AudioTrackViewModel">
+                                  <CheckBox
+                                      Margin="0,2"
+                                      AutomationProperties.Name="{Binding DisplayName}"
+                                      Content="{Binding DisplayName}"
+                                      IsChecked="{Binding IsPreviewEnabled, Mode=TwoWay}"
+                                      ToolTip.Tip="Enable or disable this track for preview only" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Classes="muted" FontSize="9" Text="Export audio routing is unchanged." />
+                          </StackPanel>
+                        </Border>
+                      </Flyout>
+                    </Button.Flyout>
+                  </Button>
                   <TextBlock
+                      Grid.Column="1"
                       VerticalAlignment="Center"
                       Classes="muted"
                       FontSize="9"
                       Text="VOLUME" />
                   <Slider
-                      Grid.Column="1"
+                      Grid.Column="2"
                       AutomationProperties.Name="Playback volume"
                       Minimum="0"
                       Maximum="1"
@@ -1381,7 +1412,7 @@
                       ToolTip.Tip="Preview playback volume; export mix is unchanged"
                       Value="{Binding Volume, ElementName=LivePreview, Mode=TwoWay}" />
                   <TextBlock
-                      Grid.Column="2"
+                      Grid.Column="3"
                       MaxWidth="160"
                       VerticalAlignment="Center"
                       Classes="muted"
@@ -1626,6 +1657,7 @@
                     <StackPanel Orientation="Horizontal" Spacing="7">
                       <TextBlock FontSize="11" FontWeight="Bold" Text="AUDIO TRACKS" />
                     </StackPanel>
+                    <Button Grid.Column="1" Height="22" Padding="7,1" Classes="secondary" Click="MergeAudioTracks_Click" Content="Merge all" IsEnabled="{Binding CanMergeAllAudioTracks}" ToolTip.Tip="Send every audio lane to output track 1" />
                     <Button Grid.Column="3" Height="22" Padding="7,1" Classes="secondary" Click="RestoreAudioTracks_Click" Content="Restore tracks" IsEnabled="{Binding CanRestoreMissingAudioTracks}" ToolTip.Tip="Restore source audio lanes that were removed from the project mix" />
                     <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding AudioTrackCountText}" />
                     <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding SequenceTimelineViewportText}" />
@@ -1639,7 +1671,7 @@
                         <DataTemplate x:DataType="vm:AudioTrackViewModel">
                           <Border Margin="0,0,0,3" Padding="5,2" Background="#20242D" CornerRadius="6">
                             <Grid RowDefinitions="22,44" RowSpacing="2">
-                              <Grid ColumnDefinitions="*,Auto,64,Auto,Auto,96,52,Auto,Auto" ColumnSpacing="4">
+                              <Grid ColumnDefinitions="*,Auto,64,Auto,44,Auto,Auto,96,52,Auto,Auto" ColumnSpacing="4">
                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="6">
                                   <TextBlock MaxWidth="190" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayName}" />
                                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding OutputDurationText}" />
@@ -1649,8 +1681,17 @@
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" FontSize="9" IsVisible="{Binding IsExternal}" Text="Start (s)" />
                                 <TextBox Grid.Column="2" Classes="audio-compact" IsVisible="{Binding IsExternal}" Text="{Binding TimelineOffsetSeconds, Mode=TwoWay}" />
+                                <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="OUT" ToolTip.Tip="Export audio track" />
+                                <ComboBox
+                                    Grid.Column="4"
+                                    Height="22"
+                                    Padding="6,0"
+                                    AutomationProperties.Name="Export audio track"
+                                    ItemsSource="{Binding OutputTrackChoices}"
+                                    SelectedItem="{Binding OutputTrackNumber, Mode=TwoWay}"
+                                    ToolTip.Tip="Choose which exported audio track receives this lane" />
                                 <ToggleButton
-                                    Grid.Column="3"
+                                    Grid.Column="5"
                                     Classes="audio-mute"
                                     AutomationProperties.Name="Mute audio track"
                                     IsChecked="{Binding IsMuted, Mode=TwoWay}"
@@ -1668,11 +1709,11 @@
                                         IsVisible="{Binding IsMuted}" />
                                   </Grid>
                                 </ToggleButton>
-                                <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding ContextualGainLabel}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
-                                <Slider Grid.Column="5" Classes="audio-compact" AutomationProperties.Name="{Binding ContextualGainLabel}" Minimum="-60" Maximum="12" Value="{Binding ContextualGainDb, Mode=TwoWay}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
-                                <TextBlock Grid.Column="6" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="9" Text="{Binding ContextualGainText}" />
-                                <Button Grid.Column="7" Classes="secondary audio-compact" Click="ToggleAudioClipMembership_Click" Content="{Binding ContextualClipActionText}" IsVisible="{Binding CanToggleContextualClip}" ToolTip.Tip="{Binding ContextualClipActionToolTip}" />
-                                <Button Grid.Column="8" Width="22" Padding="2,0" Classes="secondary audio-compact" AutomationProperties.Name="Remove audio track" Click="RemoveAudioTrack_Click" Content="×" FontSize="13" ToolTip.Tip="Remove this complete audio lane from the project mix" />
+                                <TextBlock Grid.Column="6" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding ContextualGainLabel}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
+                                <Slider Grid.Column="7" Classes="audio-compact" AutomationProperties.Name="{Binding ContextualGainLabel}" Minimum="-60" Maximum="12" Value="{Binding ContextualGainDb, Mode=TwoWay}" ToolTip.Tip="{Binding ContextualGainTargetText}" />
+                                <TextBlock Grid.Column="8" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="9" Text="{Binding ContextualGainText}" />
+                                <Button Grid.Column="9" Classes="secondary audio-compact" Click="ToggleAudioClipMembership_Click" Content="{Binding ContextualClipActionText}" IsVisible="{Binding CanToggleContextualClip}" ToolTip.Tip="{Binding ContextualClipActionToolTip}" />
+                                <Button Grid.Column="10" Width="22" Padding="2,0" Classes="secondary audio-compact" AutomationProperties.Name="Remove audio track" Click="RemoveAudioTrack_Click" Content="×" FontSize="13" ToolTip.Tip="Remove this complete audio lane from the project mix" />
                               </Grid>
                               <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="5">
                                 <controls:SourceRangeCanvas

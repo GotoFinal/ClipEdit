@@ -506,6 +506,7 @@ public sealed class JsonProjectStore : IProjectStore
                 audioTrack.KeptRanges is null ||
                 audioTrack.KeptRanges.Count > MaximumRangesPerMedia ||
                 audioTrack.LaneIndex is < 0 or >= MaximumAudioTracksPerMedia ||
+                audioTrack.OutputTrackIndex is < 0 or >= MaximumAudioTracksPerMedia ||
                 (audioTrack.TimelineSilencedRanges?.Count ?? 0) > MaximumRangesPerMedia)
             {
                 throw new ProjectStoreException(ProjectStoreFailure.InvalidDocument, "A saved audio track is invalid.");

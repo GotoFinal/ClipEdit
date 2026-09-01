@@ -1583,6 +1583,13 @@ public sealed partial class MainWindow : Window
         ViewModel?.RestoreMissingAudioTracks();
     }
 
+    private void MergeAudioTracks_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ViewModel?.MergeAllAudioTracks();
+    }
+
     private static void ResetWaveformAmplitudeScale_Click(object? sender, RoutedEventArgs eventArgs)
     {
         _ = eventArgs;

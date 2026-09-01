@@ -88,8 +88,7 @@ internal static class FfmpegBoundaryGopArguments
             arguments.Add(FfmpegExportArguments.CreateVideoStreamCopyAudioFilterGraph(
                 plan,
                 usesSeparateAudioInput: true));
-            arguments.Add("-map");
-            arguments.Add("[aout]");
+            FfmpegExportArguments.AddAudioOutputMaps(arguments, plan);
         }
         else
         {

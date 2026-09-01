@@ -103,6 +103,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     private bool _isSequenceTimelineFreeMode;
     private bool _isSequencePlayheadInGap;
     private bool _isSynchronizingAudioTimeline;
+    private bool _isNormalizingAudioOutputTracks;
     private bool _isClipTransformEditActive;
     private bool _clipTransformChangedDuringEdit;
     private bool _clipTransformEditCreatesDistinctHistoryEntry;
@@ -1287,6 +1288,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     track.HasEmbeddedSource(item.SourcePath, entry.stream.Index)));
     });
 
+    public bool CanMergeAllAudioTracks =>
+        AudioTracks.Select(track => track.OutputTrackIndex).Distinct().Skip(1).Any();
+
     public bool IsAdvancedMode
     {
         get => _isAdvancedMode;
@@ -1325,6 +1329,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
     public string AudioTrackCountText =>
         $"{AudioTracks.Count} track{(AudioTracks.Count == 1 ? string.Empty : "s")}";
 
+    public string PreviewAudioSelectionText =>
+        $"Audio {AudioTracks.Count(track => track.IsPreviewEnabled)}/{AudioTracks.Count}";
+
     public IReadOnlyList<PreviewAudioTrack> PreviewAudioTracks => CreatePreviewAudioTracks();
 
     public string AudioMixerButtonText => IsAdvancedMode ? "Basic" : "Advanced";
@@ -1339,6 +1346,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         var previewTracks = new List<PreviewAudioTrack>();
         foreach (var track in AudioTracks)
         {
+            if (!track.IsPreviewEnabled)
+            {
+                continue;
+            }
+
             if (track.IsExternal)
             {
                 previewTracks.Add(new PreviewAudioTrack(
@@ -1728,7 +1740,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                             CombineAudioGain(
                                 track.GainDb,
                                 slice.Clip.GetAudioLaneGainDb(track.EmbeddedLaneIndex!.Value)),
-                            edit);
+                            edit,
+                            track.OutputTrackIndex);
                     })
                     .Where(plan => plan.AudioEdit is { IsEmpty: false })
                     .ToImmutableArray();
@@ -1769,7 +1782,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                     track.StreamIndex,
                     track.GainDb,
                     track.TimelineOffset,
-                    track.Edit))
+                    track.Edit,
+                    track.OutputTrackIndex))
                 .ToImmutableArray();
             var exportRange = HasSequenceSelection
                 ? NormalizedSequenceSelection()
@@ -2768,6 +2782,33 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         return true;
     }
 
+    public bool MergeAllAudioTracks()
+    {
+        if (!CanMergeAllAudioTracks || IsBusy || IsExporting)
+        {
+            return false;
+        }
+
+        _isNormalizingAudioOutputTracks = true;
+        try
+        {
+            foreach (var track in AudioTracks)
+            {
+                track.SetOutputTrackIndex(0);
+            }
+        }
+        finally
+        {
+            _isNormalizingAudioOutputTracks = false;
+        }
+
+        RefreshAudioOutputTrackState();
+        MarkProjectDirty("audio-output-routing");
+        RaiseExportStateChanged();
+        StatusText = "All audio lanes will export as track 1";
+        return true;
+    }
+
     public bool ToggleSelectedClipAudioMembership(AudioTrackViewModel? track)
     {
         if (track is null ||
@@ -2802,6 +2843,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         CancelWaveformAnalysis(track);
         track.Dispose();
         AudioTracks.Remove(track);
+        RefreshAudioOutputTrackState();
     }
 
     public async Task<bool> SaveProjectAsync(
@@ -3467,11 +3509,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ShowAdvancedClipControls));
         OnPropertyChanged(nameof(HasAudioTracks));
         OnPropertyChanged(nameof(CanRestoreMissingAudioTracks));
+        OnPropertyChanged(nameof(CanMergeAllAudioTracks));
         OnPropertyChanged(nameof(AudioMixerButtonText));
         OnPropertyChanged(nameof(ShowRangeStrip));
         OnPropertyChanged(nameof(VideoItems));
         OnPropertyChanged(nameof(ExternalAudioItems));
         OnPropertyChanged(nameof(AudioTrackCountText));
+        OnPropertyChanged(nameof(PreviewAudioSelectionText));
         OnPropertyChanged(nameof(PreviewAudioTracks));
         OnPropertyChanged(nameof(EditingModeText));
         OnPropertyChanged(nameof(WorkspaceTitle));
@@ -3720,6 +3764,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(PreviewAudioTracks));
         }
 
+        if (eventArgs.PropertyName == nameof(AudioTrackViewModel.OutputTrackIndex) &&
+            !_isNormalizingAudioOutputTracks)
+        {
+            RefreshAudioOutputTrackState();
+            MarkProjectDirty("audio-output-routing");
+            RaiseExportStateChanged();
+            StatusText = $"{track.DisplayName} will export as audio track {track.OutputTrackNumber}";
+        }
+
+        if (eventArgs.PropertyName == nameof(AudioTrackViewModel.IsPreviewEnabled))
+        {
+            OnPropertyChanged(nameof(PreviewAudioTracks));
+            OnPropertyChanged(nameof(PreviewAudioSelectionText));
+        }
+
         if (eventArgs.PropertyName == nameof(AudioTrackViewModel.TimelineOffset))
         {
             RefreshAudioTimelineSegments(refreshWaveforms: true);
@@ -3798,7 +3857,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 var track = new AudioTrackViewModel(
                     mediaItem.Media,
                     stream,
-                    mediaItem.IsExternalAudio ? null : laneIndex);
+                    mediaItem.IsExternalAudio ? null : laneIndex,
+                    GetNextAudioOutputTrackIndex());
                 track.PropertyChanged += OnAudioTrackPropertyChanged;
                 if (!track.IsExternal &&
                     SelectedVideoClip is { } selectedClip &&
@@ -3814,6 +3874,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
         }
 
+        RefreshAudioOutputTrackState();
         RaiseWorkspaceStateChanged();
         RefreshAudioTimelineSegments(refreshWaveforms: false);
         if (ShowAudioMixer)
@@ -4078,6 +4139,50 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         return VideoClips.FirstOrDefault(clip =>
                    timelineTime >= clip.TimelineStart && timelineTime < clip.TimelineEnd) ??
                (timelineTime == VideoClips[^1].TimelineEnd ? VideoClips[^1] : null);
+    }
+
+    private int GetNextAudioOutputTrackIndex()
+    {
+        var used = AudioTracks.Select(track => track.OutputTrackIndex).ToHashSet();
+        for (var index = 0; index < AudioTracks.Count + 1; index++)
+        {
+            if (!used.Contains(index))
+            {
+                return index;
+            }
+        }
+
+        return AudioTracks.Count;
+    }
+
+    private void RefreshAudioOutputTrackState()
+    {
+        if (_isNormalizingAudioOutputTracks)
+        {
+            return;
+        }
+
+        _isNormalizingAudioOutputTracks = true;
+        try
+        {
+            var normalizedIndices = AudioTracks
+                .Select(track => track.OutputTrackIndex)
+                .Distinct()
+                .Order()
+                .Select((value, index) => (value, index))
+                .ToDictionary(pair => pair.value, pair => pair.index);
+            foreach (var track in AudioTracks)
+            {
+                track.SetOutputTrackIndex(normalizedIndices[track.OutputTrackIndex]);
+                track.SetOutputTrackChoiceCount(AudioTracks.Count);
+            }
+        }
+        finally
+        {
+            _isNormalizingAudioOutputTracks = false;
+        }
+
+        OnPropertyChanged(nameof(CanMergeAllAudioTracks));
     }
 
     private VideoClipViewModel? FindClipContainingSequenceSelection()
@@ -4576,7 +4681,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             timelineOffset.Numerator,
             timelineOffset.Denominator,
             laneIndex,
-            timelineSilencedRanges);
+            timelineSilencedRanges,
+            track.OutputTrackIndex);
     }
 
     private void RestoreVideoSequence(ProjectDocument document, ICollection<string> warnings)
@@ -4818,6 +4924,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         new MediaTime(
                             savedAudio.TimelineOffsetNumerator,
                             savedAudio.TimelineOffsetDenominator));
+                    if (schemaVersion >= 14)
+                    {
+                        track.SetOutputTrackIndex(savedAudio.OutputTrackIndex);
+                    }
                 }
                 else
                 {
@@ -4835,6 +4945,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         schemaVersion >= 7
                             ? (savedAudio.TimelineSilencedRanges ?? []).Select(CreateMediaRange)
                             : null);
+                    if (schemaVersion >= 14)
+                    {
+                        track.SetOutputTrackIndex(savedAudio.OutputTrackIndex);
+                    }
                 }
             }
 
@@ -4876,7 +4990,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                 {
                     if (item.IsExternalAudio)
                     {
-                        var external = new AudioTrackViewModel(item.Media, stream);
+                        var external = new AudioTrackViewModel(
+                            item.Media,
+                            stream,
+                            outputTrackIndex: document.SchemaVersion >= 14
+                                ? savedAudio.OutputTrackIndex
+                                : GetNextAudioOutputTrackIndex());
                         external.PropertyChanged += OnAudioTrackPropertyChanged;
                         AudioTracks.Add(external);
                         continue;
@@ -4892,12 +5011,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
                         !candidate.IsExternal && candidate.EmbeddedLaneIndex == laneIndex);
                     if (lane is null)
                     {
-                        lane = new AudioTrackViewModel(item.Media, stream, laneIndex);
+                        lane = new AudioTrackViewModel(
+                            item.Media,
+                            stream,
+                            laneIndex,
+                            document.SchemaVersion >= 14
+                                ? savedAudio.OutputTrackIndex
+                                : GetNextAudioOutputTrackIndex());
                         lane.PropertyChanged += OnAudioTrackPropertyChanged;
                         AudioTracks.Add(lane);
                     }
                     else
                     {
+                        if (document.SchemaVersion >= 14 &&
+                            lane.OutputTrackIndex != savedAudio.OutputTrackIndex)
+                        {
+                            warnings.Add($"{item.DisplayName} has conflicting output routing for audio lane {laneIndex + 1}");
+                        }
                         lane.AddEmbeddedSource(item.Media, stream);
                     }
                 }
@@ -4908,6 +5038,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
         }
 
+        RefreshAudioOutputTrackState();
         RaiseWorkspaceStateChanged();
         RefreshAudioTimelineSegments(refreshWaveforms: false);
     }

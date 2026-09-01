@@ -1597,6 +1597,9 @@ public sealed class MainWindowViewModelTests
             audioTrack.IsMuted = true;
             var externalTrack = Assert.Single(original.AudioTracks, track => track.IsExternal);
             externalTrack.TimelineOffsetSeconds = 3.25;
+            Assert.Equal(1, audioTrack.OutputTrackNumber);
+            Assert.Equal(2, externalTrack.OutputTrackNumber);
+            externalTrack.IsPreviewEnabled = false;
             original.SelectedVideoClip!.AudioGainDb = -6.25;
             original.SelectedVideoClip.SetAudioLaneGainDb(0, -2.75);
             original.SelectedExportPreset = BuiltInExportPresets.Custom;
@@ -1650,6 +1653,9 @@ public sealed class MainWindowViewModelTests
             Assert.Equal<MediaRange>(audioTrack.KeptRanges, restoredAudio.KeptRanges);
             var restoredExternal = Assert.Single(restored.AudioTracks, track => track.IsExternal);
             Assert.Equal(new MediaTime(13, 4), restoredExternal.TimelineOffset);
+            Assert.Equal(1, restoredAudio.OutputTrackNumber);
+            Assert.Equal(2, restoredExternal.OutputTrackNumber);
+            Assert.True(restoredExternal.IsPreviewEnabled);
             Assert.Equal(-6.25, restored.SelectedVideoClip!.AudioGainDb);
             Assert.Equal(-2.75, restored.SelectedVideoClip.GetAudioLaneGainDb(0));
             Assert.False(restored.IsProjectDirty);
@@ -2203,6 +2209,51 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(
             new Dictionary<int, double> { [0] = -8.5, [1] = 3.25 },
             Assert.Single(viewModel.CreateProjectDocument().VideoClips!).AudioLaneGainDb);
+    }
+
+    [Fact]
+    public async Task Audio_lanes_preserve_separate_outputs_and_can_be_merged()
+    {
+        var renderer = new RecordingExportRenderer();
+        using var viewModel = new MainWindowViewModel(new StubProbe(), exportRenderer: renderer);
+        await viewModel.ImportFilesAsync([Path.Combine(Path.GetTempPath(), "multi-lane-routing.mkv")]);
+        var tracks = viewModel.AudioTracks
+            .OrderBy(track => track.EmbeddedLaneIndex)
+            .ToArray();
+
+        Assert.Equal([1, 2], tracks.Select(track => track.OutputTrackNumber));
+        Assert.All(tracks, track => Assert.Equal([1, 2], track.OutputTrackChoices));
+        tracks[1].IsPreviewEnabled = false;
+        Assert.Single(viewModel.PreviewAudioTracks);
+        Assert.Equal("Audio 1/2", viewModel.PreviewAudioSelectionText);
+        Assert.True(viewModel.CanMergeAllAudioTracks);
+        Assert.True(viewModel.MergeAllAudioTracks());
+        Assert.Equal([1, 1], tracks.Select(track => track.OutputTrackNumber));
+        Assert.False(viewModel.CanMergeAllAudioTracks);
+        Assert.True(viewModel.Undo());
+        Assert.Equal([1, 2], tracks.Select(track => track.OutputTrackNumber));
+        Assert.True(viewModel.Redo());
+        Assert.Equal([1, 1], tracks.Select(track => track.OutputTrackNumber));
+
+        tracks[1].OutputTrackNumber = 2;
+        Assert.Equal([1, 2], tracks.Select(track => track.OutputTrackNumber));
+        Assert.True(viewModel.CanMergeAllAudioTracks);
+        Assert.Equal(
+            [0, 1],
+            Assert.Single(viewModel.CreateProjectDocument().Media).AudioTracks!
+                .OrderBy(track => track.LaneIndex)
+                .Select(track => track.OutputTrackIndex));
+
+        var result = await viewModel.ExportAsync(
+            Path.Combine(Path.GetTempPath(), "multi-lane-routing.mp4"),
+            replaceExistingDestination: false);
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            [0, 1],
+            Assert.Single(renderer.Plan!.VideoSegments).AudioTracks
+                .OrderBy(track => track.StreamIndex)
+                .Select(track => track.OutputTrackIndex));
     }
 
 

@@ -154,14 +154,23 @@ public sealed partial class MainWindowViewModel
                 }
             }
 
-            foreach (var savedMedia in document.Media)
+            _isNormalizingAudioOutputTracks = true;
+            try
             {
-                var mediaItem = MediaItems.FirstOrDefault(item => item.Id == savedMedia.MediaId);
-                if (mediaItem is not null)
+                foreach (var savedMedia in document.Media)
                 {
-                    TryRestoreMedia(mediaItem, savedMedia, document.SchemaVersion, out _);
+                    var mediaItem = MediaItems.FirstOrDefault(item => item.Id == savedMedia.MediaId);
+                    if (mediaItem is not null)
+                    {
+                        TryRestoreMedia(mediaItem, savedMedia, document.SchemaVersion, out _);
+                    }
                 }
             }
+            finally
+            {
+                _isNormalizingAudioOutputTracks = false;
+            }
+            RefreshAudioOutputTrackState();
 
             RestoreVideoSequence(document, warnings);
             SelectedMedia = state.SelectedMediaId is { } selectedMediaId
@@ -260,6 +269,7 @@ public sealed partial class MainWindowViewModel
             pair.First.TimelineOffsetNumerator == pair.Second.TimelineOffsetNumerator &&
             pair.First.TimelineOffsetDenominator == pair.Second.TimelineOffsetDenominator &&
             pair.First.LaneIndex == pair.Second.LaneIndex &&
+            pair.First.OutputTrackIndex == pair.Second.OutputTrackIndex &&
             pair.First.KeptRanges.SequenceEqual(pair.Second.KeptRanges) &&
             (pair.First.TimelineSilencedRanges ?? [])
                 .SequenceEqual(pair.Second.TimelineSilencedRanges ?? []));

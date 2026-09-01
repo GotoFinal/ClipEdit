@@ -432,6 +432,98 @@ public sealed class FfmpegExportRendererLocalTests
 
     [Fact]
     [Trait("Category", "LocalMedia")]
+    public async Task Renderer_preserves_multiple_audio_lanes_as_separate_output_streams()
+    {
+        var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_MULTI_AUDIO");
+        var ffmpegPath = FfmpegToolLocator.FindFfmpeg();
+        var ffprobePath = FfprobeExecutableLocator.Find();
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            !File.Exists(sourcePath) ||
+            ffmpegPath is null ||
+            ffprobePath is null)
+        {
+            return;
+        }
+
+        var probe = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(sourcePath);
+        var video = probe.VideoStreams.FirstOrDefault();
+        var audioStreams = probe.AudioStreams.ToArray();
+        var sourceDuration = probe.Duration;
+        if (video is null || audioStreams.Length < 2 ||
+            sourceDuration is null || sourceDuration < new MediaTime(2, 1))
+        {
+            return;
+        }
+
+        var outputSize = new PixelSize(
+            Math.Min(video.OrientedSize.Width, 320) & ~1,
+            Math.Min(video.OrientedSize.Height, 180) & ~1);
+        var destinationPath = Path.Combine(
+            Path.GetTempPath(),
+            $"clipedit-multi-audio-{Guid.NewGuid():N}.mp4");
+        var plan = new ExportPlan(
+            [
+                new ExportVideoSegmentPlan(
+                    sourcePath,
+                    video.Index,
+                    new MediaRange(MediaTime.Zero, new MediaTime(1, 1)),
+                    video.OrientedSize,
+                    new CropRegion(video.OrientedSize, 0, 0, outputSize.Width, outputSize.Height),
+                    ClipCanvasTransform.Identity,
+                    [
+                        new ExportAudioTrackPlan(
+                            audioStreams[0].Index,
+                            0,
+                            outputTrackIndex: 0),
+                        new ExportAudioTrackPlan(
+                            audioStreams[1].Index,
+                            0,
+                            outputTrackIndex: 1),
+                    ],
+                    MediaTime.Zero),
+                new ExportVideoSegmentPlan(
+                    sourcePath,
+                    video.Index,
+                    new MediaRange(new MediaTime(1, 1), new MediaTime(2, 1)),
+                    video.OrientedSize,
+                    new CropRegion(video.OrientedSize, 0, 0, outputSize.Width, outputSize.Height),
+                    ClipCanvasTransform.Identity,
+                    [
+                        new ExportAudioTrackPlan(
+                            audioStreams[0].Index,
+                            0,
+                            outputTrackIndex: 0),
+                    ],
+                    new MediaTime(2, 1)),
+            ],
+            outputSize,
+            destinationPath,
+            new ExportPreset(
+                "mp4-local-multi-audio",
+                "MP4 local multi-audio",
+                ".mp4",
+                ExportContainer.Mp4,
+                VideoCodecFamily.H264,
+                AudioCodecFamily.Aac,
+                requiresEvenDimensions: true),
+            sequenceDuration: new MediaTime(3, 1));
+
+        try
+        {
+            await new FfmpegExportRenderer(ffmpegPath).RenderAsync(plan);
+            var rendered = await new FfprobeMediaProbe(ffprobePath).ProbeAsync(destinationPath);
+
+            Assert.Equal(2, rendered.AudioStreams.Count());
+            Assert.InRange(rendered.Duration!.Value.TotalSeconds, 2.9, 3.1);
+        }
+        finally
+        {
+            File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "LocalMedia")]
     public async Task Renderer_packet_copies_keyframe_trimmed_h264_hevc_vp9_or_av1_video_and_rebuilds_audio()
     {
         var sourcePath = Environment.GetEnvironmentVariable("CLIPEDIT_LOCAL_KEYFRAME_COPY_MEDIA") ??

@@ -642,9 +642,10 @@ public sealed record ExportVideoSegmentPlan
 
 public sealed record ExportAudioTrackPlan
 {
-    public ExportAudioTrackPlan(int streamIndex, double gainDb)
+    public ExportAudioTrackPlan(int streamIndex, double gainDb, int outputTrackIndex = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(streamIndex);
+        ArgumentOutOfRangeException.ThrowIfNegative(outputTrackIndex);
         if (!double.IsFinite(gainDb) || gainDb is < -60 or > 12)
         {
             throw new ArgumentOutOfRangeException(nameof(gainDb));
@@ -652,16 +653,25 @@ public sealed record ExportAudioTrackPlan
 
         StreamIndex = streamIndex;
         GainDb = gainDb;
+        OutputTrackIndex = outputTrackIndex;
     }
 
-    public ExportAudioTrackPlan(int streamIndex, double gainDb, SourceEdit audioEdit)
-        : this(streamIndex, gainDb)
+    public ExportAudioTrackPlan(
+        int streamIndex,
+        double gainDb,
+        SourceEdit audioEdit,
+        int outputTrackIndex = 0)
+        : this(streamIndex, gainDb, outputTrackIndex)
     {
         AudioEdit = audioEdit ?? throw new ArgumentNullException(nameof(audioEdit));
     }
 
-    public ExportAudioTrackPlan(string externalSourcePath, int streamIndex, double gainDb)
-        : this(externalSourcePath, streamIndex, gainDb, MediaTime.Zero)
+    public ExportAudioTrackPlan(
+        string externalSourcePath,
+        int streamIndex,
+        double gainDb,
+        int outputTrackIndex = 0)
+        : this(externalSourcePath, streamIndex, gainDb, MediaTime.Zero, outputTrackIndex)
     {
     }
 
@@ -669,8 +679,9 @@ public sealed record ExportAudioTrackPlan
         string externalSourcePath,
         int streamIndex,
         double gainDb,
-        MediaTime timelineOffset)
-        : this(streamIndex, gainDb)
+        MediaTime timelineOffset,
+        int outputTrackIndex = 0)
+        : this(streamIndex, gainDb, outputTrackIndex)
     {
         if (timelineOffset < MediaTime.Zero)
         {
@@ -688,8 +699,9 @@ public sealed record ExportAudioTrackPlan
         int streamIndex,
         double gainDb,
         MediaTime timelineOffset,
-        SourceEdit audioEdit)
-        : this(externalSourcePath, streamIndex, gainDb, timelineOffset)
+        SourceEdit audioEdit,
+        int outputTrackIndex = 0)
+        : this(externalSourcePath, streamIndex, gainDb, timelineOffset, outputTrackIndex)
     {
         AudioEdit = audioEdit ?? throw new ArgumentNullException(nameof(audioEdit));
     }
@@ -705,6 +717,8 @@ public sealed record ExportAudioTrackPlan
     public int StreamIndex { get; }
 
     public double GainDb { get; }
+
+    public int OutputTrackIndex { get; }
 
     private static string ValidateExternalSourcePath(string sourcePath)
     {
