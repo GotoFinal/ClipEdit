@@ -158,8 +158,10 @@ public sealed class AudioRoutingSignalTests
         {
             StartInfo = new ProcessStartInfo(executable)
             {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
             },
         };
         process.StartInfo.ArgumentList.Add("-nostdin");

@@ -46,6 +46,7 @@ jobs:
           path: packages/nuget
           key: nuget-v2-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'NuGet.Config', '**/*.csproj') }}
       - run: dotnet restore ClipEdit.sln
+      - run: dotnet format ClipEdit.sln --verify-no-changes --no-restore
       - run: dotnet test ClipEdit.sln --no-restore --configuration Release
       - name: Validate native dependency locks
         shell: pwsh

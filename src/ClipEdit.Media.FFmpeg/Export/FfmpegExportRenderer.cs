@@ -348,10 +348,10 @@ public sealed class FfmpegExportRenderer :
         return plan.Strategy == ExportStrategy.VideoStreamCopy &&
                plan.VideoSegments is
                [
-                   {
-                       IsCompleteSource: false,
-                       StreamCopyInfo.Video: not null,
-                   },
+               {
+                   IsCompleteSource: false,
+                   StreamCopyInfo.Video: not null,
+               },
                ];
     }
 

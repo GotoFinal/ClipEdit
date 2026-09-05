@@ -16,7 +16,8 @@ public sealed class SessionLog : IDisposable
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             _writer = new StreamWriter(new FileStream(path, FileMode.Create, FileAccess.Write,
-                FileShare.ReadWrite | FileShare.Delete), new UTF8Encoding(false)) { AutoFlush = true };
+                FileShare.ReadWrite | FileShare.Delete), new UTF8Encoding(false))
+            { AutoFlush = true };
             Write($"ClipEdit {typeof(SessionLog).Assembly.GetName().Version}; {System.Runtime.InteropServices.RuntimeInformation.OSDescription}; process {Environment.ProcessId}");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
