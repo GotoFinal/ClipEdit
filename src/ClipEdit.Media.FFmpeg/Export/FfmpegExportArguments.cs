@@ -323,8 +323,7 @@ internal static class FfmpegExportArguments
         arguments.Add(segment.SourcePath);
         if (usesSeparateAudioInput)
         {
-            arguments.Add("-i");
-            arguments.Add(segment.SourcePath);
+            AddBoundedAudioInput(arguments, segment);
         }
         foreach (var externalSourcePath in GetSequenceExternalAudioSources(plan))
         {
@@ -369,6 +368,19 @@ internal static class FfmpegExportArguments
         return arguments;
     }
 
+    internal static void AddBoundedAudioInput(ICollection<string> arguments, ExportVideoSegmentPlan segment)
+    {
+        // Decode only the selected interval. Discarding a long prefix inside separate
+        // audio filter branches can exhaust one branch before the others produce frames.
+        // This input keeps accurate seeking enabled, independently of the copied video.
+        arguments.Add("-ss");
+        arguments.Add(FormatTime(segment.SourceRange.Start));
+        arguments.Add("-t");
+        arguments.Add(FormatTime(segment.SourceRange.Duration));
+        arguments.Add("-i");
+        arguments.Add(segment.SourcePath);
+    }
+
     internal static string CreateVideoStreamCopyAudioFilterGraph(
         ExportPlan plan,
         bool usesSeparateAudioInput = false)
@@ -384,14 +396,16 @@ internal static class FfmpegExportArguments
         var outputTracks = GetAudioOutputTrackIndices(plan);
         var mixInputs = outputTracks.ToDictionary(index => index, _ => new List<string>());
         var embeddedInputIndex = usesSeparateAudioInput ? 1 : 0;
+        var audioTrimStart = usesSeparateAudioInput ? MediaTime.Zero : range.Start;
+        var audioTrimEnd = usesSeparateAudioInput ? range.Duration : range.End;
         for (var trackIndex = 0; trackIndex < segment.AudioTracks.Length; trackIndex++)
         {
             var track = segment.AudioTracks[trackIndex];
             var output = $"emb{trackIndex}";
             filters.Add(
                 $"[{embeddedInputIndex}:{track.StreamIndex}]" +
-                CreateRangeMask(track) +
-                $"apad,atrim=start={FormatTime(range.Start)}:end={FormatTime(range.End)}," +
+                (usesSeparateAudioInput ? CreateRangeMask(track, range) : CreateRangeMask(track)) +
+                $"apad,atrim=start={FormatTime(audioTrimStart)}:end={FormatTime(audioTrimEnd)}," +
                 "asetpts=PTS-STARTPTS,aresample=48000," +
                 "aformat=sample_fmts=fltp:channel_layouts=stereo," +
                 $"volume={FormatGain(track.GainDb)}dB[{output}]");

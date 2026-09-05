@@ -30,7 +30,9 @@ public sealed class BoundaryGopArgumentsTests
         Assert.Contains("aac", final);
         var graph = ValueAfter(final, "-filter_complex");
         Assert.Contains("[1:1]", graph, StringComparison.Ordinal);
-        Assert.Contains("atrim=start=6:end=29", graph, StringComparison.Ordinal);
+        Assert.Equal("6", ValueAfter(final, "-ss"));
+        Assert.Equal("23", ValueAfter(final, "-t"));
+        Assert.Contains("atrim=start=0:end=23", graph, StringComparison.Ordinal);
         Assert.Equal("libx264", ValueAfter(exactFallback, "-c:v"));
         Assert.Contains("-filter_complex", exactFallback);
     }

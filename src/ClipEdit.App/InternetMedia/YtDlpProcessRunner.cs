@@ -48,7 +48,7 @@ internal sealed class YtDlpProcessRunner : IYtDlpProcessRunner
         using var process = new DiagnosticProcess { StartInfo = startInfo };
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 throw new InternetMediaException("yt-dlp could not be started.");
             }
@@ -83,6 +83,7 @@ internal sealed class YtDlpProcessRunner : IYtDlpProcessRunner
             throw;
         }
 
+        ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.WriteStandardError(process, error.ToString());
         return new YtDlpProcessResult(process.ExitCode, output.ToString(), error.ToString());
     }
 

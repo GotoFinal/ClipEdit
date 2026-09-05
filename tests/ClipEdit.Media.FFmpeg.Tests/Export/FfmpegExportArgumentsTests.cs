@@ -213,7 +213,8 @@ public sealed class FfmpegExportArgumentsTests
             canvas,
             CropRegion.FullFrame(canvas),
             ClipCanvasTransform.Identity,
-            [new ExportAudioTrackPlan(1, 0, new SourceEdit(sourceDuration))],
+            [new ExportAudioTrackPlan(1, 0, new SourceEdit(sourceDuration)
+                .Remove(new MediaRange(new MediaTime(6, 1), new MediaTime(7, 1))))],
             range.Start,
             isCompleteSource: false,
             streamCopyInfo: new SegmentStreamCopyInfo(
@@ -238,16 +239,21 @@ public sealed class FfmpegExportArgumentsTests
         var graph = arguments[arguments.ToList().IndexOf("-filter_complex") + 1];
 
         Assert.Equal("5", ValueAfter(arguments, "-ss"));
-        Assert.Equal("24.9", ValueAfter(arguments, "-t"));
+        Assert.Equal("25", ValueAfter(arguments, "-t"));
         var argumentList = arguments.ToList();
         Assert.True(argumentList.IndexOf("-noaccurate_seek") < argumentList.IndexOf("-i"));
         Assert.DoesNotContain("-copyts", arguments);
         Assert.DoesNotContain("-start_at_zero", arguments);
-        Assert.True(argumentList.IndexOf("-t") > argumentList.LastIndexOf("-i"));
+        Assert.True(argumentList.LastIndexOf("-t") > argumentList.LastIndexOf("-i"));
+        Assert.Equal("24.9", arguments[argumentList.LastIndexOf("-t") + 1]);
+        var audioInput = argumentList.LastIndexOf(segment.SourcePath);
+        Assert.Equal(new[] { "-ss", "5", "-t", "25", "-i" },
+            argumentList.GetRange(audioInput - 5, 5));
         Assert.Equal(2, arguments.Count(argument => argument == segment.SourcePath));
         Assert.Equal("0:0", ValueAfter(arguments, "-map"));
         Assert.Contains("[1:1]", graph, StringComparison.Ordinal);
-        Assert.Contains("atrim=start=5:end=30", graph, StringComparison.Ordinal);
+        Assert.Contains("atrim=start=0:end=25", graph, StringComparison.Ordinal);
+        Assert.Contains("gte(t,0)*lt(t,1)+gte(t,2)*lt(t,25)", graph, StringComparison.Ordinal);
         Assert.Equal("copy", ValueAfter(arguments, "-c:v"));
     }
 

@@ -1666,12 +1666,12 @@
                     <Button Grid.Column="8" Width="24" Classes="secondary timeline-tool" Click="TimelineZoomIn_Click" Content="+" FontSize="13" IsEnabled="{Binding CanZoomSequenceTimelineIn}" ToolTip.Tip="Zoom audio and video timelines in" />
                     <Button Grid.Column="9" Width="32" Classes="secondary timeline-tool" Click="TimelineFit_Click" Content="Fit" ToolTip.Tip="Fit the audio and video timelines" />
                   </Grid>
-                  <ItemsControl Grid.Row="1" ItemsSource="{Binding AudioTracks}">
+                  <ItemsControl x:Name="AudioTracksList" Grid.Row="1" ItemsSource="{Binding AudioTracks}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:AudioTrackViewModel">
                           <Border Margin="0,0,0,3" Padding="5,2" Background="#20242D" CornerRadius="6">
                             <Grid RowDefinitions="22,44" RowSpacing="2">
-                              <Grid ColumnDefinitions="*,Auto,64,Auto,44,Auto,Auto,96,52,Auto,Auto" ColumnSpacing="4">
+                              <Grid ColumnDefinitions="*,Auto,64,Auto,64,Auto,Auto,96,52,Auto,Auto" ColumnSpacing="4">
                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="6">
                                   <TextBlock MaxWidth="190" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayName}" />
                                   <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding OutputDurationText}" />
@@ -1685,11 +1685,20 @@
                                 <ComboBox
                                     Grid.Column="4"
                                     Height="22"
-                                    Padding="6,0"
+                                    MinHeight="0"
+                                    Padding="4,0"
+                                    FontSize="11"
+                                    VerticalContentAlignment="Center"
                                     AutomationProperties.Name="Export audio track"
                                     ItemsSource="{Binding OutputTrackChoices}"
                                     SelectedItem="{Binding OutputTrackNumber, Mode=TwoWay}"
-                                    ToolTip.Tip="Choose which exported audio track receives this lane" />
+                                    ToolTip.Tip="Choose which exported audio track receives this lane">
+                                  <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="x:Int32">
+                                      <TextBlock Text="{Binding}" VerticalAlignment="Center" />
+                                    </DataTemplate>
+                                  </ComboBox.ItemTemplate>
+                                </ComboBox>
                                 <ToggleButton
                                     Grid.Column="5"
                                     Classes="audio-mute"
@@ -1850,6 +1859,9 @@
                           Content="Reset to 7 days / 20 files" />
                     </StackPanel>
                   </Expander>
+                  <Button x:Name="OpenSessionLogButton" Content="Open log" HorizontalAlignment="Left"
+                          Classes="secondary" Click="OpenSessionLog_Click"
+                          ToolTip.Tip="FFmpeg commands and diagnostics from this launch. Replaced when ClipEdit starts." />
                   <Expander x:Name="ExperimentalSettingsExpander" Header="Experimental">
                     <StackPanel Margin="8,5,4,8" Spacing="6">
                       <CheckBox

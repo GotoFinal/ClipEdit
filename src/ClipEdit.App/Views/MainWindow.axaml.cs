@@ -22,6 +22,25 @@ namespace ClipEdit.App.Views;
 
 public sealed partial class MainWindow : Window
 {
+    private void OpenSessionLog_Click(object? sender, RoutedEventArgs eventArgs)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = Diagnostics.SessionLog.FilePath,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception)
+        {
+            if (DataContext is MainWindowViewModel viewModel)
+            {
+                viewModel.ReportStatus($"Could not open log: {exception.Message}");
+            }
+        }
+    }
+
     private static readonly DataFormat<MediaItemViewModel> VideoClipDataFormat =
         DataFormat.CreateInProcessFormat<MediaItemViewModel>("clipedit-video-clip");
 

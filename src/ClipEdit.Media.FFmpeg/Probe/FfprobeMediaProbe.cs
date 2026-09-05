@@ -86,7 +86,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe, IKeyframeProbe
 
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 throw new MediaProbeException(
                     MediaProbeFailure.ToolUnavailable,
@@ -119,6 +119,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe, IKeyframeProbe
         {
             await process.WaitForExitAsync(linkedCancellation.Token).ConfigureAwait(false);
             await Task.WhenAll(keyframeTask, standardErrorTask).ConfigureAwait(false);
+            Process.MediaProcessDiagnostics.WriteStandardError(process, standardErrorTask.Result);
             if (process.ExitCode != 0)
             {
                 throw new MediaProbeException(
@@ -227,7 +228,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe, IKeyframeProbe
 
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 throw new MediaProbeException(
                     MediaProbeFailure.ToolUnavailable,
@@ -262,6 +263,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe, IKeyframeProbe
             await Task.WhenAll(standardOutputTask, standardErrorTask).ConfigureAwait(false);
             var standardOutput = standardOutputTask.Result;
             var standardError = standardErrorTask.Result;
+            Process.MediaProcessDiagnostics.WriteStandardError(process, standardError);
 
             if (process.ExitCode != 0)
             {

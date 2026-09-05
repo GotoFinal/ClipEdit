@@ -61,7 +61,7 @@ public sealed class FfmpegWaveformRenderer : IWaveformRenderer
 
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 throw new WaveformRenderException(
                     WaveformRenderFailure.ToolUnavailable,
@@ -95,6 +95,7 @@ public sealed class FfmpegWaveformRenderer : IWaveformRenderer
             await Task.WhenAll(imageTask, errorTask).ConfigureAwait(false);
             var imageBytes = imageTask.Result;
             var errorText = errorTask.Result;
+            Process.MediaProcessDiagnostics.WriteStandardError(process, errorText);
             if (process.ExitCode != 0)
             {
                 throw new WaveformRenderException(

@@ -221,6 +221,10 @@ public sealed class FfmpegExportRenderer :
 
             await progressTask.ConfigureAwait(false);
             var diagnostics = await diagnosticTask.ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(diagnostics))
+            {
+                Process.MediaProcessDiagnostics.Write($"Process {process.Id} FFmpeg: {diagnostics}");
+            }
             if (process.ExitCode != 0)
             {
                 TryDelete(temporaryPath);
@@ -554,7 +558,7 @@ public sealed class FfmpegExportRenderer :
     {
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 throw new ExportException(
                     ExportFailure.ToolUnavailable,
@@ -869,6 +873,10 @@ public sealed class FfmpegExportRenderer :
 
         var output = await outputTask.ConfigureAwait(false);
         var diagnostics = await diagnosticTask.ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(diagnostics))
+        {
+            Process.MediaProcessDiagnostics.Write($"Process {process.Id} media validation: {diagnostics}");
+        }
         if (process.ExitCode != 0)
         {
             throw new ExportException(

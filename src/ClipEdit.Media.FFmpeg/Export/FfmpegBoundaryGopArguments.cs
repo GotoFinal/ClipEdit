@@ -71,8 +71,7 @@ internal static class FfmpegBoundaryGopArguments
         var hasAudio = FfmpegExportArguments.HasAnyAudio(plan);
         if (hasAudio)
         {
-            arguments.Add("-i");
-            arguments.Add(segment.SourcePath);
+            FfmpegExportArguments.AddBoundedAudioInput(arguments, segment);
             foreach (var externalSourcePath in FfmpegExportArguments.GetSequenceExternalAudioSources(plan))
             {
                 arguments.Add("-i");

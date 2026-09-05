@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ClipEdit.Application.Export;
 using ClipEdit.App.Controls;
 using ClipEdit.App.Views;
@@ -20,6 +21,48 @@ namespace ClipEdit.App.Tests;
 
 public sealed class MainWindowChromeTests
 {
+    [AvaloniaFact]
+    public void Audio_output_number_fits_the_compact_selector()
+    {
+        var duration = new ClipEdit.Domain.Timeline.MediaTime(10, 1);
+        var audio = new ClipEdit.Media.Probe.AudioStreamInfo(1, "aac", null, null, null, null,
+            true, false, null, null, duration, 48000, 2, "stereo", "fltp");
+        var probe = new ClipEdit.Media.Probe.MediaProbeResult(Path.GetFullPath("audio.mkv"),
+            "matroska", null, ClipEdit.Domain.Timeline.MediaTime.Zero, duration, 1024, null, [audio]);
+        using var track = new AudioTrackViewModel(
+            new ClipEdit.Application.Media.ImportedMedia("audio.mkv", probe), audio, outputTrackIndex: 1);
+        track.SetOutputTrackChoiceCount(12);
+        var window = new MainWindow();
+        window.Styles.Insert(0, new Avalonia.Themes.Fluent.FluentTheme());
+        var list = window.FindControl<ItemsControl>("AudioTracksList");
+        Assert.NotNull(list?.ItemTemplate);
+        var row = list.ItemTemplate.Build(track)!;
+        row.DataContext = track;
+        window.Content = row;
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var combo = row.GetVisualDescendants().OfType<ComboBox>().Single();
+        foreach (var number in new[] { 2, 12 })
+        {
+            track.OutputTrackNumber = number;
+            window.UpdateLayout();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(number, combo.SelectedItem);
+            Assert.True(combo.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == number.ToString()),
+                $"Selection={combo.SelectionBoxItem}; Bounds={combo.Bounds}; Visible={combo.IsEffectivelyVisible}; " +
+                string.Join("; ", combo.GetVisualDescendants().Select(child =>
+                    $"{child.GetType().Name} {child.Bounds} {(child as TextBlock)?.Text}")));
+            var label = combo.GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => text.Text == number.ToString());
+            Assert.True(label.Bounds.Width >= label.DesiredSize.Width);
+            Assert.True(label.Bounds.Height >= label.DesiredSize.Height);
+            var point = label.TranslatePoint(default, combo)!.Value;
+            Assert.InRange(point.Y, 0, combo.Bounds.Height - label.Bounds.Height);
+            Assert.InRange(point.X, 0, combo.Bounds.Width - label.Bounds.Width);
+        }
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Windows_uses_the_command_bar_as_native_chrome_while_other_platforms_keep_decorations()
     {

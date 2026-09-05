@@ -89,7 +89,7 @@ public sealed class FfmpegHardwareCapabilityProbe :
         };
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 return [];
             }
@@ -108,7 +108,9 @@ public sealed class FfmpegHardwareCapabilityProbe :
             }
 
             await standardOutput.ConfigureAwait(false);
-            return ParseVulkanDevices(await standardError.ConfigureAwait(false));
+            var diagnostics = await standardError.ConfigureAwait(false);
+            Process.MediaProcessDiagnostics.WriteStandardError(process, diagnostics);
+            return ParseVulkanDevices(diagnostics);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or UnauthorizedAccessException or
@@ -194,7 +196,7 @@ public sealed class FfmpegHardwareCapabilityProbe :
         };
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 return Unavailable(probe, "FFmpeg could not be started.");
             }
@@ -222,6 +224,7 @@ public sealed class FfmpegHardwareCapabilityProbe :
             await standardOutput.ConfigureAwait(false);
             var diagnostics = await standardError.ConfigureAwait(false);
             stopwatch.Stop();
+            Process.MediaProcessDiagnostics.WriteStandardError(process, diagnostics);
             return process.ExitCode == 0
                 ? new ExportVideoEncoderCapability(
                     probe.Encoder,

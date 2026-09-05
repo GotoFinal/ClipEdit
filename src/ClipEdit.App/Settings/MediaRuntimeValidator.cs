@@ -312,7 +312,7 @@ internal sealed partial class MediaRuntimeValidator
 
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 return new MediaToolExecutionResult(false, string.Empty, "The process could not start.");
             }
@@ -322,6 +322,7 @@ internal sealed partial class MediaRuntimeValidator
             await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
             var output = await standardOutput.ConfigureAwait(false);
             var error = await standardError.ConfigureAwait(false);
+            ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.WriteStandardError(process, error);
             var combined = string.Join(
                 Environment.NewLine,
                 new[] { output, error }.Where(value => !string.IsNullOrWhiteSpace(value)));

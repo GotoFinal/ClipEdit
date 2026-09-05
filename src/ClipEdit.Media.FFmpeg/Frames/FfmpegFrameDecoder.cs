@@ -64,7 +64,7 @@ public sealed class FfmpegFrameDecoder : IFrameDecoder
 
         try
         {
-            if (!process.Start())
+            if (!ClipEdit.Media.FFmpeg.Process.MediaProcessDiagnostics.Start(process))
             {
                 throw new FrameDecodeException(
                     FrameDecodeFailure.ToolUnavailable,
@@ -99,6 +99,7 @@ public sealed class FfmpegFrameDecoder : IFrameDecoder
             await Task.WhenAll(imageTask, errorTask).ConfigureAwait(false);
             var imageBytes = imageTask.Result;
             var errorText = errorTask.Result;
+            Process.MediaProcessDiagnostics.WriteStandardError(process, errorText);
 
             if (process.ExitCode != 0)
             {
