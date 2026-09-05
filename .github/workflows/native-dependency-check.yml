@@ -95,7 +95,7 @@ jobs:
             echo
             cat artifacts/native-dependency-report.md
             echo
-            echo "Windows uses reviewed MSYS2 UCRT64 package versions. Native validation must assemble the complete DLL closure and pass the codec, format, filter, and shared-libav checks before this PR is merged."
+            echo "Windows uses current MSYS2 UCRT64 packages and records the shipped versions. Manifest versions are a baseline, not a release gate. Native validation checks the DLL closure, codecs, formats, filters, and shared-libav compatibility."
             echo
             echo "The native validation workflow will build both platform payloads for this PR."
           } > "$body_path"

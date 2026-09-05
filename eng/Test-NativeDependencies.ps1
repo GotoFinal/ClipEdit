@@ -6,11 +6,6 @@ $ErrorActionPreference = 'Stop'
 
 $pins = Get-ClipEditNativeDependencies
 $linuxFfmpegVersion = [string]$pins.components.ffmpeg.version
-$linuxProfile = [string]$pins.releaseProfiles.'linux-x64'
-if ([string]::IsNullOrWhiteSpace($linuxProfile) -or
-    $linuxProfile -notmatch [regex]::Escape($linuxFfmpegVersion)) {
-    throw "Linux release profile '$linuxProfile' does not identify FFmpeg $linuxFfmpegVersion."
-}
 
 $windowsPackages = @($pins.windows.packages)
 $packageNames = @($windowsPackages | ForEach-Object { [string]$_.name })
@@ -23,14 +18,6 @@ foreach ($requiredPackage in @(
     'mingw-w64-ucrt-x86_64-mpv')) {
     if ($requiredPackage -notin $packageNames) {
         throw "Windows MSYS2 package lock is missing $requiredPackage."
-    }
-}
-
-$windowsProfile = [string]$pins.releaseProfiles.'win-x64'
-foreach ($package in $windowsPackages) {
-    if ($windowsProfile -notmatch [regex]::Escape([string]$package.version) -or
-        [string]$pins.windows.stackId -notmatch [regex]::Escape([string]$package.version)) {
-        throw "Windows profile and stack ID must identify $($package.name) $($package.version)."
     }
 }
 

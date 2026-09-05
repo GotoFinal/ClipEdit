@@ -24,3 +24,8 @@ Complete copyright notices and license texts for the exact dependency versions
 included in a distribution accompany that distribution in its `licenses`
 directory. All other transitive dependencies retain their respective copyright
 and license terms as identified there.
+
+Windows releases use the current MSYS2 UCRT64 media packages. The bundled
+`licenses/MSYS2-PACKAGES.tsv` records their actual versions; versions in the
+repository's native dependency manifest are a reference baseline, not a build
+requirement. Runtime loading, dependency, codec, and encode checks still apply.

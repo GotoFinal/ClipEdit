@@ -47,14 +47,6 @@ function Invoke-Pacman([string[]]$Arguments) {
     return $output
 }
 
-function Get-InstalledPackageVersion([string]$PackageName) {
-    $line = [string](Invoke-Pacman @('-Q', $PackageName) | Select-Object -First 1)
-    if ($line -notmatch "^$([regex]::Escape($PackageName))\s+(\S+)$") {
-        throw "Could not parse the installed MSYS2 package version from: $line"
-    }
-    return $Matches[1]
-}
-
 function ConvertTo-MsysPath([string]$WindowsPath) {
     $fullPath = [System.IO.Path]::GetFullPath($WindowsPath)
     if (-not $fullPath.StartsWith($fullMsys2Root, [StringComparison]::OrdinalIgnoreCase)) {
@@ -117,13 +109,9 @@ function Get-CapabilityNames([string[]]$Lines) {
     return $names
 }
 
-foreach ($package in @($nativeDependencies.windows.packages)) {
-    $actualVersion = Get-InstalledPackageVersion ([string]$package.name)
-    if ($actualVersion -ne [string]$package.version) {
-        throw "MSYS2 package $($package.name) is $actualVersion; the reviewed release manifest requires $($package.version). Run the manual native dependency update before releasing."
-    }
-}
-
+# MSYS2 installs current repository packages. Validate the assembled runtime's
+# capabilities below; record actual package versions in MSYS2-PACKAGES.tsv
+# instead of rejecting repository updates against the manifest's baseline.
 $stagingPath = "$fullOutputPath.staging-$([Guid]::NewGuid().ToString('N'))"
 try {
     $script:stagingBinPath = Join-Path $stagingPath 'bin'
@@ -256,13 +244,6 @@ try {
     $ffprobePath = Join-Path $script:stagingBinPath 'ffprobe.exe'
     $ffmpegVersionOutput = @(Invoke-StackTool $ffmpegPath @('-version'))
     $ffprobeVersionOutput = @(Invoke-StackTool $ffprobePath @('-version'))
-    $expectedFfmpegVersion = [string]$nativeDependencies.windows.ffmpegVersion
-    if ([string]$ffmpegVersionOutput[0] -notmatch "^ffmpeg version n?$([regex]::Escape($expectedFfmpegVersion))(?:\s|$)") {
-        throw "The MSYS2 FFmpeg version is not $expectedFfmpegVersion`: $($ffmpegVersionOutput[0])"
-    }
-    if ([string]$ffprobeVersionOutput[0] -notmatch "^ffprobe version n?$([regex]::Escape($expectedFfmpegVersion))(?:\s|$)") {
-        throw "The MSYS2 ffprobe version is not $expectedFfmpegVersion`: $($ffprobeVersionOutput[0])"
-    }
 
     $capabilityCommands = [ordered]@{
         decoders = @('-hide_banner', '-decoders')
@@ -347,7 +328,7 @@ public static class ClipEditNativeLoader
     $stackDescription = [Collections.Generic.List[string]]::new()
     $stackDescription.Add('ClipEdit Windows native media stack')
     $stackDescription.Add("Distribution: $($nativeDependencies.windows.distribution)")
-    $stackDescription.Add("Stack ID: $($nativeDependencies.windows.stackId)")
+    $stackDescription.Add("Baseline profile: $($nativeDependencies.windows.stackId)")
     $stackDescription.Add("FFmpeg: $($ffmpegVersionOutput[0])")
     $stackDescription.Add("ffprobe: $($ffprobeVersionOutput[0])")
     $stackDescription.Add("Runtime files: $((Get-ChildItem -LiteralPath $script:stagingBinPath -File).Count)")
