@@ -4,6 +4,7 @@ maybe you recorded your gameplay and want to quickly share small part of it with
 Main goal is that video can be super quickly cropped and cut without needing to know beforehand what kind of resolution you want - 
 that most other video editors enforce. You just open it, select the area on video, select time range, and you are ready to export.  
 You can export to file, clipboard, or both.  
+It also supports quickly editing a YouTube video! You can just paste a link to YouTube video and quickly make a clip of whatever you want.
 
 https://github.com/user-attachments/assets/e6b9b411-021a-411d-86f6-1dae1ac53cd9
 
